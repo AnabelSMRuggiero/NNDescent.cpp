@@ -1,0 +1,6 @@
+/Bin
+/Include
+/TestData
+/.vscode
+*.pdb
+*.obj
