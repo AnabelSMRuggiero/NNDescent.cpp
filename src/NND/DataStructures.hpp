@@ -11,17 +11,18 @@
 
 namespace nnd{
 
+template<typename DataType>
 struct GraphVertex{
 
     const size_t dataIndex;
-    const std::valarray<unsigned char> dataReference;
+    const std::valarray<DataType>& dataReference;
     //The first in the pair is the index, the second is the distance
     std::vector<std::pair<size_t,double>> neighbors;
     //std::vector<size_t> reverseNeighbor;
 
-    GraphVertex(): dataIndex(), dataReference(), neighbors(){};
+    //GraphVertex() = delete;
 
-    GraphVertex(size_t sourceIndex, const std::slice sourceData, size_t numNeighbors):
+    GraphVertex(size_t sourceIndex, const std::valarray<unsigned char>& sourceData, size_t numNeighbors):
         dataIndex(sourceIndex), dataReference(sourceData), neighbors(0) {
             this->neighbors.reserve(numNeighbors + 1);
         };
@@ -29,11 +30,12 @@ struct GraphVertex{
     GraphVertex(GraphVertex&& rval):
         dataIndex(rval.dataIndex), dataReference(rval.dataReference), neighbors(rval.neighbors){}
 
+    /*
     template<typename DataType>
     std::valarray<DataType> VertexLocation(const std::valarray<DataType>& dataSource){
         return dataSource[dataReference];
     }
-
+    */
 
     void PushNeigbor(std::pair<size_t,double>& newNeighbor){
         neighbors.push_back(newNeighbor);
@@ -45,18 +47,20 @@ struct GraphVertex{
     
 };
 
-using Graph = std::vector<GraphVertex>;
+template<typename DataType>
+using Graph = std::vector<GraphVertex<DataType>>;
 
 //Operator() of rngFunctor must return a random size_t in [0, data.size())
-Graph ConstructInitialGraph(const MNISTData& dataSource, size_t numNeighbors, std::function<size_t()> rngFunctor, SpaceMetric<std::valarray<unsigned char>> distanceFunctor){
+template<typename DataType>
+Graph<DataType> ConstructInitialGraph(const MNISTData& dataSource, size_t numNeighbors, std::function<size_t()> rngFunctor, SpaceMetric<std::valarray<unsigned char>> distanceFunctor){
     NeighborSearchFunctor searchFunctor;
     Graph retGraph(0);
     retGraph.reserve(dataSource.numberOfSamples);
 
     for (size_t i = 0; i<dataSource.numberOfSamples; i+=1){
-        std::slice vertexSlice(0, dataSource.vectorLength, 1);
+        //std::slice vertexSlice(0, dataSource.vectorLength, 1);
 
-        retGraph.emplace_back(i, vertexSlice, numNeighbors);
+        retGraph.emplace_back(i, dataSource.samples[i], numNeighbors);
         
     }
 

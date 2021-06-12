@@ -44,7 +44,7 @@ int ComputeLocalJoins(const MNISTData& dataSource,
             //join
                 distance = distanceFunctor(
                     graphState[joinTarget.first].dataReference,
-                    graphState[joinTarget.second].dataReference;
+                    graphState[joinTarget.second].dataReference);
                 
                 if (distance < graphState[joinTarget.second].neighbors[0].second){
                     graphState[joinTarget.second].PushNeigbor(std::pair<size_t, double>(joinTarget.first, distance));
