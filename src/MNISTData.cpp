@@ -23,7 +23,7 @@ unsigned long ExtractInt(std::ifstream &dataStream){
 
 
 
-MNISTData::MNISTData(std::string& dataLocation, int targetMagic) {
+MNISTData::MNISTData(std::string& dataLocation, int targetMagic) : samples(0) {
 
     std::ifstream dataStream;
     dataStream.open(dataLocation, std::ios_base::binary);
@@ -51,9 +51,19 @@ MNISTData::MNISTData(std::string& dataLocation, int targetMagic) {
     imageHeight = ExtractInt(dataStream);
     vectorLength = imageHeight * imageWidth;
 
+    samples.reserve(numberOfSamples);
+
+    for (size_t i = 0; i < numberOfSamples; i+=1){
+        std::valarray<unsigned char> tempArr(vectorLength);
+        samples.emplace_back(std::move(tempArr));
+        dataStream.read(reinterpret_cast<char *>(&(samples[i][0])), vectorLength);
+    }
+
     //Eigen::Matrix<char, Eigen::Dynamic, Eigen::Dynamic> rawImages(numImages, imgRows*imgCols);
 
     //Todo: make a factory function so I can feed the array length to the constructor directly
+
+    /*
     try {
         std::valarray<unsigned char> tempArr(size_t(numberOfSamples * imageWidth * imageHeight));
         rawData = std::move(tempArr);
@@ -65,6 +75,6 @@ MNISTData::MNISTData(std::string& dataLocation, int targetMagic) {
     
     //.read() takes specifically a char *, and can't implicitly cast the unsigned char *
     dataStream.read(reinterpret_cast<char *>(&(rawData[0])), rawData.size());
-
+    */
 
 };

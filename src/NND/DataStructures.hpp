@@ -14,7 +14,7 @@ namespace nnd{
 struct GraphVertex{
 
     const size_t dataIndex;
-    const std::slice dataReference;
+    const std::valarray<unsigned char> dataReference;
     //The first in the pair is the index, the second is the distance
     std::vector<std::pair<size_t,double>> neighbors;
     //std::vector<size_t> reverseNeighbor;
@@ -54,7 +54,7 @@ Graph ConstructInitialGraph(const MNISTData& dataSource, size_t numNeighbors, st
     retGraph.reserve(dataSource.numberOfSamples);
 
     for (size_t i = 0; i<dataSource.numberOfSamples; i+=1){
-        std::slice vertexSlice(i*dataSource.vectorLength, dataSource.vectorLength, 1);
+        std::slice vertexSlice(0, dataSource.vectorLength, 1);
 
         retGraph.emplace_back(i, vertexSlice, numNeighbors);
         

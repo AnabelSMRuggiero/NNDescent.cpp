@@ -7,7 +7,8 @@ namespace nnd{
 
 //Placeholder until proper initialiation strat is implemented
 //Simply queues up all possible local joins for each point
-void PopulateInitialQueueStates(const Graph& graphState, std::vector<ComparisonQueue>& queues){
+template<typename DataType>
+void PopulateInitialQueueStates(const Graph<DataType>& graphState, std::vector<ComparisonQueue>& queues){
     for(const auto& vertex : graphState){
         for(const auto& neighbor : vertex.neighbors){
             for(const auto& nextNeighbor : graphState[neighbor.first].neighbors){
@@ -20,8 +21,9 @@ void PopulateInitialQueueStates(const Graph& graphState, std::vector<ComparisonQ
 /*
 Computes an entire iteration of NND
 */
+template<typename DataType>
 int ComputeLocalJoins(const MNISTData& dataSource,
-                       Graph& graphState, 
+                       Graph<DataType>& graphState, 
                        std::vector<ComparisonQueue>& joinQueues, 
                        std::vector<ComparisonQueue>& cmpQueues, 
                        SpaceMetric<std::valarray<unsigned char>> distanceFunctor){
@@ -41,8 +43,8 @@ int ComputeLocalJoins(const MNISTData& dataSource,
             //I'm like 99% sure the first target cannot have the second in it's list of neighbors here unless I screwed up queuing the
             //join
                 distance = distanceFunctor(
-                    graphState[joinTarget.first].VertexLocation(dataSource.rawData),
-                    graphState[joinTarget.second].VertexLocation(dataSource.rawData));
+                    graphState[joinTarget.first].dataReference,
+                    graphState[joinTarget.second].dataReference;
                 
                 if (distance < graphState[joinTarget.second].neighbors[0].second){
                     graphState[joinTarget.second].PushNeigbor(std::pair<size_t, double>(joinTarget.first, distance));
@@ -66,7 +68,9 @@ int ComputeLocalJoins(const MNISTData& dataSource,
     return neighborListChanges;
 }
 
-void PopulateJoinQueueStates(const Graph& graphState, std::vector<ComparisonQueue>& cmpQueues, std::vector<ComparisonQueue>& joinQueues){
+
+template<typename DataType>
+void PopulateJoinQueueStates(const Graph<DataType>& graphState, std::vector<ComparisonQueue>& cmpQueues, std::vector<ComparisonQueue>& joinQueues){
     NeighborSearchFunctor searchFunctor;
     for(auto& cmpQueue : cmpQueues){
         for(const auto& cmpTarget : cmpQueue.queue){
@@ -98,7 +102,8 @@ void PopulateJoinQueueStates(const Graph& graphState, std::vector<ComparisonQueu
 }
 
 //Mainly For Debugging to make sure I didn't screw up my graph state.
-void VerifyGraphState(const Graph& currentGraph){
+template<typename DataType>
+void VerifyGraphState(const Graph<DataType>& currentGraph){
     for (const auto& vertex : currentGraph){
         for (const auto& neighbor : vertex.neighbors){
             if (neighbor.first == vertex.dataIndex) throw("Vertex is own neighbor");

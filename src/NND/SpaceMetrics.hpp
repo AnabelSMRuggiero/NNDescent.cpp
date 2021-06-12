@@ -8,8 +8,9 @@
 namespace nnd{
 
 // I might want to not use valarrays or use template specifications for valarrays. There's some nifty numerical algorithms in the STL
-// that use container semantics, but apparently .begin() and .end() on valarray doesn't support it.
+// that use container semantics, but apparently .begin() and .end() on valarray doesn't support that.
 // /shrug
+// I can worry about optimizing these later. Get the core stuff done first.
 
 template<typename DataType, typename RetType=double>
 using SpaceMetric = RetType (*)(const DataType&, const DataType&);
