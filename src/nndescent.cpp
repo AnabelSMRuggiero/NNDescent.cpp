@@ -5,6 +5,9 @@
 #include <random>
 #include <chrono>
 #include <iostream>
+#include <valarray>
+#include <numeric>
+#include <cmath>
 
 #include "MNISTData.hpp"
 #include "NND/SpaceMetrics.hpp"
@@ -14,7 +17,49 @@
 
 namespace chrono = std::chrono;
 using namespace nnd;
+template<typename DataType, typename FloatType>
+std::valarray<FloatType> EuclidianSplittingPlaneNormal(const std::valarray<DataType>& pointA, const std::valarray<DataType>& pointB){
+    std::valarray<FloatType> splittingLine = pointB - pointA;
+    FloatType splittingLineMag(0);
+    for (FloatType i : splittingLine){
+        splittingLineMag += 1;
+    }
+    splittingLineMag = std::sqrt(splittingLineMag);
+    splittingLine /= splittingLineMag;
 
+    return splittingLine;
+}
+
+template<typename Iterator, typename rIterator, typename SplittingFunction>
+int Split(Iterator fromBegin, Iterator fromEnd, Iterator toBegin, rIterator toRev, SplittingFunction splitter){
+    int numTrue = 0;
+    for ( ; fromBegin != fromEnd; fromBegin++){
+        if (splitter(*fromBegin)){
+            *toRev = *fromBegin;
+            toRev++;
+            numTrue++;
+        } else {
+            *toBegin = *fromBegin;
+            toBegin++;
+        }
+    }
+    return numTrue;
+}
+
+template<typename DataType, typename FloatType>
+void EuclidianBuildRPTrees(const MNISTData& digits, std::function<size_t ()> rngFunctor, int numberOfSplits = 8){
+    std::vector<size_t> indexVector1(digits.numberOfSamples);
+    std::iota(indexVector1.begin(), indexVector1.end(), 0);
+    std::vector<size_t> indexVector2(digits.numberOfSamples);
+    std::vector<std::valarray<FloatType>> normalVectors((1<<numberOfSplits) - 1);
+
+    auto splitter = [&](size_t index){
+        
+    };
+
+
+
+}
 
 int main(){
 
@@ -23,8 +68,10 @@ int main(){
     std::mt19937_64 rngEngine(0);
     std::uniform_int_distribution<size_t> rngDist(size_t(0), digits.numberOfSamples - 1);
     StlRngFunctor<std::mt19937_64, std::uniform_int_distribution, size_t> rngFunctor(rngEngine, rngDist);
+
+
     //SpaceMetric<std::valarray<unsigned char>> distFunc = &EuclideanNorm<unsigned char>
-    Graph initGraph = ConstructInitialGraph(digits, 5, rngFunctor, &EuclideanNorm<unsigned char>);
+    Graph<unsigned char> initGraph = ConstructInitialGraph<unsigned char>(digits, 5, rngFunctor, &EuclideanNorm<unsigned char>);
     std::vector<ComparisonQueue> joinQueues = ConstructQueues(digits.numberOfSamples, 100);
     std::vector<ComparisonQueue> candidateQueues = ConstructQueues(digits.numberOfSamples, 10);
 
