@@ -9,6 +9,7 @@
 #include <numeric>
 #include <cmath>
 #include <iterator>
+#include <unordered_map>
 
 #include "MNISTData.hpp"
 #include "NND/SpaceMetrics.hpp"
@@ -20,10 +21,13 @@ namespace chrono = std::chrono;
 using namespace nnd;
 template<typename DataType, typename FloatType>
 std::valarray<FloatType> EuclidianSplittingPlaneNormal(const std::valarray<DataType>& pointA, const std::valarray<DataType>& pointB){
-    std::valarray<FloatType> splittingLine = pointB - pointA;
+    std::valarray<FloatType> splittingLine(pointA.size());
+    for (size_t i = 0; i < pointA.size(); i += 1){
+        splittingLine[i] = FloatType(pointA[i]) - FloatType(pointB[i]);
+    }
     FloatType splittingLineMag(0);
     for (FloatType i : splittingLine){
-        splittingLineMag += 1;
+        splittingLineMag += i*i;
     }
     splittingLineMag = std::sqrt(splittingLineMag);
     splittingLine /= splittingLineMag;
@@ -77,41 +81,75 @@ std::pair<std::valarray<FloatType>, FloatType> GetSplittingVector(const MNISTDat
         pair<size_t, size_t>: two valid points to contruct a splitting plane if one needs to be built.
 
     It returns(as a pair)
-        valarray<FloatType>: The normal to the splitting plane
-        A function pointer: bool f(size_t dataIndex)
+        A function: bool f(size_t dataIndex)
 */
 //Gah, curse the indirection, but I'll use std::function for now here
 template<typename FloatType>
-using SplittingScheme = std::function<std::pair<std::valarray<FloatType>, std::function<bool(size_t)>> (size_t, std::pair<size_t, size_t>)>;
+using SplittingScheme = std::function<std::function<bool(size_t)> (size_t, std::pair<size_t, size_t>)>;
 
 
 template<typename FloatType, typename DataType>
 struct EuclidianSplittingScheme{
 
     const std::vector<std::valarray<DataType>>& dataSource;
-    std::valarray<FloatType> splittingVector;
+    std::unordered_map<size_t, std::pair<std::valarray<FloatType>, FloatType>> splittingVectors;
     FloatType projectionOffset;
 
-    EuclidianSplittingScheme(const MNISTData& digits) : dataSource(digits.samples){};
 
-    std::pair<std::valarray<FloatType>, std::function<bool(size_t)>> operator()(size_t splitIndex, std::pair<size_t, size_t> splittingPoints){
+
+    EuclidianSplittingScheme(const MNISTData& digits) : dataSource(digits.samples), splittingVectors(){};
+
+    std::function<bool(size_t)> operator()(size_t splitIndex, std::pair<size_t, size_t> splittingPoints){
         
+        std::valarray<FloatType> splittingVector;
 
-        splittingVector = EuclidianSplittingPlaneNormal<DataType, FloatType>(dataSource[splittingPoints.first], dataSource[splittingPoints.second]);
+        if (splittingVectors.find(splitIndex) == splittingVectors.end()){
+            splittingVector = EuclidianSplittingPlaneNormal<DataType, FloatType>(dataSource[splittingPoints.first], dataSource[splittingPoints.second]);
+
+            //std::valarray<FloatType> pointAverage(splittingVector.size());
+
+            FloatType projectionOffset = 0;
+            for (size_t i = 0; i<dataSource[splittingPoints.first].size(); i+=1){
+                projectionOffset -= splittingVector[i] * FloatType(dataSource[splittingPoints.first][i] + dataSource[splittingPoints.second][i])/2.0;
+            };
+            /*
+            std::valarray<FloatType> offsets = splittingVector * (dataSource[splittingPoints.first] + dataSource[splittingPoints.second])/2.0;
+            projectionOffset = 0;
+            for (FloatType component : offsets){
+                projectionOffset -= component;
+            };
+            */
+           splittingVectors[splitIndex] = std::pair<std::valarray<FloatType>, FloatType>(splittingVector, projectionOffset);
+
+        };
         
-        std::valarray<FloatType> offsets = splittingVector * (dataSource[splittingPoints.first] + dataSource[splittingPoints.second])/2.0;
-        projectionOffset = 0;
-        for (FloatType component : offsets){
-            projectionOffset -= component;
-        }
+        
+        auto comparisonFunction = [=, 
+                                   &data = std::as_const(this->dataSource), 
+                                   &splitter = splittingVectors[splitIndex].first,
+                                   offset = splittingVectors[splitIndex].second]
+                                   (size_t comparisonIndex) -> bool{
+                // This is some janky type conversion shenanigans here. I need to either
+                // remove the assertion of arbitrary (but single) data type and turn everything into a float/double
+                // or define these ops in terms of something other than valarrays.
+                // I just wanna get prototyping rptrees done.
+                // TODO: KILL THIS IMPLEMENTATION (jfc, this is NOT GOOD)
+                std::valarray<FloatType> temporaryArr(data[comparisonIndex].size());
+                for(size_t i = 0; i < temporaryArr.size(); i += 1){
+                    temporaryArr[i] = FloatType(data[comparisonIndex][i]);
+                }
+                return 0.0 < (Dot(temporaryArr, splitter) - projectionOffset);
 
-        return std::pair(splittingVector, std::function<bool(size_t)>(this));
+        };
+        return std::function<bool(size_t)> (comparisonFunction);
     };
-
+    /*
     bool operator()(size_t comparisonIndex){
         return 0 < (Dot(dataSource[comparisonIndex], splittingVector) - offset)
     }
-
+    */
+    //private:
+    //std::valarray<FloatType> 
 };
 
 //TODO: add some way to track best splits
@@ -120,17 +158,17 @@ struct RandomProjectionForest{
 
     std::vector<size_t> indexArray;
     int numberOfSplits;
-    std::vector<std::valarray<FloatType>> splittingVectors;
+    //std::vector<std::valarray<FloatType>> splittingVectors;
     //The second value is the first element past the range.
     std::vector<std::pair<size_t, size_t>> splitRanges;
 
     //template<typename DataType>
     RandomProjectionForest(size_t numberOfSamples, StlRngFunctor<> rngFunctor, SplittingScheme<FloatType> getSplitComponents, int splits = 8) : 
-        splittingVectors(0), splitRanges(1, std::pair<size_t, size_t>(0, numberOfSamples)), numberOfSplits(splits){
+        splitRanges(1, std::pair<size_t, size_t>(0, numberOfSamples)), numberOfSplits(splits){
 
         
         splitRanges.reserve(1<<(numberOfSplits+1));
-        splittingVectors.reserve((1<<numberOfSplits) - 1);
+        //splittingVectors.reserve((1<<numberOfSplits) - 1);
 
         std::vector<size_t> indexVector1(numberOfSamples);
         std::iota(indexVector1.begin(), indexVector1.end(), 0);
@@ -161,9 +199,9 @@ struct RandomProjectionForest{
                 index2 = indexVector1[index2];
 
                 // Get the splitting vector, this can be fed into this function in the parallel/distributed case.
-                std::valarray<FloatType> splittingVector;
-                std::tie(splittingVector, splittingFunction) = getSplitComponents(splittingIndex, std::pair<size_t, size_t>(index1, index2));
-                splittingVectors.push_back(splittingVector);
+                //std::valarray<FloatType> splittingVector;
+                splittingFunction = getSplitComponents(splittingIndex, std::pair<size_t, size_t>(index1, index2));
+                //splittingVectors.push_back(splittingVector);
 
                 auto beginIt = indexVector1.begin();
                 std::advance(beginIt, rangeIndecies.first);
@@ -183,7 +221,7 @@ struct RandomProjectionForest{
             splittingIndex++;
         }
 
-    indexArray = std::move(indexVector1);
+        indexArray = std::move(indexVector1);
 
     }
     
