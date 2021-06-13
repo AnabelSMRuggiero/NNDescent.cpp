@@ -17,7 +17,10 @@ Currently, this project uses the C++17 standard, and will likely adopt C++20 to 
 So far, a rough, serial version of NND has been implemented. Since the graph is randomly initialized at the time of writing, this algorithm basically does not converge for large datasets. This project has a lot further to go before being usable, including:
 
 - Incorporation of random projection trees to initalize the graph.
+- Pay off technical debt associated with not having dedicated dev time to a structure dedicated to handling direct interactions with data.
+- Test building a final graph from smaller graphs made inside each tree.
+    - If that works, distribute it.
 - Optimize the data structures the algorithm uses.
 - Include an optional type erasure scheme that reduces code bloat that may be caused by instantiating multiple templates of the algorithm.
-- Test and refine graph segemtation while minimizing overhead.
+
 
