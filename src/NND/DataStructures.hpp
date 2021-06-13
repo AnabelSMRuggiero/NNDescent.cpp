@@ -15,12 +15,13 @@ template<typename DataType>
 struct GraphVertex{
 
     const size_t dataIndex;
+    
     const std::valarray<DataType>& dataReference;
     //The first in the pair is the index, the second is the distance
     std::vector<std::pair<size_t,double>> neighbors;
     //std::vector<size_t> reverseNeighbor;
 
-    //GraphVertex() = delete;
+    GraphVertex() : dataIndex(-1), dataReference(std::valarray<unsigned char>()), neighbors(0){};
 
     GraphVertex(size_t sourceIndex, const std::valarray<unsigned char>& sourceData, size_t numNeighbors):
         dataIndex(sourceIndex), dataReference(sourceData), neighbors(0) {
@@ -54,13 +55,13 @@ using Graph = std::vector<GraphVertex<DataType>>;
 template<typename DataType>
 Graph<DataType> ConstructInitialGraph(const MNISTData& dataSource, size_t numNeighbors, std::function<size_t()> rngFunctor, SpaceMetric<std::valarray<unsigned char>> distanceFunctor){
     NeighborSearchFunctor searchFunctor;
-    Graph retGraph(0);
+    Graph<DataType> retGraph(0);
     retGraph.reserve(dataSource.numberOfSamples);
 
     for (size_t i = 0; i<dataSource.numberOfSamples; i+=1){
         //std::slice vertexSlice(0, dataSource.vectorLength, 1);
 
-        retGraph.emplace_back(i, dataSource.samples[i], numNeighbors);
+        retGraph.push_back(GraphVertex<DataType>(i, dataSource.samples[i], numNeighbors));
         
     }
 
@@ -77,8 +78,8 @@ Graph<DataType> ConstructInitialGraph(const MNISTData& dataSource, size_t numNei
                 randomIndex = rngFunctor();
             }
             double distance = distanceFunctor(
-                retGraph[i].VertexLocation(dataSource.rawData),
-                retGraph[randomIndex].VertexLocation(dataSource.rawData));
+                    retGraph[i].dataReference,
+                    retGraph[randomIndex].dataReference);
 
             retGraph[i].neighbors.emplace_back(randomIndex, distance);
 
