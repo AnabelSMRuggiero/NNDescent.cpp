@@ -186,7 +186,19 @@ struct RandomProjectionForest{
             for (size_t j = 0; j < (1<<i); j += 1){
                 
                 std::pair<size_t, size_t> rangeIndecies = splitRanges[rangeIndexOffset + j];
+
+                //The 1 and/or 0 member split case
+                if (rangeIndecies.second - rangeIndecies.first >= 1){
+
+                    
+                    splitRanges.push_back(std::pair<size_t, size_t>(rangeIndecies.first, rangeIndecies.first + 0));
+                    splitRanges.push_back(std::pair<size_t, size_t>(rangeIndecies.first + 0, rangeIndecies.second));
+                    splittingIndex++;
+                    continue;
+                    
+                }
                 
+                //This is bootleg af, need to refactor how I do rng.
                 decltype(rngFunctor.functorDistribution)::param_type newRange(rangeIndecies.first, rangeIndecies.second - 1);
                 rngFunctor.functorDistribution.param(newRange);
 
@@ -212,13 +224,14 @@ struct RandomProjectionForest{
                 auto toRev = indexVector2.end();
                 std::advance(toRev, numberOfSamples - rangeIndecies.second);
 
-                int numSplit = Split(indexVector1.begin(), indexVector1.end(), indexVector2.begin(), indexVector2.rbegin(), splittingFunction);
+                int numSplit = Split(beginIt, endIt, toBegin, toRev, splittingFunction);
                 splitRanges.push_back(std::pair<size_t, size_t>(rangeIndecies.first, rangeIndecies.first + numSplit));
                 splitRanges.push_back(std::pair<size_t, size_t>(rangeIndecies.first + numSplit, rangeIndecies.second));
+                splittingIndex++;
             }
             rangeIndexOffset += 1<<i;
             std::swap(indexVector1, indexVector2);
-            splittingIndex++;
+            
         }
 
         indexArray = std::move(indexVector1);
