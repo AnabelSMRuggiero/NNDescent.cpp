@@ -40,12 +40,12 @@ int Split(Iterator fromBegin, Iterator fromEnd, Iterator toBegin, rIterator toRe
     int numTrue = 0;
     for ( ; fromBegin != fromEnd; fromBegin++){
         if (splitter(*fromBegin)){
-            *toRev = *fromBegin;
-            toRev++;
-            numTrue++;
-        } else {
             *toBegin = *fromBegin;
             toBegin++;
+            numTrue++;
+        } else {
+            *toRev = *fromBegin;
+            toRev++;
         }
     }
     return numTrue;
@@ -138,7 +138,10 @@ struct EuclidianSplittingScheme{
                 for(size_t i = 0; i < temporaryArr.size(); i += 1){
                     temporaryArr[i] = FloatType(data[comparisonIndex][i]);
                 }
-                bool result = 0.0 < (Dot(temporaryArr, splitter) - offset);
+
+                FloatType distanceFromPlane = (Dot(temporaryArr, splitter) + offset);
+                std::cout << distanceFromPlane << std::endl;
+                bool result = 0.0 < distanceFromPlane;
 
                 return result;
 
