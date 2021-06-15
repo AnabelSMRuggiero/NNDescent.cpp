@@ -84,7 +84,6 @@ std::pair<std::valarray<FloatType>, FloatType> GetSplittingVector(const MNISTDat
         A function: bool f(size_t dataIndex)
 */
 //Gah, curse the indirection, but I'll use std::function for now here
-template<typename FloatType>
 using SplittingScheme = std::function<std::function<bool(size_t)> (size_t, std::pair<size_t, size_t>)>;
 
 
@@ -140,7 +139,7 @@ struct EuclidianSplittingScheme{
                 }
 
                 FloatType distanceFromPlane = (Dot(temporaryArr, splitter) + offset);
-                std::cout << distanceFromPlane << std::endl;
+                //std::cout << distanceFromPlane << std::endl;
                 bool result = 0.0 < distanceFromPlane;
 
                 return result;
@@ -157,8 +156,10 @@ struct EuclidianSplittingScheme{
     //std::valarray<FloatType> 
 };
 
+
+
+
 //TODO: add some way to track best splits
-template<typename FloatType>
 struct RandomProjectionForest{
 
     std::vector<size_t> indexArray;
@@ -167,8 +168,12 @@ struct RandomProjectionForest{
     //The second value is the first element past the range.
     std::vector<std::pair<size_t, size_t>> splitRanges;
 
+    struct TreeLeaf;
+    
+    std::vector<TreeLeaf> treeLeaves;
+
     //template<typename DataType>
-    RandomProjectionForest(size_t numberOfSamples, StlRngFunctor<> rngFunctor, SplittingScheme<FloatType> getSplitComponents, int splits = 8) : 
+    RandomProjectionForest(size_t numberOfSamples, StlRngFunctor<> rngFunctor, SplittingScheme getSplitComponents, int splits = 8) : 
         splitRanges(1, std::pair<size_t, size_t>(0, numberOfSamples)), numberOfSplits(splits){
 
         
@@ -245,6 +250,51 @@ struct RandomProjectionForest{
     
 
 };
+
+struct RandomProjectionForest::TreeLeaf{
+
+    std::pair<size_t,size_t> splitRange;
+    std::pair<TreeLeaf*, TreeLeaf*> children;
+    std::vector<TreeLeaf>* enclosingVector;
+
+    TreeLeaf() : splitRange(0,0), children(nullptr, nullptr), enclosingVector(nullptr){};
+
+    TreeLeaf(size_t index1, size_t index2, std::vector<TreeLeaf>* enclose) : splitRange(index1, index2), 
+                                                                             children(nullptr, nullptr), 
+                                                                             enclosingVector(enclose){};
+
+    TreeLeaf(std::pair<size_t, size_t> indecies, std::vector<TreeLeaf>* enclose) : splitRange(indecies), 
+                                                                                   children(nullptr, nullptr), 
+                                                                                   enclosingVector(enclose){};
+
+    TreeLeaf& AddLeftLeaf(size_t index1, size_t index2){
+        TreeLeaf& newLeaf = enclosingVector->emplace_back(index1, index2, enclosingVector);
+        this->children.first = &newLeaf;
+        return newLeaf;
+    };
+
+    TreeLeaf& AddLeftLeaf(std::pair<size_t, size_t> indecies){
+        TreeLeaf& newLeaf = enclosingVector->emplace_back(indecies, enclosingVector);
+        this->children.first = &newLeaf;
+        return newLeaf;
+    };
+
+    TreeLeaf& AddRightLeaf(size_t index1, size_t index2){
+        TreeLeaf& newLeaf = enclosingVector->emplace_back(index1, index2, enclosingVector);
+        this->children.second = &newLeaf;
+        return newLeaf;
+    };
+
+    TreeLeaf& AddRightLeaf(std::pair<size_t, size_t> indecies){
+        TreeLeaf& newLeaf = enclosingVector->emplace_back(indecies, enclosingVector);
+        this->children.second = &newLeaf;
+        return newLeaf;
+    };
+
+};
+
+
+
 /*
 // TODO: Add in some way to track the best splits
 template<typename DataType, typename FloatType>
@@ -306,7 +356,7 @@ int main(){
     EuclidianSplittingScheme<double, unsigned char> splittingScheme(digits);
 
     //StlRngFunctor<> rngFunctor, SplittingScheme<FloatType> getSplitComponents, int splits = 8
-    RandomProjectionForest<double> rpTrees(size_t(digits.numberOfSamples), rngFunctor, SplittingScheme<double>(splittingScheme));
+    RandomProjectionForest rpTrees(size_t(digits.numberOfSamples), rngFunctor, SplittingScheme(splittingScheme));
 
     //SpaceMetric<std::valarray<unsigned char>> distFunc = &EuclideanNorm<unsigned char>
     Graph<unsigned char> initGraph = ConstructInitialGraph<unsigned char>(digits, 5, rngFunctor, &EuclideanNorm<unsigned char>);
