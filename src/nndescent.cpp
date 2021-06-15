@@ -138,7 +138,9 @@ struct EuclidianSplittingScheme{
                 for(size_t i = 0; i < temporaryArr.size(); i += 1){
                     temporaryArr[i] = FloatType(data[comparisonIndex][i]);
                 }
-                return 0.0 < (Dot(temporaryArr, splitter) - projectionOffset);
+                bool result = 0.0 < (Dot(temporaryArr, splitter) - offset);
+
+                return result;
 
         };
         return std::function<bool(size_t)> (comparisonFunction);
@@ -188,7 +190,7 @@ struct RandomProjectionForest{
                 std::pair<size_t, size_t> rangeIndecies = splitRanges[rangeIndexOffset + j];
 
                 //The 1 and/or 0 member split case
-                if (rangeIndecies.second - rangeIndecies.first >= 1){
+                if (rangeIndecies.second - rangeIndecies.first <= 1){
 
                     
                     splitRanges.push_back(std::pair<size_t, size_t>(rangeIndecies.first, rangeIndecies.first + 0));
@@ -221,7 +223,7 @@ struct RandomProjectionForest{
                 std::advance(endIt, rangeIndecies.second - numberOfSamples);
                 auto toBegin = indexVector2.begin();
                 std::advance(toBegin, rangeIndecies.first);
-                auto toRev = indexVector2.end();
+                auto toRev = indexVector2.rbegin();
                 std::advance(toRev, numberOfSamples - rangeIndecies.second);
 
                 int numSplit = Split(beginIt, endIt, toBegin, toRev, splittingFunction);
