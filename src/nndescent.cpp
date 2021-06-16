@@ -168,17 +168,66 @@ struct RandomProjectionForest{
     //The second value is the first element past the range.
     std::vector<std::pair<size_t, size_t>> splitRanges;
 
-    struct TreeLeaf;
+    struct TreeLeaf{
+    
+        //This is for the split that produced the children
+        size_t childrenSplittingIndex;
+        std::pair<size_t,size_t> splitRange;
+        std::pair<TreeLeaf*, TreeLeaf*> children;
+        std::vector<TreeLeaf>* enclosingVector;
+
+        TreeLeaf() : splitRange(0,0), children(nullptr, nullptr), enclosingVector(nullptr), childrenSplittingIndex(-1){};
+
+        TreeLeaf(size_t index1, size_t index2, std::vector<TreeLeaf>* enclose) : splitRange(index1, index2), 
+                                                                                children(nullptr, nullptr), 
+                                                                                enclosingVector(enclose),
+                                                                                childrenSplittingIndex(-1){};
+
+        TreeLeaf(std::pair<size_t, size_t> indecies, std::vector<TreeLeaf>* enclose) : splitRange(indecies), 
+                                                                                    children(nullptr, nullptr), 
+                                                                                    enclosingVector(enclose),
+                                                                                    childrenSplittingIndex(-1){};
+
+        TreeLeaf& AddLeftLeaf(size_t index1, size_t index2){
+            TreeLeaf& newLeaf = enclosingVector->emplace_back(index1, index2, enclosingVector);
+            this->children.first = &newLeaf;
+            return newLeaf;
+        };
+
+        TreeLeaf& AddLeftLeaf(std::pair<size_t, size_t> indecies){
+            TreeLeaf& newLeaf = enclosingVector->emplace_back(indecies, enclosingVector);
+            this->children.first = &newLeaf;
+            return newLeaf;
+        };
+
+        TreeLeaf& AddRightLeaf(size_t index1, size_t index2){
+            TreeLeaf& newLeaf = enclosingVector->emplace_back(index1, index2, enclosingVector);
+            this->children.second = &newLeaf;
+            return newLeaf;
+        };
+
+        TreeLeaf& AddRightLeaf(std::pair<size_t, size_t> indecies){
+            TreeLeaf& newLeaf = enclosingVector->emplace_back(indecies, enclosingVector);
+            this->children.second = &newLeaf;
+            return newLeaf;
+        };
+
+    };
     
     std::vector<TreeLeaf> treeLeaves;
 
     //template<typename DataType>
     RandomProjectionForest(size_t numberOfSamples, StlRngFunctor<> rngFunctor, SplittingScheme getSplitComponents, int splits = 8) : 
-        splitRanges(1, std::pair<size_t, size_t>(0, numberOfSamples)), numberOfSplits(splits){
+        splitRanges(1, std::pair<size_t, size_t>(0, numberOfSamples)), numberOfSplits(splits), treeLeaves(0){
 
         
         splitRanges.reserve(1<<(numberOfSplits+1));
         //splittingVectors.reserve((1<<numberOfSplits) - 1);
+        treeLeaves.reserve(1<<(numberOfSplits+1));
+        treeLeaves.emplace_back(std::pair<size_t, size_t>(0, numberOfSamples), &treeLeaves);
+
+        std::vector<TreeLeaf*> splitQueue1(1, &treeLeaves[0]);
+        std::vector<TreeLeaf*> splitQueue2(0);
 
         std::vector<size_t> indexVector1(numberOfSamples);
         std::iota(indexVector1.begin(), indexVector1.end(), 0);
@@ -195,6 +244,8 @@ struct RandomProjectionForest{
             
             for (size_t j = 0; j < (1<<i); j += 1){
                 
+                TreeLeaf& currentSplit = *(splitQueue1.back());
+
                 std::pair<size_t, size_t> rangeIndecies = splitRanges[rangeIndexOffset + j];
 
                 //The 1 and/or 0 member split case
@@ -237,11 +288,21 @@ struct RandomProjectionForest{
                 int numSplit = Split(beginIt, endIt, toBegin, toRev, splittingFunction);
                 splitRanges.push_back(std::pair<size_t, size_t>(rangeIndecies.first, rangeIndecies.first + numSplit));
                 splitRanges.push_back(std::pair<size_t, size_t>(rangeIndecies.first + numSplit, rangeIndecies.second));
+
+                TreeLeaf* leftSplit = &(currentSplit.AddLeftLeaf(std::pair<size_t, size_t>(rangeIndecies.first, rangeIndecies.first + numSplit)));
+                TreeLeaf* rightSplit = &(currentSplit.AddRightLeaf(std::pair<size_t, size_t>(rangeIndecies.first + numSplit, rangeIndecies.second)));
+                currentSplit.childrenSplittingIndex = splittingIndex;
+
+                splitQueue2.push_back(leftSplit);
+                splitQueue2.push_back(rightSplit);
+                splitQueue1.pop_back();
+
                 splittingIndex++;
             }
+
             rangeIndexOffset += 1<<i;
             std::swap(indexVector1, indexVector2);
-            
+            std::swap(splitQueue1, splitQueue2);
         }
 
         indexArray = std::move(indexVector1);
@@ -251,47 +312,6 @@ struct RandomProjectionForest{
 
 };
 
-struct RandomProjectionForest::TreeLeaf{
-
-    std::pair<size_t,size_t> splitRange;
-    std::pair<TreeLeaf*, TreeLeaf*> children;
-    std::vector<TreeLeaf>* enclosingVector;
-
-    TreeLeaf() : splitRange(0,0), children(nullptr, nullptr), enclosingVector(nullptr){};
-
-    TreeLeaf(size_t index1, size_t index2, std::vector<TreeLeaf>* enclose) : splitRange(index1, index2), 
-                                                                             children(nullptr, nullptr), 
-                                                                             enclosingVector(enclose){};
-
-    TreeLeaf(std::pair<size_t, size_t> indecies, std::vector<TreeLeaf>* enclose) : splitRange(indecies), 
-                                                                                   children(nullptr, nullptr), 
-                                                                                   enclosingVector(enclose){};
-
-    TreeLeaf& AddLeftLeaf(size_t index1, size_t index2){
-        TreeLeaf& newLeaf = enclosingVector->emplace_back(index1, index2, enclosingVector);
-        this->children.first = &newLeaf;
-        return newLeaf;
-    };
-
-    TreeLeaf& AddLeftLeaf(std::pair<size_t, size_t> indecies){
-        TreeLeaf& newLeaf = enclosingVector->emplace_back(indecies, enclosingVector);
-        this->children.first = &newLeaf;
-        return newLeaf;
-    };
-
-    TreeLeaf& AddRightLeaf(size_t index1, size_t index2){
-        TreeLeaf& newLeaf = enclosingVector->emplace_back(index1, index2, enclosingVector);
-        this->children.second = &newLeaf;
-        return newLeaf;
-    };
-
-    TreeLeaf& AddRightLeaf(std::pair<size_t, size_t> indecies){
-        TreeLeaf& newLeaf = enclosingVector->emplace_back(indecies, enclosingVector);
-        this->children.second = &newLeaf;
-        return newLeaf;
-    };
-
-};
 
 
 
