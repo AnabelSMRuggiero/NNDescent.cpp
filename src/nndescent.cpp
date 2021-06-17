@@ -173,10 +173,22 @@ struct RandomProjectionForest{
         //This is for the split that produced the children
         size_t childrenSplittingIndex;
         std::pair<size_t,size_t> splitRange;
+        //Pretty sure the Leaves can be refs. Either way, non of these pointers own the underlying objects
+        //All of the leaves of the tree are owned by the enclosing Vector.
+        //Wait. Using pointers like this means the tree can't easily be copied at all...
+        //I don't even know if this needs to be copied
         std::pair<TreeLeaf*, TreeLeaf*> children;
         TreeLeaf* parent;
         std::vector<TreeLeaf>* enclosingVector;
-
+        /*
+        This structure probably can be condensed back down to just a tuple of {bool, size_t, size_t}
+        (or two arrays, bool[] and std::pair/std::range[]).
+        That'd remove 4 pointers (4/7s) of the struct at this point, add a literal bit, and require
+        alocating enough memory for the entire theoretical max tree.
+        That assumption may not be a good one in the parallel case (although I am already reserving an agressive amount of space.)
+        I'll leave as is for now in case this makes some other piece easier to work on
+        
+        */
         TreeLeaf() : splitRange(0,0), childrenSplittingIndex(-1), children(nullptr, nullptr), parent(nullptr), enclosingVector(nullptr){};
 
         TreeLeaf(size_t index1, size_t index2, size_t splittingIndex, std::vector<TreeLeaf>* enclose) : splitRange(index1, index2),

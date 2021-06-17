@@ -27,7 +27,7 @@ MNISTData::MNISTData(std::string& dataLocation, int targetMagic) : samples(0) {
 
     std::ifstream dataStream;
     dataStream.open(dataLocation, std::ios_base::binary);
-    dataStream.fail();
+    
 
     /*
     File format
