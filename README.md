@@ -23,4 +23,14 @@ So far, a rough, serial version of NND has been implemented. Since the graph is 
 - Optimize the data structures the algorithm uses.
 - Include an optional type erasure scheme that reduces code bloat that may be caused by instantiating multiple templates of the algorithm.
 
+# A Note on the Use of std::valarray
 
+So, I finally took a closer look at MSVC's std::valarray implementation. Turns out, apparently a template expression implementation would cause a breaking ABI change for MSVC. What this means for this project is yet to be determined as I do have some technical debt associated with data structures that I have yet to pay off.
+
+Since I'm limiting myself to either the STL or what ever I write for the project's core libraries, I will still be using std::valarray because it is easy to develop with (unless I end up taking a shot at trying to write my own replacement a bit further down the line). Ultimately, it boils down to:
+
+- I recommend using gcc's or LLVM's STL implementations, unless...
+- You are compiling with Intel Performance Primatives (Intel's compiler swaps out the STL implementation's std::valarry with their own)
+- By the time this project is in a "release" state, it'll be modular enough to use your own implementations/use a library like Eigen for vector math.
+
+I guess this is a great time for me to make the jump to c++20 if I'm going to switch STLs.
