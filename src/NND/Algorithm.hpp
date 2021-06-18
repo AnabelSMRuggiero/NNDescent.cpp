@@ -1,7 +1,7 @@
 #ifndef NND_ALGORITHM_HPP
 #define NND_ALGORITHM_HPP
 #include <algorithm>
-#include "DataStructures.hpp"
+#include "GraphStructures.hpp"
 
 namespace nnd{
 

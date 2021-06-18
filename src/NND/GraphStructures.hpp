@@ -1,5 +1,5 @@
-#ifndef NND_DATASTRUCTURES_HPP
-#define NND_DATASTRUCTURES_HPP
+#ifndef NND_GRAPHSTRUCTURES_HPP
+#define NND_GRAPHSTRUCTURES_HPP
 #include <vector>
 #include <valarray>
 #include <algorithm>
