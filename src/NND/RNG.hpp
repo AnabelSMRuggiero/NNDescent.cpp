@@ -47,7 +47,7 @@ struct StlRngFunctor{
     Distribution<RetType> functorDistribution;
 
     //Takes ownership of engine and distribution
-    StlRngFunctor(Engine& engine = std::mt19937_64(0), Distribution<RetType>& distribution = std::uniform_int_distribution<RetType>(0)):
+    StlRngFunctor(Engine&& engine = std::mt19937_64(0), Distribution<RetType>&& distribution = std::uniform_int_distribution<RetType>(0)):
         functorEngine(std::move(engine)), functorDistribution(std::move(distribution)){};
         
     RetType operator()(){

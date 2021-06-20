@@ -61,7 +61,7 @@ std::vector<size_t> LabelIndecies(const RandomProjectionForest& forest){
                 treePath.pop_back();
                 continue;
             }
-            throw std::exception("Invalid Crawl State");
+            throw std::logic_error("Invalid Crawl State");
             
         } else if (currentLeaf->children.first == nullptr && currentLeaf->children.second == nullptr){
             currentLeaf = currentLeaf->parent;
@@ -73,7 +73,7 @@ std::vector<size_t> LabelIndecies(const RandomProjectionForest& forest){
             }
             continue;
         }
-        throw std::exception("Invalid Tree State");
+        throw std::logic_error("Invalid Tree State");
         //size_t currentIndex = treePath.back();
 
     }
@@ -107,20 +107,22 @@ std::unordered_map<size_t, std::pair<int, std::valarray<double>>> CalculateCOMs(
 
 int main(){
 
-    MNISTData digits(std::string("./TestData/train-images.idx3-ubyte"));
+    std::cout << "Test String" << std::endl;
+    std::string digitsFilePath("./TestData/train-images.idx3-ubyte");
+    MNISTData digits(digitsFilePath);
     
     std::mt19937_64 rngEngine(0);
     std::uniform_int_distribution<size_t> rngDist(size_t(0), digits.numberOfSamples - 1);
-    StlRngFunctor<std::mt19937_64, std::uniform_int_distribution, size_t> rngFunctor(rngEngine, rngDist);
+    StlRngFunctor<std::mt19937_64, std::uniform_int_distribution, size_t> rngFunctor(std::move(rngEngine), std::move(rngDist));
 
-    EuclidianSplittingScheme<double, unsigned char> splittingScheme(digits);
+    //EuclidianSplittingScheme<double, unsigned char> splittingScheme(digits);
 
     //StlRngFunctor<> rngFunctor, SplittingScheme<FloatType> getSplitComponents, int splits = 8
-    RandomProjectionForest rpTrees(size_t(digits.numberOfSamples), rngFunctor, SplittingScheme(splittingScheme));
+    //RandomProjectionForest rpTrees(size_t(digits.numberOfSamples), rngFunctor, SplittingScheme(splittingScheme));
 
     //SpaceMetric<std::valarray<unsigned char>> distFunc = &EuclideanNorm<unsigned char>
 
-    /*
+    
     Graph<unsigned char> initGraph = ConstructInitialGraph<unsigned char>(digits, 5, rngFunctor, &EuclideanNorm<unsigned char>);
     std::vector<ComparisonQueue> joinQueues = ConstructQueues(digits.numberOfSamples, 100);
     std::vector<ComparisonQueue> candidateQueues = ConstructQueues(digits.numberOfSamples, 10);
@@ -149,7 +151,7 @@ int main(){
         std::cout << "Number of joins this iteration: " << totalJoins << std::endl;
         //VerifyGraphState(initGraph);
     }
-    */
+    
 
     // compQueues(0);
 

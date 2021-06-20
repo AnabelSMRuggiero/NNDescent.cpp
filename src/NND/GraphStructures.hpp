@@ -38,7 +38,7 @@ struct GraphVertex{
     }
     */
 
-    void PushNeigbor(std::pair<size_t,double>& newNeighbor){
+    void PushNeigbor(std::pair<size_t,double>&& newNeighbor){
         neighbors.push_back(newNeighbor);
         std::push_heap(neighbors.begin(), neighbors.end(), NeighborDistanceComparison);
         neighbors.pop_back();
@@ -133,7 +133,7 @@ struct ComparisonQueue{
 
     //ComparisonQueue& operator=(const ComparisonQueue& rhs)
 
-    void PushQueue(std::pair<size_t, size_t>& indecies){
+    void PushQueue(const std::pair<size_t, size_t>& indecies){
         queueWeight+=1;
         if (queue.size() < queueMaxLength){
             queue.push_back(indecies);
