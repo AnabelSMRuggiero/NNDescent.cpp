@@ -88,7 +88,7 @@ Graph<DataType> ConstructInitialGraph(const MNISTData& dataSource, size_t numNei
         std::make_heap(retGraph[i].neighbors.begin(), retGraph[i].neighbors.end(), NeighborDistanceComparison);
     }
 
-    return std::move(retGraph);
+    return retGraph;
 };
 
 
@@ -170,7 +170,7 @@ std::vector<ComparisonQueue> ConstructQueues(size_t numQueues, size_t queueMax){
     for (size_t i = 0; i < numQueues; i +=1){
         retQueues.emplace_back(queueMax);
     }
-    return std::move(retQueues);
+    return retQueues;
 }
 
 

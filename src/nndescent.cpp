@@ -78,7 +78,7 @@ std::vector<size_t> LabelIndecies(const RandomProjectionForest& forest){
 
     }
 
-    return std::move(classifications);
+    return classifications;
 
 };
 
@@ -101,8 +101,48 @@ std::unordered_map<size_t, std::pair<int, std::valarray<double>>> CalculateCOMs(
         }
     }
 
-    return std::move(centerOfMasses);
+    return centerOfMasses;
 }
+
+//My download speed is getting hammered for some reason.
+[[nodiscard]] Graph<unsigned char> BruteForceGroundTruth(const MNISTData& dataSource,
+                                           size_t numNeighbors,
+                                           SpaceMetric<std::valarray<unsigned char>> distanceFunctor){
+    NeighborSearchFunctor searchFunctor;
+    Graph<unsigned char> retGraph(0);
+    retGraph.reserve(dataSource.numberOfSamples);
+
+    for (size_t i = 0; i<dataSource.numberOfSamples; i+=1){
+        //std::slice vertexSlice(0, dataSource.vectorLength, 1);
+
+        retGraph.push_back(GraphVertex<unsigned char>(i, dataSource.samples[i], numNeighbors));
+        
+    };
+
+    for (size_t i = 0; i<dataSource.numberOfSamples; i += 1){
+        for (size_t j = i+1; j<dataSource.numberOfSamples; j += 1){
+            //if (i == j) continue;
+            double distance = distanceFunctor(dataSource.samples[i], dataSource.samples[j]);
+            if (distance < retGraph[i].neighbors[0].second) retGraph[i].PushNeigbor(std::pair(j, distance));
+            if (distance < retGraph[j].neighbors[0].second) retGraph[j].PushNeigbor(std::pair(i, distance));
+        }
+    }
+
+    return retGraph;
+}
+using MetaGraph = std::unordered_map<size_t, std::unordered_map<size_t, size_t>>;
+
+MetaGraph NeighborsOutOfBlock(const Graph<unsigned char>& groundTruth, const std::vector<size_t>& classifications){
+    MetaGraph retGraph;
+    for(size_t i = 0; i<classifications.size(); i += 1){
+        size_t treeIndex = classifications[i];
+        for(const auto& neighbor: groundTruth[i].neighbors){
+            retGraph[treeIndex][classifications[neighbor.first]] += 1;
+        }
+    }
+
+    return retGraph;
+};
 
 
 int main(){
@@ -115,14 +155,14 @@ int main(){
     std::uniform_int_distribution<size_t> rngDist(size_t(0), digits.numberOfSamples - 1);
     StlRngFunctor<std::mt19937_64, std::uniform_int_distribution, size_t> rngFunctor(std::move(rngEngine), std::move(rngDist));
 
-    //EuclidianSplittingScheme<double, unsigned char> splittingScheme(digits);
+    EuclidianSplittingScheme<double, unsigned char> splittingScheme(digits);
 
     //StlRngFunctor<> rngFunctor, SplittingScheme<FloatType> getSplitComponents, int splits = 8
-    //RandomProjectionForest rpTrees(size_t(digits.numberOfSamples), rngFunctor, SplittingScheme(splittingScheme));
+    RandomProjectionForest rpTrees(size_t(digits.numberOfSamples), rngFunctor, SplittingScheme(splittingScheme));
 
     //SpaceMetric<std::valarray<unsigned char>> distFunc = &EuclideanNorm<unsigned char>
 
-    
+    /*
     Graph<unsigned char> initGraph = ConstructInitialGraph<unsigned char>(digits, 5, rngFunctor, &EuclideanNorm<unsigned char>);
     std::vector<ComparisonQueue> joinQueues = ConstructQueues(digits.numberOfSamples, 100);
     std::vector<ComparisonQueue> candidateQueues = ConstructQueues(digits.numberOfSamples, 10);
@@ -151,7 +191,7 @@ int main(){
         std::cout << "Number of joins this iteration: " << totalJoins << std::endl;
         //VerifyGraphState(initGraph);
     }
-    
+    */
 
     // compQueues(0);
 
