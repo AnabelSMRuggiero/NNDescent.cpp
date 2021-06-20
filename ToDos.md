@@ -16,3 +16,4 @@
 #NNDescent
 - Add in some more robust benchmarking
   - Add in recall checking
+- This will be forever out from now, but test builing data array inside of the control structure itself to see if it reduces cache misses.
