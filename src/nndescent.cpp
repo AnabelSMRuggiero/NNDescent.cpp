@@ -10,6 +10,7 @@
 #include <cmath>
 #include <iterator>
 #include <unordered_map>
+#include <bit>
 
 #include "MNISTData.hpp"
 #include "NND/SpaceMetrics.hpp"
@@ -82,40 +83,53 @@ std::vector<size_t> LabelIndecies(const RandomProjectionForest& forest){
 
 };
 
-std::unordered_map<size_t, std::pair<int, std::valarray<double>>> CalculateCOMs(const MNISTData& digits, const std::vector<size_t>& classifications){
+struct MetaPoint{
+    int weight;
+    std::valarray<double> centerOfMass;
+};
+template<typename DataType>
+std::unordered_map<size_t, MetaPoint> CalculateCOMs(const DataSet<DataType>& data, const std::vector<size_t>& classifications){
 
-    std::unordered_map<size_t, std::pair<int, std::valarray<double>>> centerOfMasses;
+    std::unordered_map<size_t, MetaPoint> centerOfMasses;
 
     for (size_t i = 0; i<classifications.size(); i += 1){
-        if (centerOfMasses.find(classifications[i]) == centerOfMasses.end()){
-            centerOfMasses[classifications[i]].first = 1;
-            centerOfMasses[classifications[i]].second = std::valarray<double>(digits.vectorLength);
-            for (size_t j = 0; j<digits.vectorLength; j += 1){
-                centerOfMasses[classifications[i]].second[j] = static_cast<double>(digits.samples[i][j]);
-            }
-        } else {
-            centerOfMasses[classifications[i]].first += 1;
-            for (size_t j = 0; j<digits.vectorLength; j += 1){
-                centerOfMasses[classifications[i]].second[j] += static_cast<double>(digits.samples[i][j]);
-            }
+
+        centerOfMasses[classifications[i]].weight += 1;
+        for (size_t j = 0; j<data.sampleLength; j += 1){
+            centerOfMasses[classifications[i]].centerOfMass[j] += static_cast<double>(data.samples[i][j]);
         }
     }
+        /*
+        if (centerOfMasses.find(classifications[i]) == centerOfMasses.end()){
+            centerOfMasses[classifications[i]].weight = 1;
+            centerOfMasses[classifications[i]].centerOfMass = std::valarray<double>(digits.vectorLength);
+            for (size_t j = 0; j<digits.vectorLength; j += 1){
+                centerOfMasses[classifications[i]].centerOfMass[j] = static_cast<double>(digits.samples[i][j]);
+            }
+        } else {
+            centerOfMasses[classifications[i]].weight += 1;
+            for (size_t j = 0; j<digits.vectorLength; j += 1){
+                centerOfMasses[classifications[i]].centerOfMass[j] += static_cast<double>(digits.samples[i][j]);
+            }
+        }
+        */
 
     return centerOfMasses;
 }
 
 //My download speed is getting hammered for some reason.
-[[nodiscard]] Graph<unsigned char> BruteForceGroundTruth(const MNISTData& dataSource,
+template<typename DataType>
+[[nodiscard]] Graph<DataType> BruteForceGroundTruth(const DataSet<DataType>& dataSource,
                                            size_t numNeighbors,
-                                           SpaceMetric<std::valarray<unsigned char>> distanceFunctor){
+                                           SpaceMetric<std::valarray<DataType>> distanceFunctor){
     NeighborSearchFunctor searchFunctor;
-    Graph<unsigned char> retGraph(0);
+    Graph<DataType> retGraph(0);
     retGraph.reserve(dataSource.numberOfSamples);
 
     for (size_t i = 0; i<dataSource.numberOfSamples; i+=1){
         //std::slice vertexSlice(0, dataSource.vectorLength, 1);
 
-        retGraph.push_back(GraphVertex<unsigned char>(i, dataSource.samples[i], numNeighbors));
+        retGraph.push_back(GraphVertex<DataType>(i, dataSource.samples[i], numNeighbors));
         
     };
 
@@ -130,9 +144,12 @@ std::unordered_map<size_t, std::pair<int, std::valarray<double>>> CalculateCOMs(
 
     return retGraph;
 }
+
+
 using MetaGraph = std::unordered_map<size_t, std::unordered_map<size_t, size_t>>;
 
-MetaGraph NeighborsOutOfBlock(const Graph<unsigned char>& groundTruth, const std::vector<size_t>& classifications){
+template<typename DataType>
+MetaGraph NeighborsOutOfBlock(const Graph<DataType>& groundTruth, const std::vector<size_t>& classifications){
     MetaGraph retGraph;
     for(size_t i = 0; i<classifications.size(); i += 1){
         size_t treeIndex = classifications[i];
@@ -148,18 +165,25 @@ MetaGraph NeighborsOutOfBlock(const Graph<unsigned char>& groundTruth, const std
 int main(){
 
     std::cout << "Test String" << std::endl;
-    std::string digitsFilePath("./TestData/train-images.idx3-ubyte");
-    MNISTData digits(digitsFilePath);
-    
+    std::string dataFilePath("./TestData/MNIST-Fashion-Data.bin");
+    //MNISTData digits(digitsFilePath);
+    static const std::endian dataEndianness = std::endian::big;
+    DataSet<float> mnistFashion(dataFilePath, 28*28, 10'000, dataEndianness);
+
     std::mt19937_64 rngEngine(0);
-    std::uniform_int_distribution<size_t> rngDist(size_t(0), digits.numberOfSamples - 1);
+    std::uniform_int_distribution<size_t> rngDist(size_t(0), mnistFashion.numberOfSamples - 1);
     StlRngFunctor<std::mt19937_64, std::uniform_int_distribution, size_t> rngFunctor(std::move(rngEngine), std::move(rngDist));
 
-    EuclidianSplittingScheme<double, unsigned char> splittingScheme(digits);
+    EuclidianSplittingScheme<double, float> splittingScheme(mnistFashion);
 
     //StlRngFunctor<> rngFunctor, SplittingScheme<FloatType> getSplitComponents, int splits = 8
-    RandomProjectionForest rpTrees(size_t(digits.numberOfSamples), rngFunctor, SplittingScheme(splittingScheme));
+    RandomProjectionForest rpTrees(size_t(mnistFashion.numberOfSamples), rngFunctor, SplittingScheme(splittingScheme));
 
+    std::vector<size_t> classifications = LabelIndecies(rpTrees);
+
+    std::unordered_map<size_t, MetaPoint> centerOfMasses = CalculateCOMs(mnistFashion, classifications);
+
+    //MetaGraph treeGraph = NeighborsOutOfBlock()
     //SpaceMetric<std::valarray<unsigned char>> distFunc = &EuclideanNorm<unsigned char>
 
     /*
