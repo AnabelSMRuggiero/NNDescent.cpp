@@ -48,7 +48,7 @@ struct EuclidianSplittingScheme{
 
 
 
-    EuclidianSplittingScheme(const MNISTData& digits) : dataSource(digits.samples), splittingVectors(){};
+    EuclidianSplittingScheme(const DataSet<DataType>& data) : dataSource(data.samples), splittingVectors(){};
 
     std::function<bool(size_t)> operator()(size_t splitIndex, std::pair<size_t, size_t> splittingPoints){
         

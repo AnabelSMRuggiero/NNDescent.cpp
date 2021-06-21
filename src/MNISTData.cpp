@@ -10,6 +10,9 @@
 
 using namespace nnd;
 
+
+
+
 unsigned long ExtractInt(std::ifstream &dataStream){
     unsigned long retVal = 0;
     for (size_t i = 0; i < 4; i += 1){
