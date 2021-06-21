@@ -1,6 +1,7 @@
 /Bin
 /Include
 /TestData
+/HDF
 /.vscode
 *.pdb
 *.obj

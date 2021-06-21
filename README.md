@@ -10,7 +10,7 @@ The NND algorithm is presented in ["*Efficient k-nearest neighbor graph construc
 - Have only the C++ Standard Library as a dependancy
 - Produce a generic and efficient implementation
 
-Currently, this project uses the C++17 standard, and will ~~likely adopt C++20 to leverage Concepts and Modules~~ absolutely adopt C++20 just because of std::span. Everything else is icing.
+This project uses the C++20 standard.
 
 # Project State
 
