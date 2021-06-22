@@ -10,6 +10,7 @@
 #include <cmath>
 #include <iterator>
 #include <unordered_map>
+#include <unordered_set>
 #include <bit>
 
 #include "MNISTData.hpp"
@@ -47,13 +48,13 @@ std::vector<size_t> LabelIndecies(const RandomProjectionForest& forest){
             if (pathState.back() == 0){
                 pathState.back() = 1;
                 currentLeaf = currentLeaf->children.first;
-                treePath.push_back(currentLeaf->childrenSplittingIndex);
+                treePath.push_back(currentLeaf->splittingIndex);
                 pathState.push_back(0);
                 continue;    
             } else if (pathState.back() == 1) {
                 pathState.back() = 2;
                 currentLeaf = currentLeaf->children.second;
-                treePath.push_back(currentLeaf->childrenSplittingIndex);
+                treePath.push_back(currentLeaf->splittingIndex);
                 pathState.push_back(0);
                 continue;
             } else if (pathState.back() == 2) {
@@ -65,13 +66,15 @@ std::vector<size_t> LabelIndecies(const RandomProjectionForest& forest){
             throw std::logic_error("Invalid Crawl State");
             
         } else if (currentLeaf->children.first == nullptr && currentLeaf->children.second == nullptr){
+            highestIndex = std::max(highestIndex, currentLeaf->splittingIndex);
+            for (size_t index = currentLeaf->splitRange.first; index < currentLeaf->splitRange.second; index += 1){
+                classifications[forest.indexArray[index]] = currentLeaf->splittingIndex;
+            }
             currentLeaf = currentLeaf->parent;
             pathState.pop_back();
             treePath.pop_back();
-            highestIndex = std::max(highestIndex, currentLeaf->childrenSplittingIndex);
-            for (size_t index = currentLeaf->splitRange.first; index < currentLeaf->splitRange.second; index += 1){
-                classifications[forest.indexArray[index]] = currentLeaf->childrenSplittingIndex;
-            }
+            
+            
             continue;
         }
         throw std::logic_error("Invalid Tree State");
@@ -94,25 +97,20 @@ std::unordered_map<size_t, MetaPoint> CalculateCOMs(const DataSet<DataType>& dat
 
     for (size_t i = 0; i<classifications.size(); i += 1){
 
-        centerOfMasses[classifications[i]].weight += 1;
-        for (size_t j = 0; j<data.sampleLength; j += 1){
-            centerOfMasses[classifications[i]].centerOfMass[j] += static_cast<double>(data.samples[i][j]);
-        }
-    }
-        /*
         if (centerOfMasses.find(classifications[i]) == centerOfMasses.end()){
             centerOfMasses[classifications[i]].weight = 1;
-            centerOfMasses[classifications[i]].centerOfMass = std::valarray<double>(digits.vectorLength);
-            for (size_t j = 0; j<digits.vectorLength; j += 1){
-                centerOfMasses[classifications[i]].centerOfMass[j] = static_cast<double>(digits.samples[i][j]);
+            centerOfMasses[classifications[i]].centerOfMass = std::valarray<double>(data.samples.size());
+            for (size_t j = 0; j<data.samples[0].size(); j += 1){
+                centerOfMasses[classifications[i]].centerOfMass[j] = static_cast<double>(data.samples[i][j]);
             }
         } else {
             centerOfMasses[classifications[i]].weight += 1;
-            for (size_t j = 0; j<digits.vectorLength; j += 1){
-                centerOfMasses[classifications[i]].centerOfMass[j] += static_cast<double>(digits.samples[i][j]);
+            for (size_t j = 0; j<data.samples[0].size(); j += 1){
+                centerOfMasses[classifications[i]].centerOfMass[j] += static_cast<double>(data.samples[i][j]);
             }
         }
-        */
+        
+    }
 
     return centerOfMasses;
 }
@@ -148,13 +146,13 @@ template<typename DataType>
 
 using MetaGraph = std::unordered_map<size_t, std::unordered_map<size_t, size_t>>;
 
-template<typename DataType>
-MetaGraph NeighborsOutOfBlock(const Graph<DataType>& groundTruth, const std::vector<size_t>& classifications){
+
+MetaGraph NeighborsOutOfBlock(const DataSet<int32_t>& groundTruth, const std::vector<size_t>& trainClassifications, const std::vector<size_t>& testClassifications){
     MetaGraph retGraph;
-    for(size_t i = 0; i<classifications.size(); i += 1){
-        size_t treeIndex = classifications[i];
-        for(const auto& neighbor: groundTruth[i].neighbors){
-            retGraph[treeIndex][classifications[neighbor.first]] += 1;
+    for(size_t i = 0; i<groundTruth.samples.size(); i += 1){
+        size_t treeIndex = testClassifications[i];
+        for(const auto& neighbor: groundTruth.samples[i]){
+            (retGraph[treeIndex])[trainClassifications[neighbor]] += 1;
         }
     }
 
@@ -164,25 +162,44 @@ MetaGraph NeighborsOutOfBlock(const Graph<DataType>& groundTruth, const std::vec
 
 int main(){
 
-    std::cout << "Test String" << std::endl;
-    std::string dataFilePath("./TestData/MNIST-Fashion-Data.bin");
+    
+    std::string testDataFilePath("./TestData/MNIST-Fashion-Data.bin");
+    std::string trainDataFilePath("./TestData/MNIST-Fashion-Train.bin");
+    std::string testNeighborsFilePath("./TestData/MNIST-Fashion-Neighbors.bin");
     //MNISTData digits(digitsFilePath);
     static const std::endian dataEndianness = std::endian::big;
-    DataSet<float> mnistFashion(dataFilePath, 28*28, 10'000, dataEndianness);
+    DataSet<float> mnistFashionTest(testDataFilePath, 28*28, 10'000, dataEndianness);
+    DataSet<float> mnistFashionTrain(trainDataFilePath, 28*28, 60'000, dataEndianness);
+    DataSet<int32_t> mnistFashionTestNeighbors(testNeighborsFilePath, 100, 10'000, dataEndianness);
 
     std::mt19937_64 rngEngine(0);
-    std::uniform_int_distribution<size_t> rngDist(size_t(0), mnistFashion.numberOfSamples - 1);
+    std::uniform_int_distribution<size_t> rngDist(size_t(0), mnistFashionTest.numberOfSamples - 1);
     StlRngFunctor<std::mt19937_64, std::uniform_int_distribution, size_t> rngFunctor(std::move(rngEngine), std::move(rngDist));
 
-    EuclidianSplittingScheme<double, float> splittingScheme(mnistFashion);
-
+    EuclidianSplittingScheme<double, float> splittingScheme(mnistFashionTrain);
+    SplittingScheme splitterFunc(splittingScheme);
     //StlRngFunctor<> rngFunctor, SplittingScheme<FloatType> getSplitComponents, int splits = 8
-    RandomProjectionForest rpTrees(size_t(mnistFashion.numberOfSamples), rngFunctor, SplittingScheme(splittingScheme));
+    RandomProjectionForest rpTreesTrain(size_t(mnistFashionTrain.numberOfSamples), rngFunctor, splitterFunc);
 
-    std::vector<size_t> classifications = LabelIndecies(rpTrees);
+    EuclidianSplittingScheme<double, float> testSplitterScheme(mnistFashionTest);
+    testSplitterScheme.splittingVectors = splitterFunc.target<EuclidianSplittingScheme<double, float>>()->splittingVectors;
 
-    std::unordered_map<size_t, MetaPoint> centerOfMasses = CalculateCOMs(mnistFashion, classifications);
+    SplittingScheme testSplitterFunc(testSplitterScheme);
 
+    std::unordered_set<size_t> splittingIndicies;
+    for (auto pair: testSplitterScheme.splittingVectors){
+        splittingIndicies.insert(pair.first);
+    }
+    RandomProjectionForest rpTreesTest(size_t(mnistFashionTest.numberOfSamples), rngFunctor, testSplitterFunc, splittingIndicies);
+
+
+    std::vector<size_t> testClassifications = LabelIndecies(rpTreesTest);
+    auto testResult = std::find(testClassifications.begin(), testClassifications.end(), 0);
+    std::vector<size_t> trainClassifications = LabelIndecies(rpTreesTrain);
+    auto trainResult = std::find(trainClassifications.begin(), trainClassifications.end(), 0);
+    
+    std::unordered_map<size_t, MetaPoint> centerOfMasses = CalculateCOMs(mnistFashionTrain, trainClassifications);
+    MetaGraph neighborsOOB = NeighborsOutOfBlock(mnistFashionTestNeighbors, trainClassifications, testClassifications);
     //MetaGraph treeGraph = NeighborsOutOfBlock()
     //SpaceMetric<std::valarray<unsigned char>> distFunc = &EuclideanNorm<unsigned char>
 
