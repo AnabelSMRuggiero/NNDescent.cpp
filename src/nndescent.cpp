@@ -12,6 +12,8 @@
 #include <unordered_map>
 #include <unordered_set>
 #include <bit>
+#include <fstream>
+
 
 #include "MNISTData.hpp"
 #include "NND/SpaceMetrics.hpp"
@@ -99,7 +101,7 @@ std::unordered_map<size_t, MetaPoint> CalculateCOMs(const DataSet<DataType>& dat
 
         if (centerOfMasses.find(classifications[i]) == centerOfMasses.end()){
             centerOfMasses[classifications[i]].weight = 1;
-            centerOfMasses[classifications[i]].centerOfMass = std::valarray<double>(data.samples.size());
+            centerOfMasses[classifications[i]].centerOfMass = std::valarray<double>(data.samples[i].size());
             for (size_t j = 0; j<data.samples[0].size(); j += 1){
                 centerOfMasses[classifications[i]].centerOfMass[j] = static_cast<double>(data.samples[i][j]);
             }
@@ -112,10 +114,52 @@ std::unordered_map<size_t, MetaPoint> CalculateCOMs(const DataSet<DataType>& dat
         
     }
 
+    //divide the COM by the weight to put it in the center of the cluster
+    for(auto& pair : centerOfMasses){
+        pair.second.centerOfMass /= pair.second.weight;
+    }
+
     return centerOfMasses;
 }
 
+/*
+    File format
+    [offset] [type]         [value]                         [description]
+    0000     8 byte int     COMs.size()                     number of node positions
+    0008     8 byte int     firstEntry.centerOfMass.size()  length of COM vectors (all vectors have the same dimensionality)
+    0016     8 byte int     firstEntry.key                  splittingIndex of first COM
+    0024     8 byte int     firstEntry.point.weight         weight of first COM
+    0032     8 byte double  firstEntry.point.COM[0]         0th (first) dimension value
+    0040     8 byte double  firstEntry.point.COM[1]         1st dimension value
+    ........ 
+    xxxx     8 byte double  firstEntry.point.COM[n-1]       (n-1)th (last) dimension value
+    xxxx     8 byte int     secondEntry.first               splittingIndex of second entry 
+    xxxx     8 byte int     secondEntry.point.weight        weight of second COM
+    xxxx     8 byte double  secondEntry.point.COM[0]        0th (first) dimension value
+
+*/
+
+
+void SerializeCOMS(const std::unordered_map<size_t, MetaPoint>& COMs, const std::string& outputFile){
+    std::ofstream outStream(outputFile, std::ios_base::binary);
+
+    SerializeData<size_t, std::endian::big>(outStream, COMs.size());
+    SerializeData<size_t, std::endian::big>(outStream, COMs.begin()->second.centerOfMass.size());
+    
+    for(const auto& pair : COMs){
+        SerializeData<size_t, std::endian::big>(outStream, pair.first);
+        SerializeData<size_t, std::endian::big>(outStream, pair.second.weight);
+        for(const auto& extent : pair.second.centerOfMass){
+            SerializeData<double, std::endian::big>(outStream, extent);
+        }
+
+    }
+
+}
+
+
 //My download speed is getting hammered for some reason.
+//Shouldn't need this at this point
 template<typename DataType>
 [[nodiscard]] Graph<DataType> BruteForceGroundTruth(const DataSet<DataType>& dataSource,
                                            size_t numNeighbors,
@@ -146,7 +190,6 @@ template<typename DataType>
 
 using MetaGraph = std::unordered_map<size_t, std::unordered_map<size_t, size_t>>;
 
-
 MetaGraph NeighborsOutOfBlock(const DataSet<int32_t>& groundTruth, const std::vector<size_t>& trainClassifications, const std::vector<size_t>& testClassifications){
     MetaGraph retGraph;
     for(size_t i = 0; i<groundTruth.samples.size(); i += 1){
@@ -159,6 +202,49 @@ MetaGraph NeighborsOutOfBlock(const DataSet<int32_t>& groundTruth, const std::ve
     return retGraph;
 };
 
+/*
+    File format
+    [offset] [type]         [value]                     [description]
+    0000     8 byte int     MetaGraph.size()            number of terminal leaves in the graph
+    0008     8 byte int     firstEntry.first            splittingIndex of first leaf
+    0016     8 byte int     firstEntry.second.size()    number of edges pointing away from leaf
+    0024     8 byte int     edge.target                 splittingIndex of target node
+    0032     8 byte int     edge.weight                 number of neighbors contained in target tree
+    0040     8 byte int     edge.target                 splittingIndex of target node
+    0048     8 byte int     edge.weight                 number of neighbors contained in target tree
+    ........ 
+    Each graph node is 16*(1 + size) bytes long, or 2*(1 + size) size_t's
+    xxxx     8 byte int     secondEntry.first           splittingIndex of second leaf
+*/
+
+void SerializeMetaGraph(const MetaGraph& readGraph, const std::string& outputFile){
+    std::ofstream outStream(outputFile, std::ios_base::binary);
+
+    SerializeData<size_t, std::endian::big>(outStream, readGraph.size());
+
+    for(const auto& pair : readGraph){
+        SerializeData<size_t, std::endian::big>(outStream, pair.first);
+        SerializeData<size_t, std::endian::big>(outStream, pair.second.size());
+        for (const auto& edge : pair.second){
+            SerializeData<size_t, std::endian::big>(outStream, edge.first);
+            SerializeData<size_t, std::endian::big>(outStream, edge.second);
+        }
+    }
+
+}
+
+
+
+template<TriviallyCopyable DataType>
+void SerializeVector(const std::vector<DataType>& readVector, const std::string& outputFile){
+    std::ofstream outStream(outputFile, std::ios_base::binary);
+    SerializeData<size_t, std::endian::big>(outStream, readVector.size());
+
+    for(const auto& entry : readVector){
+        SerializeData<DataType, std::endian::big>(outStream, entry);
+    }
+
+}
 
 int main(){
 
@@ -199,7 +285,10 @@ int main(){
     auto trainResult = std::find(trainClassifications.begin(), trainClassifications.end(), 0);
     
     std::unordered_map<size_t, MetaPoint> centerOfMasses = CalculateCOMs(mnistFashionTrain, trainClassifications);
+    SerializeCOMS(centerOfMasses, "./TestData/MNIST-Fashion-Train-COMs.bin");
     MetaGraph neighborsOOB = NeighborsOutOfBlock(mnistFashionTestNeighbors, trainClassifications, testClassifications);
+    SerializeMetaGraph(neighborsOOB, "./TestData/MNIST-Fashion-Test-MetaGraphEdges.bin");
+    SerializeVector<size_t>(trainClassifications, "./TestData/MNIST-Fashion-Train-SplittingIndicies.bin");
     //MetaGraph treeGraph = NeighborsOutOfBlock()
     //SpaceMetric<std::valarray<unsigned char>> distFunc = &EuclideanNorm<unsigned char>
 
