@@ -133,7 +133,7 @@ std::unordered_map<size_t, MetaPoint> CalculateCOMs(const DataSet<DataType>& dat
     0040     8 byte double  firstEntry.point.COM[1]         1st dimension value
     ........ 
     xxxx     8 byte double  firstEntry.point.COM[n-1]       (n-1)th (last) dimension value
-    xxxx     8 byte int     secondEntry.first               splittingIndex of second entry 
+    xxxx     8 byte int     secondEntry.key                 splittingIndex of second entry 
     xxxx     8 byte int     secondEntry.point.weight        weight of second COM
     xxxx     8 byte double  secondEntry.point.COM[0]        0th (first) dimension value
 
@@ -190,7 +190,7 @@ template<typename DataType>
 
 using MetaGraph = std::unordered_map<size_t, std::unordered_map<size_t, size_t>>;
 
-MetaGraph NeighborsOutOfBlock(const DataSet<int32_t>& groundTruth, const std::vector<size_t>& trainClassifications, const std::vector<size_t>& testClassifications){
+MetaGraph NeighborsOutOfBlock(const DataSet<std::valarray<int32_t>>& groundTruth, const std::vector<size_t>& trainClassifications, const std::vector<size_t>& testClassifications){
     MetaGraph retGraph;
     for(size_t i = 0; i<groundTruth.samples.size(); i += 1){
         size_t treeIndex = testClassifications[i];
@@ -254,9 +254,9 @@ int main(){
     std::string testNeighborsFilePath("./TestData/MNIST-Fashion-Neighbors.bin");
     //MNISTData digits(digitsFilePath);
     static const std::endian dataEndianness = std::endian::big;
-    DataSet<float> mnistFashionTest(testDataFilePath, 28*28, 10'000, dataEndianness);
-    DataSet<float> mnistFashionTrain(trainDataFilePath, 28*28, 60'000, dataEndianness);
-    DataSet<int32_t> mnistFashionTestNeighbors(testNeighborsFilePath, 100, 10'000, dataEndianness);
+    DataSet<std::valarray<float>> mnistFashionTest(testDataFilePath, 28*28, 10'000, &ExtractNumericArray<float,dataEndianness>);
+    DataSet<std::valarray<float>> mnistFashionTrain(trainDataFilePath, 28*28, 60'000, &ExtractNumericArray<float,dataEndianness>);
+    DataSet<std::valarray<int32_t>> mnistFashionTestNeighbors(testNeighborsFilePath, 100, 10'000, &ExtractNumericArray<int32_t,dataEndianness>);
 
     std::mt19937_64 rngEngine(0);
     std::uniform_int_distribution<size_t> rngDist(size_t(0), mnistFashionTest.numberOfSamples - 1);

@@ -83,63 +83,70 @@ DataType ExtractData(std::ifstream &dataStream){
     return *(DataType*)retVal;
 };
 
+template<typename DataEntry>
+using DataExtractor = DataEntry (*)(std::ifstream, size_t);
 
-template<typename DataType>
+template<typename NumericType, std::endian DataEndianness>
+std::valarray<NumericType> ExtractNumericArray(std::ifstream dataStream, size_t entryLength){
+    std::valarray<NumericType> sample(entryLength);
+    for(size_t i = 0; i <entryLength; i+=1){
+        sample[i] = ExtractData<DataType, DataEndianness>(dataStream);
+    }
+}
+
+template<typename DataEntry>
 struct DataSet{
 
     //std::valarray<unsigned char> rawData;
 
-    std::vector<std::valarray<DataType>> samples;
+    std::vector<DataEntry> samples;
     size_t sampleLength;
     size_t numberOfSamples;
 
-    DataSet(std::string& dataLocation, size_t entryLength, size_t numSamples, const std::endian endianness):
+    DataSet(std::string& dataLocation, size_t entryLength, size_t numSamples, DataExtractor<DataEntry> extractionFunction):
         samples(0),
         sampleLength(entryLength),
         numberOfSamples(numSamples){
             std::ifstream dataStream;
             dataStream.open(dataLocation, std::ios_base::binary);        
             samples.reserve(numberOfSamples);
-            if (endianness == std::endian::big){
-                for (size_t i = 0; i < numberOfSamples; i+=1){
-                    std::valarray<DataType> tempArr(sampleLength);
-                    samples.emplace_back(std::move(tempArr));
-                    for(size_t j = 0; j <sampleLength; j+=1){
-                        samples[i][j] = ExtractData<DataType, std::endian::big>(dataStream);
-                    }
-                    //dataStream.read(reinterpret_cast<char *>(&(samples[i][0])), vectorLength);
-                }
-            } else if (endianness == std::endian::little){
-                for (size_t i = 0; i < numberOfSamples; i+=1){
-                    std::valarray<DataType> tempArr(sampleLength);
-                    samples.emplace_back(std::move(tempArr));
-                    for(size_t j = 0; j <sampleLength; j+=1){
-                        samples[i][j] = ExtractData<DataType, std::endian::little>(dataStream);
-                    }
-                    //dataStream.read(reinterpret_cast<char *>(&(samples[i][0])), vectorLength);
-                }
-            }
-
+            for (size_t i = 0; i < numberOfSamples; i+=1){
+                samples[i] = extractionFunction(dataStream, entryLength);
+                //dataStream.read(reinterpret_cast<char *>(&(samples[i][0])), vectorLength);
+            };
     }
+
 };
 
 //Conceptual layout
 
 //struct DataSet
 
+struct BlockIndex{
+    // The block a data point exists in
+    size_t blockNumber;
+    // The index within that block
+    size_t blockIndex;
+
+};
+
 //Presumably, each project would only need to instantiate for a single FloatType
 template<typename DataEntry, typename FloatType>
 struct DataBlock{
 
-    size_t blockIndex;
-    std::pair<size_t, size_t> dataIndexRange;
-
-    
+    size_t blockNumber;
     std::vector<DataEntry> blockData;
+    SpaceMetric<DataEntry, FloatType> distanceMetric;
 
-    SpaceMetric<std::valarray<DataEntry>, FloatType> distanceMetric;
+    DataBlock(const DataSet<DataEntry>& dataSource, std::span<size_t> dataPoints, SpaceMetric<DataEntry, FloatType> metric, size_t blockNumber):
+    blockNumber(blockNumber), blockData(), distanceMetric(metric){
+        blockData.reserve(dataPoints.size());
+        for (const size_t& index : dataPoints){
+            blockData.push_back(dataSource.samples[index]);
+        }
+    }
 
-    std::vector<FloatType> BulkDistances(std::vector<std::pair<size_t, size_t>> indicies){
+    std::vector<FloatType> BulkDistances(std::vector<BlockIndex> indicies){
         std::vector<FloatType> retVector;
         retVector.reserve(indicies.size());
         for (const auto& pair : indicies){

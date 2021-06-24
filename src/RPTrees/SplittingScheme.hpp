@@ -46,9 +46,7 @@ struct EuclidianSplittingScheme{
     std::unordered_map<size_t, std::pair<std::valarray<FloatType>, FloatType>> splittingVectors;
     FloatType projectionOffset;
 
-
-
-    EuclidianSplittingScheme(const DataSet<DataType>& data) : dataSource(data.samples), splittingVectors(){};
+    EuclidianSplittingScheme(const DataSet<std::valarray<DataType>>& data) : dataSource(data.samples), splittingVectors(){};
 
     std::function<bool(size_t)> operator()(size_t splitIndex, std::pair<size_t, size_t> splittingPoints){
         
@@ -66,8 +64,7 @@ struct EuclidianSplittingScheme{
            splittingVectors[splitIndex] = std::pair<std::valarray<FloatType>, FloatType>(splittingVector, projectionOffset);
 
         };
-        
-        
+              
         auto comparisonFunction = [=, 
                                    &data = std::as_const(this->dataSource), 
                                    &splitter = splittingVectors[splitIndex].first,

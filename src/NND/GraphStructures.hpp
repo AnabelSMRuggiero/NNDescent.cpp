@@ -11,17 +11,19 @@
 
 namespace nnd{
 
-template<typename DataType>
+template<typename NumericType>
 struct GraphVertex{
 
+    // I mainly use the dataIndex here for debuging/verification and in a placeholder
+    // I should be able to refactor this point in a later pass
     const size_t dataIndex;
     
-    const std::valarray<DataType>& dataReference;
+    const std::valarray<NumericType>& dataReference;
     //The first in the pair is the index, the second is the distance
     std::vector<std::pair<size_t,double>> neighbors;
     //std::vector<size_t> reverseNeighbor;
 
-    GraphVertex() : dataIndex(-1), dataReference(std::valarray<unsigned char>()), neighbors(0){};
+    GraphVertex() : dataIndex(-1), dataReference(std::valarray<NumericType>()), neighbors(0){};
 
     GraphVertex(size_t sourceIndex, const std::valarray<unsigned char>& sourceData, size_t numNeighbors):
         dataIndex(sourceIndex), dataReference(sourceData), neighbors(0) {
