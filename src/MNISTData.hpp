@@ -84,14 +84,15 @@ DataType ExtractData(std::ifstream &dataStream){
 };
 
 template<typename DataEntry>
-using DataExtractor = DataEntry (*)(std::ifstream, size_t);
+using DataExtractor = DataEntry (*)(std::ifstream&, size_t);
 
 template<typename NumericType, std::endian DataEndianness>
-std::valarray<NumericType> ExtractNumericArray(std::ifstream dataStream, size_t entryLength){
+std::valarray<NumericType> ExtractNumericArray(std::ifstream& dataStream, size_t entryLength){
     std::valarray<NumericType> sample(entryLength);
     for(size_t i = 0; i <entryLength; i+=1){
-        sample[i] = ExtractData<DataType, DataEndianness>(dataStream);
+        sample[i] = ExtractData<NumericType, DataEndianness>(dataStream);
     }
+    return sample;
 }
 
 template<typename DataEntry>
@@ -111,7 +112,7 @@ struct DataSet{
             dataStream.open(dataLocation, std::ios_base::binary);        
             samples.reserve(numberOfSamples);
             for (size_t i = 0; i < numberOfSamples; i+=1){
-                samples[i] = extractionFunction(dataStream, entryLength);
+                samples.emplace_back(extractionFunction(dataStream, entryLength));
                 //dataStream.read(reinterpret_cast<char *>(&(samples[i][0])), vectorLength);
             };
     }
