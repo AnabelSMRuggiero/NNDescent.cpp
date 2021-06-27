@@ -116,19 +116,19 @@ int main(){
 
     
 
-    std::string trainDataFilePath("./TestData/MNIST-Fashion-Train.bin");
+    std::string trainDataFilePath("./TestData/train-images.idx3-ubyte");
 
     //MNISTData digits(digitsFilePath);
     static const std::endian dataEndianness = std::endian::big;
     
-    DataSet<std::valarray<float>> mnistDigitsTrain(trainDataFilePath, 28*28, 60'000, &ExtractNumericArray<float,dataEndianness>);
+    DataSet<std::valarray<unsigned char>> mnistDigitsTrain(trainDataFilePath, 28*28, 60'000, &ExtractNumericArray<unsigned char,dataEndianness>);
     
 
     std::mt19937_64 rngEngine(0);
     std::uniform_int_distribution<size_t> rngDist(size_t(0), mnistDigitsTrain.numberOfSamples - 1);
     StlRngFunctor<std::mt19937_64, std::uniform_int_distribution, size_t> rngFunctor(std::move(rngEngine), std::move(rngDist));
 
-    EuclidianSplittingScheme<float, double> splittingScheme(mnistDigitsTrain);
+    EuclidianSplittingScheme<unsigned char, double> splittingScheme(mnistDigitsTrain);
     SplittingScheme splitterFunc(splittingScheme);
     //StlRngFunctor<> rngFunctor, SplittingScheme<FloatType> getSplitComponents, int splits = 8
     RandomProjectionForest rpTreesTrain(size_t(mnistDigitsTrain.numberOfSamples), rngFunctor, splitterFunc);
@@ -143,9 +143,9 @@ int main(){
 
     CrawlTerminalLeaves(rpTreesTrain, classificationFunction);
     auto trainResult = std::find(trainClassifications.begin(), trainClassifications.end(), 0);
-    std::vector<DataBlock<std::valarray<float>, double>> dataBlocks;
+    std::vector<DataBlock<std::valarray<unsigned char>, double>> dataBlocks;
 
-    CrawlTerminalLeaves(rpTreesTrain, GenerateDataBlockConstructor<std::valarray<float>, double>(mnistDigitsTrain, EuclideanNorm<float, double>, dataBlocks));
+    CrawlTerminalLeaves(rpTreesTrain, GenerateDataBlockConstructor<std::valarray<unsigned char>, double>(mnistDigitsTrain, EuclideanNorm<unsigned char, double>, dataBlocks));
     
 
     //MetaGraph treeGraph = NeighborsOutOfBlock()

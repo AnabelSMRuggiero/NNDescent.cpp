@@ -38,7 +38,7 @@ std::valarray<FloatType> EuclidianSplittingPlaneNormal(const std::valarray<DataT
 //Gah, curse the indirection, but I'll use std::function for now here
 using SplittingScheme = std::function<std::function<bool(size_t)> (size_t, std::pair<size_t, size_t>)>;
 
-
+//The serial case
 template<typename DataType, typename FloatType>
 struct EuclidianSplittingScheme{
 
@@ -52,18 +52,19 @@ struct EuclidianSplittingScheme{
         
         std::valarray<FloatType> splittingVector;
 
-        if (splittingVectors.find(splitIndex) == splittingVectors.end()){
-            splittingVector = EuclidianSplittingPlaneNormal<DataType, FloatType>(dataSource[splittingPoints.first], dataSource[splittingPoints.second]);
+        // For right now at least, in the serial case I want to be able to get a new splitting vector
+        //if (splittingVectors.find(splitIndex) == splittingVectors.end()){
+        splittingVector = EuclidianSplittingPlaneNormal<DataType, FloatType>(dataSource[splittingPoints.first], dataSource[splittingPoints.second]);
 
 
-            FloatType projectionOffset = 0;
-            for (size_t i = 0; i<dataSource[splittingPoints.first].size(); i+=1){
-                projectionOffset -= splittingVector[i] * FloatType(dataSource[splittingPoints.first][i] + dataSource[splittingPoints.second][i])/2.0;
-            };
-
-           splittingVectors[splitIndex] = std::pair<std::valarray<FloatType>, FloatType>(splittingVector, projectionOffset);
-
+        FloatType projectionOffset = 0;
+        for (size_t i = 0; i<dataSource[splittingPoints.first].size(); i+=1){
+            projectionOffset -= splittingVector[i] * FloatType(dataSource[splittingPoints.first][i] + dataSource[splittingPoints.second][i])/2.0;
         };
+
+        splittingVectors[splitIndex] = std::pair<std::valarray<FloatType>, FloatType>(splittingVector, projectionOffset);
+
+        //};
               
         auto comparisonFunction = [=, 
                                    &data = std::as_const(this->dataSource), 

@@ -11,7 +11,7 @@
 - Add way to track best splits
 - ~~Move forest building outside of constructor.~~
 - Add in tree merge functionality
-
+- Think of a better way to refine tree splitting than if statement into goto.
 - Check to see if omitting the rejected split copy violates the invariance of sum of indicies
 
 
