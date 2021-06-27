@@ -73,7 +73,9 @@ struct DataBlock{
     std::vector<DataEntry> blockData;
     SpaceMetric<DataEntry, FloatType> distanceMetric;
 
-    DataBlock(const DataSet<DataEntry>& dataSource, std::span<size_t> dataPoints, SpaceMetric<DataEntry, FloatType> metric, size_t blockNumber):
+    DataBlock(): blockNumber(0), blockData(0), distanceMetric(nullptr){};
+
+    DataBlock(const DataSet<DataEntry>& dataSource, std::span<const size_t> dataPoints, SpaceMetric<DataEntry, FloatType> metric, size_t blockNumber):
     blockNumber(blockNumber), blockData(), distanceMetric(metric){
         blockData.reserve(dataPoints.size());
         for (const size_t& index : dataPoints){
@@ -81,13 +83,13 @@ struct DataBlock{
         }
     }
 
-    std::vector<FloatType> BulkDistances(std::vector<BlockIndex> indicies){
+    std::vector<FloatType>& BulkDistances(std::vector<BlockIndex> indicies){
         std::vector<FloatType> retVector;
         retVector.reserve(indicies.size());
         for (const auto& pair : indicies){
             retVector.pushBack(distanceMetric<std::valarray<DataEntry>, FloatType>(blockData[pair.first], blockData[pair.second]));
         };
-        return std::move(retVector);
+        return retVector;
     };
 
 

@@ -43,41 +43,46 @@ void CrawlTerminalLeaves(const RandomProjectionForest& forest, Functor terminalF
 
     size_t highestIndex = 0;
 
-    const RandomProjectionForest::TreeLeaf* currentLeaf = &(forest.treeLeaves[0]);
+    size_t currentIndex = 0;
+
+    auto leafAccesor = [&] (size_t index) -> const std::vector<RandomProjectionForest::TreeLeaf>::const_iterator{
+        return forest.treeLeaves.begin()+index;
+    };
+    //const RandomProjectionForest::TreeLeaf* currentLeaf = &(forest.treeLeaves[0]);
 
 
     while (treePath.size() != 0){
 
-        if(currentLeaf->children.first != nullptr && currentLeaf->children.second != nullptr){
+        if(leafAccesor(currentIndex)->children.first != 0 && leafAccesor(currentIndex)->children.second != 0){
             if (pathState.back() == 0){
                 pathState.back() = 1;
-                currentLeaf = currentLeaf->children.first;
-                treePath.push_back(currentLeaf->splittingIndex);
+                currentIndex = leafAccesor(currentIndex)->children.first;
+                treePath.push_back(leafAccesor(currentIndex)->splittingIndex);
                 pathState.push_back(0);
                 continue;    
             } else if (pathState.back() == 1) {
                 pathState.back() = 2;
-                currentLeaf = currentLeaf->children.second;
-                treePath.push_back(currentLeaf->splittingIndex);
+                currentIndex = leafAccesor(currentIndex)->children.second;
+                treePath.push_back(leafAccesor(currentIndex)->splittingIndex);
                 pathState.push_back(0);
                 continue;
             } else if (pathState.back() == 2) {
-                currentLeaf = currentLeaf->parent;
+                currentIndex = leafAccesor(currentIndex)->parent;
                 pathState.pop_back();
                 treePath.pop_back();
                 continue;
             }
             throw std::logic_error("Invalid Crawl State");
             
-        } else if (currentLeaf->children.first == nullptr && currentLeaf->children.second == nullptr){
-            highestIndex = std::max(highestIndex, currentLeaf->splittingIndex);
+        } else if (leafAccesor(currentIndex)->children.first == 0 && leafAccesor(currentIndex)->children.second == 0){
+            highestIndex = std::max(highestIndex, leafAccesor(currentIndex)->splittingIndex);
             
-            std::span indexSpan(&(forest.indexArray[currentLeaf->splitRange.first]),
-                              size_t(currentLeaf->splitRange.second - currentLeaf->splitRange.first));
+            std::span indexSpan(&(forest.indexArray[leafAccesor(currentIndex)->splitRange.first]),
+                              size_t(leafAccesor(currentIndex)->splitRange.second - leafAccesor(currentIndex)->splitRange.first));
 
-            terminalFunctor(currentLeaf->splittingIndex, indexSpan);
+            terminalFunctor(leafAccesor(currentIndex)->splittingIndex, indexSpan);
 
-            currentLeaf = currentLeaf->parent;
+            currentIndex = leafAccesor(currentIndex)->parent;
             pathState.pop_back();
             treePath.pop_back();
             
@@ -93,7 +98,19 @@ void CrawlTerminalLeaves(const RandomProjectionForest& forest, Functor terminalF
 
 };
 
+template<typename DataEntry, typename FloatType>
+auto GenerateDataBlockConstructor(const DataSet<DataEntry>& dataSource, 
+                                  SpaceMetric<DataEntry, FloatType> metric,
+                                  std::vector<DataBlock<DataEntry, FloatType>>& accumulationVector){
 
+    size_t blockCounter(0);
+    auto retLambda = [&, metric](size_t ignored, std::span<const size_t> indicies){
+        accumulationVector.push_back(DataBlock(dataSource, indicies, metric, ++blockCounter));
+    };
+    return retLambda;
+}
+
+//DataBlock(const DataSet<DataEntry>& dataSource, std::span<size_t> dataPoints, SpaceMetric<DataEntry, FloatType> metric, size_t blockNumber):
 
 int main(){
 
@@ -111,7 +128,7 @@ int main(){
     std::uniform_int_distribution<size_t> rngDist(size_t(0), mnistDigitsTrain.numberOfSamples - 1);
     StlRngFunctor<std::mt19937_64, std::uniform_int_distribution, size_t> rngFunctor(std::move(rngEngine), std::move(rngDist));
 
-    EuclidianSplittingScheme<double, float> splittingScheme(mnistDigitsTrain);
+    EuclidianSplittingScheme<float, double> splittingScheme(mnistDigitsTrain);
     SplittingScheme splitterFunc(splittingScheme);
     //StlRngFunctor<> rngFunctor, SplittingScheme<FloatType> getSplitComponents, int splits = 8
     RandomProjectionForest rpTreesTrain(size_t(mnistDigitsTrain.numberOfSamples), rngFunctor, splitterFunc);
@@ -126,6 +143,9 @@ int main(){
 
     CrawlTerminalLeaves(rpTreesTrain, classificationFunction);
     auto trainResult = std::find(trainClassifications.begin(), trainClassifications.end(), 0);
+    std::vector<DataBlock<std::valarray<float>, double>> dataBlocks;
+
+    CrawlTerminalLeaves(rpTreesTrain, GenerateDataBlockConstructor<std::valarray<float>, double>(mnistDigitsTrain, EuclideanNorm<float, double>, dataBlocks));
     
 
     //MetaGraph treeGraph = NeighborsOutOfBlock()
