@@ -39,7 +39,7 @@ std::valarray<FloatType> EuclidianSplittingPlaneNormal(const std::valarray<DataT
 using SplittingScheme = std::function<std::function<bool(size_t)> (size_t, std::pair<size_t, size_t>)>;
 
 
-template<typename FloatType, typename DataType>
+template<typename DataType, typename FloatType>
 struct EuclidianSplittingScheme{
 
     const std::vector<std::valarray<DataType>>& dataSource;

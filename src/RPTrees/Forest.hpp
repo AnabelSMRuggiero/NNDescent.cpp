@@ -7,6 +7,7 @@
 #include <numeric>
 #include <exception>
 #include <unordered_set>
+#include <cstddef>
 
 #include "../NND/RNG.hpp"
 #include "SplittingScheme.hpp"
@@ -33,6 +34,14 @@ int Split(Iterator fromBegin, Iterator fromEnd, Iterator toBegin, rIterator toRe
     return numTrue;
 }
 
+struct SplittingHeurisitcs{
+    int splits = 16;
+    int splitThreshold = 256;
+    int childThreshold = 64;
+};
+
+SplittingHeurisitcs test = {8, 64, 8};
+
 //TODO: add some way to track best splits
 struct RandomProjectionForest{
 
@@ -47,10 +56,10 @@ struct RandomProjectionForest{
         std::pair<size_t,size_t> splitRange;
         //Pretty sure the Leaves can be refs. Either way, non of these pointers own the underlying objects
         //All of the leaves of the tree are owned by the enclosing Vector.
-        //Wait. Using pointers like this means the tree can't easily be copied at all...
-        //I don't even know if this needs to be copied
-        std::pair<TreeLeaf*, TreeLeaf*> children;
-        TreeLeaf* parent;
+        //This needs to be copied because std::vector moves when you don't expect it to.
+        std::pair<size_t, size_t> children;
+        size_t parent;
+        size_t thisIndex;
         std::vector<TreeLeaf>* enclosingVector;
         /*
         This structure probably can be condensed back down to just a tuple of {bool, size_t, size_t}
@@ -61,45 +70,50 @@ struct RandomProjectionForest{
         I'll leave as is for now in case this makes some other piece easier to work on
         
         */
-        TreeLeaf() : splitRange(0,0), splittingIndex(-1), children(nullptr, nullptr), parent(nullptr), enclosingVector(nullptr){};
+        TreeLeaf() : splitRange(0,0), splittingIndex(-1), children(0, 0), parent(0), enclosingVector(nullptr){};
 
-        TreeLeaf(size_t index1, size_t index2, size_t splittingIndex, std::vector<TreeLeaf>* enclose) : splitRange(index1, index2),
+        TreeLeaf(size_t index1, size_t index2, size_t splittingIndex, size_t thisIndex, std::vector<TreeLeaf>* enclose) : splitRange(index1, index2),
                                                                                 splittingIndex(splittingIndex), 
-                                                                                children(nullptr, nullptr),
-                                                                                parent(nullptr), 
+                                                                                children(0,0),
+                                                                                parent(0), 
+                                                                                thisIndex(thisIndex),
                                                                                 enclosingVector(enclose){};
 
-        TreeLeaf(std::pair<size_t, size_t> indecies, size_t splittingIndex, std::vector<TreeLeaf>* enclose) : splitRange(indecies),
+        TreeLeaf(std::pair<size_t, size_t> indecies, size_t splittingIndex, size_t thisIndex, std::vector<TreeLeaf>* enclose) : splitRange(indecies),
                                                                                     splittingIndex(splittingIndex), 
-                                                                                    children(nullptr, nullptr),
-                                                                                    parent(nullptr), 
+                                                                                    children(0,0),
+                                                                                    parent(0), 
+                                                                                    thisIndex(thisIndex),
                                                                                     enclosingVector(enclose){};
 
         TreeLeaf& AddLeftLeaf(size_t index1, size_t index2, size_t splittingIndex){
-            TreeLeaf& newLeaf = enclosingVector->emplace_back(index1, index2, splittingIndex, enclosingVector);
-            newLeaf.parent = this;
-            this->children.first = &newLeaf;
+            this->children.first = enclosingVector->size();
+            TreeLeaf& newLeaf = enclosingVector->emplace_back(index1, index2, splittingIndex, enclosingVector->size(), enclosingVector);
+            newLeaf.parent = thisIndex;
+            
             return newLeaf;
         };
 
         TreeLeaf& AddLeftLeaf(std::pair<size_t, size_t> indecies, size_t splittingIndex){
-            TreeLeaf& newLeaf = enclosingVector->emplace_back(indecies, splittingIndex, enclosingVector);
-            newLeaf.parent = this;
-            this->children.first = &newLeaf;
+            this->children.first = enclosingVector->size();
+            TreeLeaf& newLeaf = enclosingVector->emplace_back(indecies, splittingIndex, enclosingVector->size(), enclosingVector);
+            newLeaf.parent = thisIndex;
+
             return newLeaf;
         };
 
-        TreeLeaf& AddRightLeaf(size_t index1, size_t index2, size_t splittingIndex){
-            TreeLeaf& newLeaf = enclosingVector->emplace_back(index1, index2, splittingIndex, enclosingVector);
-            newLeaf.parent = this;
-            this->children.second = &newLeaf;
+        TreeLeaf& AddRightLeaf(size_t index1, size_t index2, size_t splittingIndex, std::ptrdiff_t parentDiff){
+            this->children.second = enclosingVector->size();
+            TreeLeaf& newLeaf = enclosingVector->emplace_back(index1, index2, splittingIndex, enclosingVector->size(), enclosingVector);
+            newLeaf.parent = thisIndex;
+
             return newLeaf;
         };
 
         TreeLeaf& AddRightLeaf(std::pair<size_t, size_t> indecies, size_t splittingIndex){
-            TreeLeaf& newLeaf = enclosingVector->emplace_back(indecies, splittingIndex, enclosingVector);
-            newLeaf.parent = this;
-            this->children.second = &newLeaf;
+            this->children.second = enclosingVector->size();
+            TreeLeaf& newLeaf = enclosingVector->emplace_back(indecies, splittingIndex, enclosingVector->size(), enclosingVector);
+            newLeaf.parent = thisIndex;
             return newLeaf;
         };
 
@@ -108,12 +122,12 @@ struct RandomProjectionForest{
     std::vector<TreeLeaf> treeLeaves;
 
 
-    RandomProjectionForest(size_t numberOfSamples, StlRngFunctor<> rngFunctor, SplittingScheme& getSplitComponents, int splits = 8, int splitThreshold = 255) : 
-        numberOfSplits(splits), treeLeaves(0){
+    RandomProjectionForest(size_t numberOfSamples, StlRngFunctor<> rngFunctor, SplittingScheme& getSplitComponents, SplittingHeurisitcs heurisitics = SplittingHeurisitcs()) : 
+        numberOfSplits(heurisitics.splits), treeLeaves(0){
 
         //splittingVectors.reserve((1<<numberOfSplits) - 1);
-        treeLeaves.reserve(1<<(numberOfSplits+1));
-        treeLeaves.emplace_back(std::pair<size_t, size_t>(0, numberOfSamples), 0, &treeLeaves);
+        treeLeaves.reserve(std::min(size_t(1<<(numberOfSplits+1)), 2*numberOfSamples/size_t(heurisitics.splitThreshold)));
+        treeLeaves.emplace_back(std::pair<size_t, size_t>(0, numberOfSamples), 0, 0, &treeLeaves);
 
         std::vector<TreeLeaf*> splitQueue1(1, &treeLeaves[0]);
         std::vector<TreeLeaf*> splitQueue2(0);
@@ -163,47 +177,59 @@ struct RandomProjectionForest{
 
                 int numSplit = Split(beginIt, endIt, toBegin, toRev, splittingFunction);
 
+                if (numSplit>heurisitics.childThreshold &&
+                    (currentSplit.splitRange.second - currentSplit.splitRange.first - numSplit)>heurisitics.childThreshold){
 
-                TreeLeaf* leftSplit = &(currentSplit.AddLeftLeaf(std::pair<size_t, size_t>(currentSplit.splitRange.first, currentSplit.splitRange.first + numSplit),
-                                                                 currentSplit.splittingIndex * 2 + 1));
-                TreeLeaf* rightSplit = &(currentSplit.AddRightLeaf(std::pair<size_t, size_t>(currentSplit.splitRange.first + numSplit, currentSplit.splitRange.second),
-                                                                   currentSplit.splittingIndex * 2 + 2));
+                    TreeLeaf* leftSplit = &(currentSplit.AddLeftLeaf(std::pair<size_t, size_t>(currentSplit.splitRange.first, currentSplit.splitRange.first + numSplit),
+                                                                    currentSplit.splittingIndex * 2 + 1));
+                    TreeLeaf* rightSplit = &(currentSplit.AddRightLeaf(std::pair<size_t, size_t>(currentSplit.splitRange.first + numSplit, currentSplit.splitRange.second),
+                                                                    currentSplit.splittingIndex * 2 + 2));
 
-                if (leftSplit->splitRange.second - leftSplit->splitRange.first > splitThreshold) splitQueue2.push_back(leftSplit);
-                else{
-                    //copy section of vec2 back to vec 1;
-                    /*
-                    auto fromIt = indexVector2.begin();
-                    std::advance(fromIt, leftSplit->splitRange.first);
-                    auto endFrom = indexVector2.end();
-                    std::advance(endFrom, leftSplit->splitRange.second - numberOfSamples);
+                    if (leftSplit->splitRange.second - leftSplit->splitRange.first > heurisitics.splitThreshold) splitQueue2.push_back(leftSplit);
+                    else{
+                        //copy section of vec2 back to vec 1;
+                        /*
+                        auto fromIt = indexVector2.begin();
+                        std::advance(fromIt, leftSplit->splitRange.first);
+                        auto endFrom = indexVector2.end();
+                        std::advance(endFrom, leftSplit->splitRange.second - numberOfSamples);
 
-                    auto toIt = indexVector1.begin();
-                    std::advance(toIt, leftSplit->splitRange.first);
-                    */
-                    auto fromIt = &(indexVector2[leftSplit->splitRange.first]);
-                    auto endFrom = &(indexVector2[leftSplit->splitRange.second]);
-                    auto toIt = &(indexVector1[leftSplit->splitRange.first]);
+                        auto toIt = indexVector1.begin();
+                        std::advance(toIt, leftSplit->splitRange.first);
+                        */
+                        auto fromIt = &(indexVector2[leftSplit->splitRange.first]);
+                        auto endFrom = &(indexVector2[leftSplit->splitRange.second]);
+                        auto toIt = &(indexVector1[leftSplit->splitRange.first]);
 
-                    std::copy(fromIt, endFrom, toIt);
-                }
+                        std::copy(fromIt, endFrom, toIt);
+                    }
 
-                if (rightSplit->splitRange.second - rightSplit->splitRange.first > splitThreshold) splitQueue2.push_back(rightSplit);
-                else{
-                    //copy section of vec2 back to vec 1;
-                    /*
-                    auto fromIt = indexVector2.begin();
-                    std::advance(fromIt, rightSplit->splitRange.first);
-                    auto endFrom = indexVector2.end();
-                    std::advance(endFrom, rightSplit->splitRange.second - numberOfSamples);
+                    if (rightSplit->splitRange.second - rightSplit->splitRange.first > heurisitics.splitThreshold) splitQueue2.push_back(rightSplit);
+                    else{
+                        //copy section of vec2 back to vec 1;
+                        /*
+                        auto fromIt = indexVector2.begin();
+                        std::advance(fromIt, rightSplit->splitRange.first);
+                        auto endFrom = indexVector2.end();
+                        std::advance(endFrom, rightSplit->splitRange.second - numberOfSamples);
 
-                    auto toIt = indexVector1.begin();
-                    std::advance(toIt, rightSplit->splitRange.first);
-                    */
+                        auto toIt = indexVector1.begin();
+                        std::advance(toIt, rightSplit->splitRange.first);
+                        */
 
-                    auto fromIt = &(indexVector2[rightSplit->splitRange.first]);
-                    auto endFrom = &(indexVector2[rightSplit->splitRange.second]);
-                    auto toIt = &(indexVector1[rightSplit->splitRange.first]);
+                        auto fromIt = &(indexVector2[rightSplit->splitRange.first]);
+                        auto endFrom = &(indexVector2[rightSplit->splitRange.second]);
+                        auto toIt = &(indexVector1[rightSplit->splitRange.first]);
+
+
+                        std::copy(fromIt, endFrom, toIt);
+                    }
+                } else {
+                    // Undo the attempted split. This may be unneeded, but I want to be safe for now.
+                    // TODO: Check to see if omitting this copy violates the invariance of sum
+                    auto fromIt = &(indexVector1[currentSplit.splitRange.first]);
+                    auto endFrom = &(indexVector1[currentSplit.splitRange.second]);
+                    auto toIt = &(indexVector2[currentSplit.splitRange.first]);
 
 
                     std::copy(fromIt, endFrom, toIt);
@@ -233,7 +259,7 @@ RandomProjectionForest::RandomProjectionForest(size_t numberOfSamples, StlRngFun
 
         //splittingVectors.reserve((1<<numberOfSplits) - 1);
         treeLeaves.reserve(1<<(numberOfSplits+1));
-        treeLeaves.emplace_back(std::pair<size_t, size_t>(0, numberOfSamples), 0, &treeLeaves);
+        treeLeaves.emplace_back(std::pair<size_t, size_t>(0, numberOfSamples), 0, 0, &treeLeaves);
 
         std::vector<TreeLeaf*> splitQueue1(1, &treeLeaves[0]);
         std::vector<TreeLeaf*> splitQueue2(0);
