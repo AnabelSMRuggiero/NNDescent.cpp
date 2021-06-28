@@ -7,12 +7,12 @@ namespace nnd{
 
 //Placeholder until proper initialiation strat is implemented
 //Simply queues up all possible local joins for each point
-template<typename DataType>
-void PopulateInitialQueueStates(const Graph<DataType>& graphState, std::vector<ComparisonQueue>& queues){
+template<typename DataType, TriviallyCopyable IndexType, typename FloatType>
+void PopulateInitialQueueStates(const Graph<IndexType, FloatType>& graphState, std::vector<ComparisonQueue>& queues){
     for(const auto& vertex : graphState){
         for(const auto& neighbor : vertex.neighbors){
             for(const auto& nextNeighbor : graphState[neighbor.first].neighbors){
-                queues[vertex.dataIndex].PushQueue(std::pair<size_t, size_t>(vertex.dataIndex, nextNeighbor.first));
+                queues[vertex.dataIndex].PushQueue(std::pair<IndexType, IndexType>(vertex.dataIndex, nextNeighbor.first));
             }    
         }
     }
@@ -21,9 +21,9 @@ void PopulateInitialQueueStates(const Graph<DataType>& graphState, std::vector<C
 /*
 Computes an entire iteration of NND
 */
-template<typename DataType>
+template<typename DataType, TriviallyCopyable IndexType, typename FloatType>
 int ComputeLocalJoins(const MNISTData& dataSource,
-                       Graph<DataType>& graphState, 
+                       Graph<IndexType, FloatType>& graphState, 
                        std::vector<ComparisonQueue>& joinQueues, 
                        std::vector<ComparisonQueue>& cmpQueues, 
                        SpaceMetric<std::valarray<unsigned char>> distanceFunctor){
@@ -47,13 +47,13 @@ int ComputeLocalJoins(const MNISTData& dataSource,
                     graphState[joinTarget.second].dataReference);
                 
                 if (distance < graphState[joinTarget.second].neighbors[0].second){
-                    graphState[joinTarget.second].PushNeigbor(std::pair<size_t, double>(joinTarget.first, distance));
+                    graphState[joinTarget.second].PushNeigbor(std::pair<IndexType, double>(joinTarget.first, distance));
                     neighborListChanges++;
                     pushToCmp = true;
                 }
             }
             if (distance < graphState[joinTarget.first].neighbors[0].second){
-                graphState[joinTarget.first].PushNeigbor(std::pair<size_t, double>(joinTarget.second, distance));
+                graphState[joinTarget.first].PushNeigbor(std::pair<IndexType, double>(joinTarget.second, distance));
                 neighborListChanges++;
                 pushToCmp = true;
             }
@@ -69,14 +69,13 @@ int ComputeLocalJoins(const MNISTData& dataSource,
 }
 
 
-template<typename DataType>
-void PopulateJoinQueueStates(const Graph<DataType>& graphState, std::vector<ComparisonQueue>& cmpQueues, std::vector<ComparisonQueue>& joinQueues){
+template<typename FloatType>
+void PopulateJoinQueueStates(const Graph<size_t, FloatType>& graphState, std::vector<ComparisonQueue>& cmpQueues, std::vector<ComparisonQueue>& joinQueues){
     NeighborSearchFunctor searchFunctor;
     for(auto& cmpQueue : cmpQueues){
         for(const auto& cmpTarget : cmpQueue.queue){
             //Parse through the first Vertex's neighbors for comparisons with 
-            //Todo: Remove this label/matching goto
-            debug:
+            
             for(const auto& neighbor : graphState[cmpTarget.first].neighbors){
                 searchFunctor.searchValue = neighbor.first;
                 auto result = std::find_if(graphState[cmpTarget.second].neighbors.begin(), graphState[cmpTarget.second].neighbors.end(), searchFunctor);
@@ -91,19 +90,15 @@ void PopulateJoinQueueStates(const Graph<DataType>& graphState, std::vector<Comp
 
                 joinQueues[cmpTarget.first].PushQueue(std::pair<size_t, size_t>(cmpTarget.first, neighbor.first));
             }
-            /*
-            if((joinQueues[cmpTarget.first].queue.size() == 0) || (joinQueues[cmpTarget.second].queue.size() == 0)){
-                goto debug;
-            };
-            */
+            
         }
         cmpQueue.FlushQueue();
     }
 }
 
 //Mainly For Debugging to make sure I didn't screw up my graph state.
-template<typename DataType>
-void VerifyGraphState(const Graph<DataType>& currentGraph){
+template<typename DataType, typename FloatType>
+void VerifyGraphState(const Graph<size_t, FloatType>& currentGraph){
     for (const auto& vertex : currentGraph){
         for (const auto& neighbor : vertex.neighbors){
             if (neighbor.first == vertex.dataIndex) throw("Vertex is own neighbor");

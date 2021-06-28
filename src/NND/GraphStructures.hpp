@@ -4,34 +4,37 @@
 #include <valarray>
 #include <algorithm>
 #include <functional>
+#include <ranges>
+
 #include "UtilityFunctions.hpp"
 #include "MNISTData.hpp"
 #include "SpaceMetrics.hpp"
 #include "RNG.hpp"
 
+#include "Utilities/DataDeserialization.hpp"
+
 namespace nnd{
 
-template<typename NumericType>
+template<TriviallyCopyable IndexType, typename FloatType>
 struct GraphVertex{
 
     // I mainly use the dataIndex here for debuging/verification and in a placeholder
     // I should be able to refactor this point in a later pass
-    const size_t dataIndex;
+    //const size_t dataIndex;
     
-    const std::valarray<NumericType>& dataReference;
+    //I shouldn't even have this here. This is a reference into a vector currently!
+    //const std::valarray<NumericType>& dataReference;
     //The first in the pair is the index, the second is the distance
-    std::vector<std::pair<size_t,double>> neighbors;
+    std::vector<std::pair<IndexType, FloatType>> neighbors;
     //std::vector<size_t> reverseNeighbor;
 
-    GraphVertex() : dataIndex(-1), dataReference(std::valarray<NumericType>()), neighbors(0){};
+    GraphVertex() : neighbors(0){};
 
-    GraphVertex(size_t sourceIndex, const std::valarray<unsigned char>& sourceData, size_t numNeighbors):
-        dataIndex(sourceIndex), dataReference(sourceData), neighbors(0) {
-            this->neighbors.reserve(numNeighbors + 1);
-        };
+    GraphVertex(size_t numNeighbors):neighbors(0) {
+        this->neighbors.reserve(numNeighbors + 1);
+    };
 
-    GraphVertex(GraphVertex&& rval):
-        dataIndex(rval.dataIndex), dataReference(rval.dataReference), neighbors(rval.neighbors){}
+    GraphVertex(GraphVertex&& rval): neighbors(std::forward<std::vector<std::pair<IndexType, FloatType>>>(rval.neighbors)){};
 
     /*
     template<typename DataType>
@@ -40,33 +43,32 @@ struct GraphVertex{
     }
     */
 
-    void PushNeigbor(std::pair<size_t,double>&& newNeighbor){
+    void PushNeigbor(std::pair<IndexType, FloatType> newNeighbor){
         neighbors.push_back(newNeighbor);
-        std::push_heap(neighbors.begin(), neighbors.end(), NeighborDistanceComparison);
+        std::pop_heap(neighbors.begin(), neighbors.end(), NeighborDistanceComparison<IndexType, FloatType>);
         neighbors.pop_back();
-    }
+    };
 
     //private:
     
 };
 
-template<typename DataType>
-using Graph = std::vector<GraphVertex<DataType>>;
+template<TriviallyCopyable IndexType, typename FloatType>
+using Graph = std::vector<GraphVertex<IndexType, FloatType>>;
 
 //Operator() of rngFunctor must return a random size_t in [0, data.size())
-template<typename DataType>
-Graph<DataType> ConstructInitialGraph(const MNISTData& dataSource, size_t numNeighbors, std::function<size_t()> rngFunctor, SpaceMetric<std::valarray<unsigned char>> distanceFunctor){
-    NeighborSearchFunctor searchFunctor;
-    Graph<DataType> retGraph(0);
-    retGraph.reserve(dataSource.numberOfSamples);
+template<TriviallyCopyable IndexType, typename FloatType>
+Graph<IndexType, FloatType> ConstructInitialGraph(size_t numVerticies, size_t numNeighbors){
+    Graph<IndexType, FloatType> retGraph(0);
+    retGraph.reserve(numVerticies);
 
-    for (size_t i = 0; i<dataSource.numberOfSamples; i+=1){
+    for (size_t i = 0; i<numVerticies; i+=1){
         //std::slice vertexSlice(0, dataSource.vectorLength, 1);
 
-        retGraph.push_back(GraphVertex<DataType>(i, dataSource.samples[i], numNeighbors));
+        retGraph.push_back(GraphVertex<IndexType, FloatType>(numNeighbors));
         
     }
-
+    /*
     //Temporary method for initialization of graph neighbors. This will likely be replaced by rp-tree construction
     for (size_t i = 0; i<retGraph.size(); i+=1){
         for (size_t j = 0; j<numNeighbors; j += 1){
@@ -89,10 +91,36 @@ Graph<DataType> ConstructInitialGraph(const MNISTData& dataSource, size_t numNei
         }
         std::make_heap(retGraph[i].neighbors.begin(), retGraph[i].neighbors.end(), NeighborDistanceComparison);
     }
-
+    */
     return retGraph;
 };
 
+template<typename DataType, typename FloatType>
+void BruteForceBlock(Graph<BlockIndex, FloatType>& uninitGraph, size_t numNeighbors, const DataBlock<DataType>& dataBlock, SpaceMetric<DataType, FloatType> distanceFunctor){
+    
+    // I can make this branchless. Check to see if /O2 or /O3 can make this branchless (I really doubt it)
+    for (size_t i = 0; i < dataBlock.blockData.size(); i += 1){
+        for (size_t j = i+1; j < dataBlock.blockData.size(); j += 1){
+            FloatType distance = distanceFunctor(dataBlock.blockData[i], dataBlock.blockData[j]);
+            if (uninitGraph[i].neighbors.size() < numNeighbors){
+                uninitGraph[i].neighbors.push_back(std::pair<BlockIndex, FloatType>(BlockIndex(dataBlock.blockNumber, j), distance));
+                if (uninitGraph[i].neighbors.size() == numNeighbors){
+                    std::make_heap(uninitGraph[i].neighbors.begin(), uninitGraph[i].neighbors.end(), NeighborDistanceComparison<BlockIndex, FloatType>);
+                }
+            } else if (distance < uninitGraph[i].neighbors[0].second){
+                uninitGraph[i].PushNeigbor(std::pair<BlockIndex, FloatType>(BlockIndex(dataBlock.blockNumber, j), distance));
+            }
+            if (uninitGraph[j].neighbors.size() < numNeighbors){
+                uninitGraph[j].neighbors.push_back(std::pair<BlockIndex, FloatType>(BlockIndex(dataBlock.blockNumber, i), distance));
+                if (uninitGraph[j].neighbors.size() == numNeighbors){
+                    std::make_heap(uninitGraph[j].neighbors.begin(), uninitGraph[j].neighbors.end(), NeighborDistanceComparison<BlockIndex, FloatType>);
+                }
+            } else if (distance < uninitGraph[j].neighbors[0].second){
+                uninitGraph[j].PushNeigbor(std::pair<BlockIndex, FloatType>(BlockIndex(dataBlock.blockNumber, i), distance));
+            }
+        }
+    }
+}
 
 /*
 Queue that accepts up to a maxmimum number of elements

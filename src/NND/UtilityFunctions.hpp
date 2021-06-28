@@ -4,22 +4,25 @@
 
 namespace nnd{
 
-bool const NeighborDistanceComparison(const std::pair<size_t,double>& neighborA, const std::pair<size_t,double>& neighborB){
+template<TriviallyCopyable IndexType, typename FloatType>
+bool const NeighborDistanceComparison(const std::pair<IndexType, FloatType>& neighborA, const std::pair<IndexType, FloatType>& neighborB){
     return neighborA.second < neighborB.second;
 };
 
-bool const NeighborIdentityCheck(const std::pair<size_t,double>& neighborA, const std::pair<size_t,double>& neighborB){
+template<TriviallyCopyable IndexType, typename FloatType>
+bool const NeighborIdentityCheck(const std::pair<IndexType, FloatType>& neighborA, const std::pair<IndexType, FloatType>& neighborB){
     return neighborA.first == neighborB.first;
 };
 
 //Todo: template this so it can handle arbitrary float types
+template<TriviallyCopyable IndexType, typename FloatType>
 struct NeighborSearchFunctor{
     
     size_t searchValue;
 
     NeighborSearchFunctor() : searchValue(0){};
 
-    bool operator()(std::pair<size_t, double> currentValue){
+    bool operator()(std::pair<IndexType, FloatType> currentValue){
         return currentValue.first == searchValue;
     }
 
