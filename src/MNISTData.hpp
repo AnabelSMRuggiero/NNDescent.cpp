@@ -66,32 +66,21 @@ struct BlockIndex{
 };
 
 //Presumably, each project would only need to instantiate for a single FloatType
-template<typename DataEntry, typename FloatType>
+template<typename DataEntry>
 struct DataBlock{
 
     size_t blockNumber;
     std::vector<DataEntry> blockData;
-    SpaceMetric<DataEntry, FloatType> distanceMetric;
 
-    DataBlock(): blockNumber(0), blockData(0), distanceMetric(nullptr){};
+    DataBlock(): blockNumber(0), blockData(0){};
 
-    DataBlock(const DataSet<DataEntry>& dataSource, std::span<const size_t> dataPoints, SpaceMetric<DataEntry, FloatType> metric, size_t blockNumber):
-    blockNumber(blockNumber), blockData(), distanceMetric(metric){
+    DataBlock(const DataSet<DataEntry>& dataSource, std::span<const size_t> dataPoints, size_t blockNumber):
+    blockNumber(blockNumber), blockData(){
         blockData.reserve(dataPoints.size());
         for (const size_t& index : dataPoints){
             blockData.push_back(dataSource.samples[index]);
         }
     }
-
-    std::vector<FloatType>& BulkDistances(std::vector<BlockIndex> indicies){
-        std::vector<FloatType> retVector;
-        retVector.reserve(indicies.size());
-        for (const auto& pair : indicies){
-            retVector.pushBack(distanceMetric<std::valarray<DataEntry>, FloatType>(blockData[pair.first], blockData[pair.second]));
-        };
-        return retVector;
-    };
-
 
 };
 

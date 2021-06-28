@@ -150,10 +150,6 @@ struct RandomProjectionForest{
                 
                 size_t currentIndex = splitQueue1.back();
 
-                if (treeLeaves[currentIndex].splittingIndex == 3318){
-                    std::cout << "Break here." << std::endl;
-                }
-
                 retry:
                 //This is bootleg af, need to refactor how I do rng.
                 decltype(rngFunctor.functorDistribution)::param_type newRange(treeLeaves[currentIndex].splitRange.first, treeLeaves[currentIndex].splitRange.second - 1);
