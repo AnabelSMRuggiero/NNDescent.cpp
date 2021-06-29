@@ -19,6 +19,7 @@
 #include "NND/SpaceMetrics.hpp"
 #include "NND/GraphStructures.hpp"
 #include "NND/Algorithm.hpp"
+#include "NND/MetaGraph.hpp"
 
 #include "RPTrees/SplittingScheme.hpp"
 #include "RPTrees/Forest.hpp"
@@ -98,14 +99,13 @@ void CrawlTerminalLeaves(const RandomProjectionForest& forest, Functor terminalF
 
 };
 
-template<typename DataEntry, typename FloatType>
-auto GenerateDataBlockConstructor(const DataSet<DataEntry>& dataSource, 
-                                  SpaceMetric<DataEntry, FloatType> metric,
-                                  std::vector<DataBlock<DataEntry, FloatType>>& accumulationVector){
+template<typename DataEntry>
+auto GenerateDataBlockConstructor(const DataSet<DataEntry>& dataSource,
+                                  std::vector<DataBlock<DataEntry>>& accumulationVector){
 
     size_t blockCounter(0);
-    auto retLambda = [&, metric](size_t ignored, std::span<const size_t> indicies){
-        accumulationVector.push_back(DataBlock(dataSource, indicies, metric, ++blockCounter));
+    auto retLambda = [&](size_t ignored, std::span<const size_t> indicies){
+        accumulationVector.push_back(DataBlock(dataSource, indicies, blockCounter++));
     };
     return retLambda;
 }
@@ -143,10 +143,19 @@ int main(){
 
     CrawlTerminalLeaves(rpTreesTrain, classificationFunction);
     auto trainResult = std::find(trainClassifications.begin(), trainClassifications.end(), 0);
-    std::vector<DataBlock<std::valarray<unsigned char>, double>> dataBlocks;
+    std::vector<DataBlock<std::valarray<unsigned char>>> dataBlocks;
 
-    CrawlTerminalLeaves(rpTreesTrain, GenerateDataBlockConstructor<std::valarray<unsigned char>, double>(mnistDigitsTrain, EuclideanNorm<unsigned char, double>, dataBlocks));
+    CrawlTerminalLeaves(rpTreesTrain, GenerateDataBlockConstructor<std::valarray<unsigned char>>(mnistDigitsTrain, dataBlocks));
+
+    std::vector<Graph<BlockIndex, double>> blockGraphs(0);
+    blockGraphs.reserve(dataBlocks.size());
+    for (const auto& dataBlock : dataBlocks){
+        Graph<BlockIndex, double> blockGraph = ConstructInitialGraph<BlockIndex, double>(dataBlock.blockData.size(), size_t(5));
+        BruteForceBlock<std::valarray<unsigned char>, double>(blockGraph, 5, dataBlock, EuclideanNorm<unsigned char, double>);
+        blockGraphs.push_back(std::move(blockGraph));
+    }
     
+    MetaGraph metaGraph(dataBlocks);
 
     //MetaGraph treeGraph = NeighborsOutOfBlock()
     //SpaceMetric<std::valarray<unsigned char>> distFunc = &EuclideanNorm<unsigned char>

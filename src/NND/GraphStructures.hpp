@@ -122,6 +122,8 @@ void BruteForceBlock(Graph<BlockIndex, FloatType>& uninitGraph, size_t numNeighb
     }
 }
 
+
+
 /*
 Queue that accepts up to a maxmimum number of elements
 Once the max is reached, new elements are added based on the number of total elements
