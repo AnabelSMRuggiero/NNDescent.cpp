@@ -2,13 +2,15 @@
 - Refactor RNG stuff
 - Refine implementation of space metrics and dot product. 
   - std::inner_product exists
-  - also valarray.apply exists. That probably exploits the expression templates valarray is implemented with
-    - doesn't work with static_cast because the applied func needs to return the exact same type
 - Think of more sensical names for the headers
-
+- Get a better idea of the actual data that will be fed into the algorithm.
+  - Assume always double?
+    - Front end some sort of generalized PCA?
+    - I could just be boring and front end SVD (which doesn't really work for non-euclidian easily, but would be needed for generalized PCA init)
 
 #RPTrees
 - Add way to track best splits
+  - With the direction I'mplanning on going this probably won't be needed.
 - ~~Move forest building outside of constructor.~~
 - Add in tree merge functionality
 - Think of a better way to refine tree splitting than if statement into goto.
@@ -19,6 +21,9 @@
 - Add in some more robust benchmarking
   - Add in recall checking
 - This will be forever out from now, but test builing data array inside of the control structure itself to see if it reduces cache misses.
+- Try spinning up branchless block bruteforcing.
+- Update algorithm/data structure prototypes to reflect data blocking
+- Template MetaGraph stuff
 
 #Parallelization and Distributed Computing
 - Do a second pass on the MetaGraph proceedures (assuming the results look good; seems promising so far)

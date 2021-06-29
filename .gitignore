@@ -5,3 +5,6 @@
 /.vscode
 *.pdb
 *.obj
+/.vs
+/.vscode.zip
+*.json
