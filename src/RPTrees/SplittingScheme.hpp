@@ -36,17 +36,18 @@ std::valarray<FloatType> EuclidianSplittingPlaneNormal(const std::valarray<DataT
         A function: bool f(size_t dataIndex)
 */
 //Gah, curse the indirection, but I'll use std::function for now here
-using SplittingScheme = std::function<std::function<bool(size_t)> (size_t, std::pair<size_t, size_t>)>;
+using TrainingSplittingScheme = std::function<std::function<bool(size_t)> (size_t, std::pair<size_t, size_t>)>;
+using TransformingSplittingScheme = std::function<std::function<bool(size_t)> (size_t)>;
 
 //The serial case
 template<typename DataType, typename FloatType>
-struct EuclidianSplittingScheme{
+struct EuclidianTrain{
 
     const std::vector<std::valarray<DataType>>& dataSource;
     std::unordered_map<size_t, std::pair<std::valarray<FloatType>, FloatType>> splittingVectors;
     FloatType projectionOffset;
 
-    EuclidianSplittingScheme(const DataSet<std::valarray<DataType>>& data) : dataSource(data.samples), splittingVectors(){};
+    EuclidianTrain(const DataSet<std::valarray<DataType>>& data) : dataSource(data.samples), splittingVectors(){};
 
     std::function<bool(size_t)> operator()(size_t splitIndex, std::pair<size_t, size_t> splittingPoints){
         
@@ -89,6 +90,54 @@ struct EuclidianSplittingScheme{
 
         };
         return std::function<bool(size_t)> (comparisonFunction);
+    };
+    /*
+    bool operator()(size_t comparisonIndex){
+        return 0 < (Dot(dataSource[comparisonIndex], splittingVector) - offset)
+    }
+    */
+
+};
+
+
+template<typename DataType, typename FloatType>
+struct EuclidianTransform{
+
+    const std::vector<std::valarray<DataType>>& dataSource;
+    // Long term I need to make sure this is owned elsewhere
+    std::unordered_map<size_t, std::pair<std::valarray<FloatType>, FloatType>>& splittingVectors;
+    FloatType projectionOffset;
+
+    EuclidianTransform(const DataSet<std::valarray<DataType>>& data,
+                       std::unordered_map<size_t, std::pair<std::valarray<FloatType>, FloatType>>& splits):
+                       splittingVectors(splits),
+                       dataSource(data.samples){};
+
+    std::function<bool(size_t)> operator()(size_t splitIndex){
+        
+        auto comparisonFunction = [=, 
+                                   &data = std::as_const(this->dataSource), 
+                                   &splitter = splittingVectors[splitIndex].first,
+                                   offset = splittingVectors[splitIndex].second]
+                                   (size_t comparisonIndex) -> bool{
+                // This is some janky type conversion shenanigans here. I need to either
+                // remove the assertion of arbitrary (but single) data type and turn everything into a float/double
+                // or define these ops in terms of something other than valarrays.
+                // I just wanna get prototyping rptrees done.
+                // TODO: KILL THIS IMPLEMENTATION (jfc, this is NOT GOOD)
+                std::valarray<FloatType> temporaryArr(data[comparisonIndex].size());
+                for(size_t i = 0; i < temporaryArr.size(); i += 1){
+                    temporaryArr[i] = FloatType(data[comparisonIndex][i]);
+                }
+
+                FloatType distanceFromPlane = (Dot(temporaryArr, splitter) + offset);
+                //std::cout << distanceFromPlane << std::endl;
+                bool result = 0.0 < distanceFromPlane;
+
+                return result;
+
+        };
+        return std::function<bool(size_t)>(comparisonFunction);
     };
     /*
     bool operator()(size_t comparisonIndex){

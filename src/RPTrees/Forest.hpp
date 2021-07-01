@@ -123,8 +123,8 @@ struct RandomProjectionForest{
     
     std::vector<TreeLeaf> treeLeaves;
 
-
-    RandomProjectionForest(size_t numberOfSamples, StlRngFunctor<> rngFunctor, SplittingScheme& getSplitComponents, SplittingHeurisitcs heurisitics = SplittingHeurisitcs()) : 
+    // Training Constructor
+    RandomProjectionForest(size_t numberOfSamples, StlRngFunctor<> rngFunctor, TrainingSplittingScheme& getSplitComponents, SplittingHeurisitcs heurisitics = SplittingHeurisitcs()) : 
         numberOfSplits(heurisitics.splits), treeLeaves(0){
 
         //splittingVectors.reserve((1<<numberOfSplits) - 1);
@@ -254,12 +254,12 @@ struct RandomProjectionForest{
         indexArray = std::move(indexVector1);
     } //end constructor
     
-    RandomProjectionForest(size_t numberOfSamples, StlRngFunctor<> rngFunctor, SplittingScheme& getSplitComponents, std::unordered_set<size_t> splitsToDo);
+    RandomProjectionForest(size_t numberOfSamples, TransformingSplittingScheme& getSplitComponents, std::unordered_set<size_t> splitsToDo);
 
 };
 
-
-RandomProjectionForest::RandomProjectionForest(size_t numberOfSamples, StlRngFunctor<> rngFunctor, SplittingScheme& getSplitComponents, std::unordered_set<size_t> splitIndicies) : 
+//Transforming Constructor
+RandomProjectionForest::RandomProjectionForest(size_t numberOfSamples, TransformingSplittingScheme& getSplitComponents, std::unordered_set<size_t> splitIndicies) : 
     numberOfSplits(8), treeLeaves(0){
 
         //splittingVectors.reserve((1<<numberOfSplits) - 1);
@@ -286,21 +286,8 @@ RandomProjectionForest::RandomProjectionForest(size_t numberOfSamples, StlRngFun
                 size_t currentIndex = splitQueue1.back();
 
                 
-                //This is bootleg af, need to refactor how I do rng.
-                decltype(rngFunctor.functorDistribution)::param_type newRange(treeLeaves[currentIndex].splitRange.first, treeLeaves[currentIndex].splitRange.second - 1);
-                rngFunctor.functorDistribution.param(newRange);
-
-                size_t index1(rngFunctor());
-                size_t index2(rngFunctor());
-                while (index2 == index1){
-                    index2 = rngFunctor();
-                }
-                
-                index1 = indexVector1[index1];
-                index2 = indexVector1[index2];
-
                 // Get the splitting vector, this can be fed into this function in the parallel/distributed case.
-                splittingFunction = getSplitComponents(treeLeaves[currentIndex].splittingIndex, std::pair<size_t, size_t>(index1, index2));
+                splittingFunction = getSplitComponents(treeLeaves[currentIndex].splittingIndex);
 
 
                 auto beginIt = indexVector1.begin();
