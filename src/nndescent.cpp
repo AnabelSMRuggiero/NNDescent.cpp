@@ -183,15 +183,15 @@ WeightedGraphEdges NeighborsOutOfBlock(const DataSet<std::valarray<int32_t>>& gr
     File format
     [offset] [type]         [value]                     [description]
     0000     8 byte int     MetaGraph.size()            number of terminal leaves in the graph
-    0008     8 byte int     firstEntry.first            splittingIndex of first leaf
+    0008     8 byte int     firstEntry.first            blockNumber of first leaf
     0016     8 byte int     firstEntry.second.size()    number of edges pointing away from leaf
-    0024     8 byte int     edge.target                 splittingIndex of target node
+    0024     8 byte int     edge.target                 blockNumber of target node
     0032     8 byte double  edge.weight                 number of neighbors contained in target tree
-    0040     8 byte int     edge.target                 splittingIndex of target node
+    0040     8 byte int     edge.target                 blockNumber of target node
     0048     8 byte double  edge.weight                 number of neighbors contained in target tree
     ........ 
-    Each graph node is 16*(1 + size) bytes long, or 2*(1 + size) size_t's
-    xxxx     8 byte int     secondEntry.first           splittingIndex of second leaf
+    Each graph node is 8*(1 + 2*size) bytes long, or (1 + 2*size) size_t's
+    xxxx     8 byte int     secondEntry.first           blockNumber of second leaf
 */
 
 void SerializeMetaGraph(const WeightedGraphEdges& readGraph, const std::string& outputFile){
