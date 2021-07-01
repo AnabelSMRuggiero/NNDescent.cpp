@@ -65,6 +65,11 @@ struct BlockIndex{
 
 };
 
+inline bool operator==(const BlockIndex lhs, const BlockIndex& rhs){
+    return (lhs.blockNumber == rhs.blockNumber) && (lhs.blockIndex == rhs.blockIndex);
+}
+
+
 //Presumably, each project would only need to instantiate for a single FloatType
 template<typename DataEntry>
 struct DataBlock{
@@ -81,11 +86,31 @@ struct DataBlock{
             blockData.push_back(dataSource.samples[index]);
         }
     }
-
+    /*
+    DataBlock(const DataSet<DataEntry>& dataSource, std::span<const size_t> dataPoints, size_t blockNumber, std::vector<BlockIndex>& indexRemapping):
+    blockNumber(blockNumber), blockData(){
+        blockData.reserve(dataPoints.size());
+        for (size_t i = 0; i<dataPoints.size(); i+=1){
+            size_t index = dataPoints[i];
+            indexRemapping[index] = BlockIndex(blockNumber, i);
+            blockData.push_back(dataSource.samples[index]);
+        }
+    }
+    */
 };
 
 
 
 }
+
+template<>
+struct std::hash<nnd::BlockIndex>{
+
+    size_t operator()(const nnd::BlockIndex& index) const noexcept{
+        return std::hash<size_t>()(index.blockNumber ^ std::hash<size_t>()(index.blockIndex));
+    };
+
+};
+
 
 #endif //MNISTDATA_HPP

@@ -3,6 +3,7 @@
 
 #include <vector>
 #include <valarray>
+#include <ranges>
 
 #include "MNISTData.hpp"
 #include "GraphStructures.hpp"
@@ -15,12 +16,14 @@ struct MetaPoint{
     std::valarray<double> centerOfMass;
 };
 
-//template<typename DataType>
-MetaPoint CalculateCOM(const DataBlock<std::valarray<unsigned char>>& dataBlock){
+
+
+template<std::ranges::random_access_range DataEntry>
+MetaPoint CalculateCOM(const DataBlock<DataEntry>& dataBlock){
 
     MetaPoint retPoint;
-    retPoint.weight = dataBlock.blockData.size();
-    retPoint.centerOfMass = std::valarray<double>(dataBlock.blockData[0].size());
+    retPoint.weight = std::ranges::size(dataBlock.blockData);
+    retPoint.centerOfMass = std::valarray<double>(std::ranges::size(dataBlock.blockData[0]));
     
     for (size_t i = 0; i<dataBlock.blockData.size(); i += 1){
         for(size_t j = 0; j<dataBlock.blockData[i].size(); j += 1){
@@ -65,23 +68,19 @@ struct MetaGraph{
     std::vector<MetaPoint> points;
     Graph<size_t, double> verticies;
 
-    //template<typename DataEntry>
-    MetaGraph(const std::vector<DataBlock<std::valarray<unsigned char>>>& dataBlocks): points(0){
+    template<typename DataEntry>
+    MetaGraph(const std::vector<DataBlock<DataEntry>>& dataBlocks): points(0){
         for (const auto& dataBlock: dataBlocks){
-            points.push_back(CalculateCOM(dataBlock));
+            points.push_back(CalculateCOM<DataEntry>(dataBlock));
         }
         verticies = ConstructInitialGraph<size_t, double>(points.size(), size_t(5));
         BruteForceGraph<std::valarray<double>, double>(verticies, size_t(20), points, EuclideanNorm<double, double>);
     }
 };
 
-
-
-
-
-
-
-
 }
+
+
+
 
 #endif
