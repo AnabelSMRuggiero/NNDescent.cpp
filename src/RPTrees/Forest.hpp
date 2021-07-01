@@ -374,6 +374,73 @@ RandomProjectionForest::RandomProjectionForest(size_t numberOfSamples, Transform
 } //end constructor
     
 
+template<typename Functor>
+void CrawlTerminalLeaves(const RandomProjectionForest& forest, Functor& terminalFunctor){
+
+    //std::vector<size_t> classifications(forest.indexArray.size());
+
+    std::vector<size_t> treePath;
+    std::vector<char> pathState;
+    treePath.push_back(0);
+    pathState.push_back(0);
+
+    size_t highestIndex = 0;
+
+    size_t currentIndex = 0;
+
+    auto leafAccesor = [&] (size_t index) -> const std::vector<RandomProjectionForest::TreeLeaf>::const_iterator{
+        return forest.treeLeaves.begin()+index;
+    };
+    //const RandomProjectionForest::TreeLeaf* currentLeaf = &(forest.treeLeaves[0]);
+
+
+    while (treePath.size() != 0){
+
+        if(leafAccesor(currentIndex)->children.first != 0 && leafAccesor(currentIndex)->children.second != 0){
+            if (pathState.back() == 0){
+                pathState.back() = 1;
+                currentIndex = leafAccesor(currentIndex)->children.first;
+                treePath.push_back(leafAccesor(currentIndex)->splittingIndex);
+                pathState.push_back(0);
+                continue;    
+            } else if (pathState.back() == 1) {
+                pathState.back() = 2;
+                currentIndex = leafAccesor(currentIndex)->children.second;
+                treePath.push_back(leafAccesor(currentIndex)->splittingIndex);
+                pathState.push_back(0);
+                continue;
+            } else if (pathState.back() == 2) {
+                currentIndex = leafAccesor(currentIndex)->parent;
+                pathState.pop_back();
+                treePath.pop_back();
+                continue;
+            }
+            throw std::logic_error("Invalid Crawl State");
+            
+        } else if (leafAccesor(currentIndex)->children.first == 0 && leafAccesor(currentIndex)->children.second == 0){
+            highestIndex = std::max(highestIndex, leafAccesor(currentIndex)->splittingIndex);
+            
+            std::span indexSpan(&(forest.indexArray[leafAccesor(currentIndex)->splitRange.first]),
+                              size_t(leafAccesor(currentIndex)->splitRange.second - leafAccesor(currentIndex)->splitRange.first));
+
+            terminalFunctor(leafAccesor(currentIndex)->splittingIndex, indexSpan);
+
+            currentIndex = leafAccesor(currentIndex)->parent;
+            pathState.pop_back();
+            treePath.pop_back();
+            
+            
+            continue;
+        }
+        throw std::logic_error("Invalid Tree State");
+        //size_t currentIndex = treePath.back();
+
+    }
+
+    return;
+
+};
+
 
 }
 #endif //RPT_FOREST_HPP

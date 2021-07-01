@@ -88,6 +88,151 @@ struct MetaGraph{
     }
 };
 
+
+/*
+    File format
+    [offset] [type]         [value]                         [description]
+    0000     8 byte int     COMs.size()                     number of node positions
+    0008     8 byte int     firstEntry.centerOfMass.size()  length of COM vectors (all vectors have the same dimensionality)
+    0024     8 byte int     firstEntry.weight               weight of first COM
+    0032     8 byte double  firstEntry.COM[0]               0th (first) dimension value
+    0040     8 byte double  firstEntry.COM[1]               1st dimension value
+    ........ 
+    xxxx     8 byte double  firstEntry.COM[n-1]       (n-1)th (last) dimension value
+    xxxx     8 byte int     secondEntry.weight        weight of second COM
+    xxxx     8 byte double  secondEntry.COM[0]        0th (first) dimension value
+
+*/
+
+void SerializeCOMS(const std::vector<MetaPoint>& COMs, const std::string& outputFile){
+    std::ofstream outStream(outputFile, std::ios_base::binary);
+
+    SerializeData<size_t, std::endian::big>(outStream, COMs.size());
+    SerializeData<size_t, std::endian::big>(outStream, COMs.begin()->centerOfMass.size());
+    
+    for(const auto& point : COMs){
+        SerializeData<size_t, std::endian::big>(outStream, point.weight);
+        for(const auto& extent : point.centerOfMass){
+            SerializeData<double, std::endian::big>(outStream, extent);
+        }
+
+    }
+
+}
+
+/*
+template<typename DataEntry>
+auto GenerateDataBlockingFunc(const DataSet<DataEntry>& dataSource,
+                                  std::vector<DataBlock<DataEntry>>& accumulationVector,
+                                  std::unordered_map<size_t, size_t>& splitToBlockIndex,
+                                  std::vector<BlockIndex>& indexRemapping){
+
+    size_t blockCounter(0);
+    auto retLambda = [&](size_t splittingIndex, std::span<const size_t> indicies){
+        splitToBlockIndex[splittingIndex] = blockCounter;
+        accumulationVector.push_back(DataBlock(dataSource, indicies, blockCounter++, indexRemapping));
+    };
+    return retLambda;
+}
+*/
+
+template<typename DataEntry>
+struct DataMapper{
+
+    const DataSet<DataEntry>& dataSource;
+    size_t blockCounter;
+    std::vector<DataBlock<DataEntry>> dataBlocks;
+    std::unordered_map<size_t, size_t> splitToBlockNum;
+    std::unordered_map<BlockIndex, size_t> blockIndexToSource;
+    std::vector<BlockIndex> sourceToBlockIndex;
+    std::vector<size_t> sourceToSplitIndex;
+
+    DataMapper(const DataSet<DataEntry>& source):
+        dataSource(source), sourceToBlockIndex(dataSource.numberOfSamples), sourceToSplitIndex(dataSource.numberOfSamples) {};
+
+    void operator()(size_t splittingIndex, std::span<const size_t> indicies){
+        //[[unlikely]]if (indicies.size() == 0) return;
+        splitToBlockNum[splittingIndex] = blockCounter;
+        for (size_t i = 0; i<indicies.size(); i += 1){
+            size_t index = indicies[i];
+            sourceToBlockIndex[index] = BlockIndex(blockCounter, i);
+            sourceToSplitIndex[index] = splittingIndex;
+            blockIndexToSource[BlockIndex(blockCounter, i)] = index;
+        }
+        dataBlocks.push_back(DataBlock(dataSource, indicies, blockCounter++));
+    };
+
+
+
+};
+
+using UnweightedGraphEdges = std::unordered_map<size_t, std::unordered_map<size_t, size_t>>;
+using WeightedGraphEdges = std::unordered_map<size_t, std::vector<std::pair<size_t, double>>>;
+
+WeightedGraphEdges NeighborsOutOfBlock(const DataSet<std::valarray<int32_t>>& groundTruth,
+    const std::vector<BlockIndex>& trainClassifications,
+    const std::vector<size_t>& testClassifications){
+        UnweightedGraphEdges unweightedGraph;
+        for(size_t i = 0; i<groundTruth.samples.size(); i += 1){
+            size_t treeIndex = testClassifications[i];
+            for(const auto& neighbor: groundTruth.samples[i]){
+            //for (size_t j = 0; j<30; j +=1){
+            //    int32_t neighbor = groundTruth.samples[i][j];
+                (unweightedGraph[treeIndex])[trainClassifications[neighbor].blockNumber] += 1;
+            }
+        }
+
+        WeightedGraphEdges retGraph;
+
+        auto weightedEdgeCmp = [](std::pair<size_t, double> lhs, std::pair<size_t, double> rhs){
+            return lhs.second > rhs.second;
+        };
+
+        for (const auto [originIndex, edges] : unweightedGraph){
+            size_t totWeight(0);
+            for (const auto [targetIndex, weight] : edges){
+                totWeight += weight;
+            }
+            for (const auto [targetIndex, weight] : edges){
+                (retGraph[originIndex]).push_back(std::pair<size_t, double>(targetIndex, double(weight)/double(totWeight)));
+            }
+            std::sort(retGraph[originIndex].begin(), retGraph[originIndex].end(), weightedEdgeCmp);
+        }
+        return retGraph;
+};
+
+/*
+    File format
+    [offset] [type]         [value]                     [description]
+    0000     8 byte int     MetaGraph.size()            number of terminal leaves in the graph
+    0008     8 byte int     firstEntry.first            blockNumber of first leaf
+    0016     8 byte int     firstEntry.second.size()    number of edges pointing away from leaf
+    0024     8 byte int     edge.target                 blockNumber of target node
+    0032     8 byte double  edge.weight                 number of neighbors contained in target tree
+    0040     8 byte int     edge.target                 blockNumber of target node
+    0048     8 byte double  edge.weight                 number of neighbors contained in target tree
+    ........ 
+    Each graph node is 8*(1 + 2*size) bytes long, or (1 + 2*size) size_t's
+    xxxx     8 byte int     secondEntry.first           blockNumber of second leaf
+*/
+
+void SerializeMetaGraph(const WeightedGraphEdges& readGraph, const std::string& outputFile){
+    std::ofstream outStream(outputFile, std::ios_base::binary);
+
+    SerializeData<size_t, std::endian::big>(outStream, readGraph.size());
+
+    for(const auto& pair : readGraph){
+        SerializeData<size_t, std::endian::big>(outStream, pair.first);
+        SerializeData<size_t, std::endian::big>(outStream, pair.second.size());
+        for (const auto& edge : pair.second){
+            SerializeData<size_t, std::endian::big>(outStream, edge.first);
+            SerializeData<double, std::endian::big>(outStream, edge.second);
+        }
+    }
+
+}
+
+
 }
 
 

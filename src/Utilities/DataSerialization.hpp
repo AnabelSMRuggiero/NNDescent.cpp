@@ -41,6 +41,21 @@ void SerializeData(std::ofstream& dataStream, const DataType& dataEntry){
     return;
 };
 
+
+
+template<TriviallyCopyable DataType>
+void SerializeVector(const std::vector<DataType>& readVector, const std::string& outputFile){
+    std::ofstream outStream(outputFile, std::ios_base::binary);
+    SerializeData<size_t, std::endian::big>(outStream, readVector.size());
+
+    for(const auto& entry : readVector){
+        SerializeData<DataType, std::endian::big>(outStream, entry);
+    }
+
+;}
+
+
+
 }
 
 
