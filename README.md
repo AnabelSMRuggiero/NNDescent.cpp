@@ -4,7 +4,7 @@ rNND is a (WIP) C++ implementation of the Nearest Neighbor Descent algorithm. Th
 The NND algorithm is presented in ["*Efficient k-nearest neighbor graph construction for generic similarity measures*" by Dong et. al.](https://doi.org/10.1145/1963405.1963487)
 [Leland McInnes](https://github.com/lmcinnes), author of [UMAP](https://github.com/lmcinnes/umap) and [PyNNDescent](https://github.com/lmcinnes/pynndescent) has helped greatly by providing guidance on this project.
 
-At the time of writting, this code is unreleased and not published under a liscense. As a result, I currently retain all legal rights I am legally entitled to. I am currently considering using a permissive liscense for releasing this code, such as the Apache 2.0 w/LLVM exception. I will update this notice when an appropriate license has been picked.
+At the time of writting, this code is unreleased and not published under a license. As a result, I currently retain all legal rights I am legally entitled to. I am currently considering using a permissive liscense for releasing this code, such as the Apache 2.0 w/LLVM exception. I will update this notice when an appropriate license has been picked.
 
 
 Embedded meta graph connecting each block to the three blocks with the most neighbors out of block.
