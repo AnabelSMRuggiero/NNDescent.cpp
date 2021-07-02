@@ -15,10 +15,13 @@ https://github.com/AnabelSMRuggiero/NNDescent.cpp
 
 namespace nnd{
 
+// This needs to be updated before use
+
 //Placeholder until proper initialiation strat is implemented
 //Simply queues up all possible local joins for each point
+/*
 template<typename DataType, TriviallyCopyable IndexType, typename FloatType>
-void PopulateInitialQueueStates(const Graph<IndexType, FloatType>& graphState, std::vector<ComparisonQueue>& queues){
+void PopulateInitialQueueStates(const Graph<IndexType, FloatType>& graphState, std::vector<ComparisonQueue<std::pair<size_t,size_t>>>& queues){
     for(const auto& vertex : graphState){
         for(const auto& neighbor : vertex.neighbors){
             for(const auto& nextNeighbor : graphState[neighbor.first].neighbors){
@@ -27,15 +30,15 @@ void PopulateInitialQueueStates(const Graph<IndexType, FloatType>& graphState, s
         }
     }
 }
-
+*/
 /*
 Computes an entire iteration of NND
 */
 template<typename DataType, TriviallyCopyable IndexType, typename FloatType>
 int ComputeLocalJoins(const MNISTData& dataSource,
                        Graph<IndexType, FloatType>& graphState, 
-                       std::vector<ComparisonQueue>& joinQueues, 
-                       std::vector<ComparisonQueue>& cmpQueues, 
+                       std::vector<ComparisonQueue<std::pair<size_t,size_t>>>& joinQueues, 
+                       std::vector<ComparisonQueue<std::pair<size_t,size_t>>>& cmpQueues, 
                        SpaceMetric<std::valarray<unsigned char>> distanceFunctor){
 
     NeighborSearchFunctor searchFunctor;
@@ -80,7 +83,7 @@ int ComputeLocalJoins(const MNISTData& dataSource,
 
 
 template<typename FloatType>
-void PopulateJoinQueueStates(const Graph<size_t, FloatType>& graphState, std::vector<ComparisonQueue>& cmpQueues, std::vector<ComparisonQueue>& joinQueues){
+void PopulateJoinQueueStates(const Graph<size_t, FloatType>& graphState, std::vector<ComparisonQueue<std::pair<size_t,size_t>>>& cmpQueues, std::vector<ComparisonQueue<std::pair<size_t,size_t>>>& joinQueues){
     NeighborSearchFunctor searchFunctor;
     for(auto& cmpQueue : cmpQueues){
         for(const auto& cmpTarget : cmpQueue.queue){

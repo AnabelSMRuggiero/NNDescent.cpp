@@ -105,6 +105,8 @@ Graph<IndexType, FloatType> ConstructInitialGraph(size_t numVerticies, size_t nu
     return retGraph;
 };
 
+
+
 template<typename DataType, typename FloatType>
 void BruteForceBlock(Graph<BlockIndex, FloatType>& uninitGraph, size_t numNeighbors, const DataBlock<DataType>& dataBlock, SpaceMetric<DataType, FloatType> distanceFunctor){
     
@@ -141,12 +143,13 @@ That have been attempted to be added since the last time the queue was flushed
 Currently, storing the index of the pointA neighbor is redundant, but the plan is to
 associate a queue for blocks of data, not individual vertecies.
 */
+template<typename IndexType>
 struct ComparisonQueue{
 
-    std::vector<std::pair<size_t, size_t>> queue;
+    std::vector<IndexType> queue;
     size_t queueMaxLength;
     size_t queueWeight;
-    std::vector<std::pair<size_t, size_t>>::iterator ringIterator;
+    std::vector<IndexType>::iterator ringIterator;
     StlRngFunctor<std::mt19937_64, std::uniform_real_distribution, float> rngFunctor;
 
     ComparisonQueue():
@@ -175,7 +178,7 @@ struct ComparisonQueue{
 
     //ComparisonQueue& operator=(const ComparisonQueue& rhs)
 
-    void PushQueue(const std::pair<size_t, size_t>& indecies){
+    void PushQueue(const IndexType& indecies){
         queueWeight+=1;
         if (queue.size() < queueMaxLength){
             queue.push_back(indecies);
@@ -201,10 +204,10 @@ struct ComparisonQueue{
 
 };
 
+template<typename IndexType>
+std::vector<ComparisonQueue<IndexType>> ConstructQueues(size_t numQueues, size_t queueMax){
 
-std::vector<ComparisonQueue> ConstructQueues(size_t numQueues, size_t queueMax){
-
-    std::vector<ComparisonQueue> retQueues(0);
+    std::vector<ComparisonQueue<IndexType>> retQueues(0);
     retQueues.reserve(numQueues);
     //ComparisonQueue copyQueue(queueMax);
     //retQueues.insert(retQueues.begin(), {queueMax});

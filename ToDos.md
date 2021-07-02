@@ -24,6 +24,8 @@
 - Try spinning up branchless block bruteforcing.
 - Update algorithm/data structure prototypes to reflect data blocking
 - Template MetaGraph stuff
+- Rethink verticies. There should be some way to set up making operations on them more efficient.
+  - Also set it up so NearestPair calculations can update neighbor lists.
 
 #Parallelization and Distributed Computing
 - Do a second pass on the MetaGraph proceedures (assuming the results look good; seems promising so far)

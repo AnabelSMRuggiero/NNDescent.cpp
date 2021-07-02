@@ -24,11 +24,27 @@ namespace nnd{
 
 template<typename DataType, typename RetType=double>
 using SpaceMetric = RetType (*)(const DataType&, const DataType&);
+
+template<typename DataType, typename RetType=double>
+using COMMetric = RetType (*)(const RetType&, const DataType&);
 //using SpaceMetric = std::function<RetType(const std::valarray<DataType>&, const std::valarray<DataType>&)>;
 
 template<typename DataType, typename RetType=double>
 RetType EuclideanNorm(const std::valarray<DataType>& pointA, const std::valarray<DataType>& pointB){
     std::valarray<DataType> diffs = pointB-pointA;
+    RetType accum(0);
+    for(DataType i : diffs){
+        accum += i*i;
+    }
+    return std::sqrt(accum);
+};
+
+template<typename DataType, typename RetType=double>
+RetType EuclideanNorm(const std::valarray<RetType>& pointA, const std::valarray<DataType>& pointB){
+    std::valarray<RetType> diffs(pointA);
+    for (size_t i = 0; i<diffs.size(); i+=1){
+        diffs[i] -= RetType(pointB[i]);
+    }
     RetType accum(0);
     for(DataType i : diffs){
         accum += i*i;
