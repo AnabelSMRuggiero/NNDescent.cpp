@@ -39,7 +39,7 @@ struct GraphVertex{
         this->neighbors.reserve(numNeighbors + 1);
     };
 
-    GraphVertex(GraphVertex&& rval): neighbors(std::forward<std::vector<std::pair<IndexType, FloatType>>>(rval.neighbors)){};
+    //GraphVertex(GraphVertex&& rval): neighbors(std::forward<std::vector<std::pair<IndexType, FloatType>>>(rval.neighbors)){};
 
     void PushNeigbor(std::pair<IndexType, FloatType> newNeighbor){
         neighbors.push_back(newNeighbor);
@@ -97,6 +97,8 @@ struct Graph{
     using const_iterator = std::vector<GraphVertex<IndexType, FloatType>>::const_iterator;
 
     std::vector<GraphVertex<IndexType, FloatType>> verticies;
+
+    Graph(): verticies(){};
 
     Graph(size_t numVerticies, size_t numNeighbors): 
         verticies(numVerticies, GraphVertex<IndexType, FloatType>(numNeighbors)){};
@@ -279,6 +281,9 @@ struct ComparisonQueue{
         ringIterator = queue.begin();
     }
 
+    size_t size(){
+        return queue.size();
+    }
 };
 
 template<typename IndexType>

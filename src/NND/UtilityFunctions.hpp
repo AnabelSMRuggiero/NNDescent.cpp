@@ -28,9 +28,9 @@ bool const NeighborIdentityCheck(const std::pair<IndexType, FloatType>& neighbor
 template<TriviallyCopyable IndexType, typename FloatType>
 struct NeighborSearchFunctor{
     
-    size_t searchValue;
+    IndexType searchValue;
 
-    NeighborSearchFunctor() : searchValue(0){};
+    NeighborSearchFunctor() : searchValue(){};
 
     bool operator()(std::pair<IndexType, FloatType> currentValue){
         return currentValue.first == searchValue;
