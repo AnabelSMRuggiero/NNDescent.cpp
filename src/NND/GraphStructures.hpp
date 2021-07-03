@@ -28,13 +28,8 @@ namespace nnd{
 template<TriviallyCopyable IndexType, typename FloatType>
 struct GraphVertex{
 
-    // I mainly use the dataIndex here for debuging/verification and in a placeholder
-    // I should be able to refactor this point in a later pass
-    //const size_t dataIndex;
-    
-    //I shouldn't even have this here. This is a reference into a vector currently!
-    //const std::valarray<NumericType>& dataReference;
-    //The first in the pair is the index, the second is the distance
+    using iterator = std::vector<std::pair<IndexType, FloatType>>::iterator;
+    using const_iterator = std::vector<std::pair<IndexType, FloatType>>::const_iterator;
     std::vector<std::pair<IndexType, FloatType>> neighbors;
     //std::vector<size_t> reverseNeighbor;
 
@@ -46,25 +41,107 @@ struct GraphVertex{
 
     GraphVertex(GraphVertex&& rval): neighbors(std::forward<std::vector<std::pair<IndexType, FloatType>>>(rval.neighbors)){};
 
-    /*
-    template<typename DataType>
-    std::valarray<DataType> VertexLocation(const std::valarray<DataType>& dataSource){
-        return dataSource[dataReference];
-    }
-    */
-
     void PushNeigbor(std::pair<IndexType, FloatType> newNeighbor){
         neighbors.push_back(newNeighbor);
         std::pop_heap(neighbors.begin(), neighbors.end(), NeighborDistanceComparison<IndexType, FloatType>);
         neighbors.pop_back();
     };
 
+    std::pair<IndexType, FloatType>& operator[](size_t i){
+        return neighbors[i];
+    }
+
+    std::pair<IndexType, FloatType>& operator[](BlockIndex i){
+        // I'm assuming the block number is correct
+        return neighbors[i.dataIndex];
+    }
+
+    size_t size(){
+        return neighbors.size();
+    }
+    
+    constexpr iterator begin() noexcept{
+        return neighbors.begin();
+    }
+
+    constexpr const_iterator begin() const noexcept{
+        return neighbors.begin();
+    }
+
+    constexpr const_iterator cbegin() const noexcept{
+        return neighbors.cbegin();
+    }
+
+    constexpr iterator end() noexcept{
+        return neighbors.end();
+    }
+
+    constexpr const_iterator end() const noexcept{
+        return neighbors.end();
+    }
+
+    constexpr const_iterator cend() const noexcept{
+        return neighbors.cend();
+    }
+
     //private:
     
 };
 
+//Thin layer over std::vector<GraphVertex<IndexType, FloatType>> to help deal with
+//Static polymorphism via templates
 template<TriviallyCopyable IndexType, typename FloatType>
-using Graph = std::vector<GraphVertex<IndexType, FloatType>>;
+struct Graph{
+
+    using iterator = std::vector<GraphVertex<IndexType, FloatType>>::iterator;
+    using const_iterator = std::vector<GraphVertex<IndexType, FloatType>>::const_iterator;
+
+    std::vector<GraphVertex<IndexType, FloatType>> verticies;
+
+    Graph(size_t numVerticies, size_t numNeighbors): 
+        verticies(numVerticies, GraphVertex<IndexType, FloatType>(numNeighbors)){};
+
+    GraphVertex<IndexType, FloatType>& operator[](size_t i){
+        return verticies[i];
+    }
+
+    GraphVertex<IndexType, FloatType>& operator[](BlockIndex i){
+        // I'm assuming the block number is correct
+        return verticies[i.dataIndex];
+    }
+
+    size_t size(){
+        return verticies.size();
+    }
+    
+    constexpr iterator begin() noexcept{
+        return verticies.begin();
+    }
+
+    constexpr const_iterator begin() const noexcept{
+        return verticies.begin();
+    }
+
+    constexpr const_iterator cbegin() const noexcept{
+        return verticies.cbegin();
+    }
+
+    constexpr iterator end() noexcept{
+        return verticies.end();
+    }
+
+    constexpr const_iterator end() const noexcept{
+        return verticies.end();
+    }
+
+    constexpr const_iterator cend() const noexcept{
+        return verticies.cend();
+    }
+};
+
+
+//template<TriviallyCopyable IndexType, typename FloatType>
+//using Graph = std::vector<GraphVertex<IndexType, FloatType>>;
 
 //Operator() of rngFunctor must return a random size_t in [0, data.size())
 template<TriviallyCopyable IndexType, typename FloatType>
