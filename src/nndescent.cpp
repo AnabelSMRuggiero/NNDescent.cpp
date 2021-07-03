@@ -174,7 +174,50 @@ GraphVertex<IndexType, FloatType> QueryCOMNeighbors(const std::valarray<FloatTyp
     ComparisonQueue<IndexType> cmpQueue(numCandidates*queueMargin);
     //Just gonna dummy it and select the first few nodes.
     for (size_t i = 0; i < numCandidates; i+=1){
-        COMneighbors.neighbors.push_back({i,
+        COMneighbors.neighbors.push_back(std::pair<IndexType, FloatType>(i,
+                                          distanceFunctor(centerOfMass, subProb.dataBlock.blockData[i])));
+        cmpQueue.PushQueue(static_cast<IndexType>(i));
+    }
+    ComparisonQueue<IndexType> joinQueue(numCandidates*queueMargin*2);
+    //std::vector<FloatType> distances(0);
+    //distances.reserve(numCandidates*queueMargin*2);
+    NeighborSearchFunctor<IndexType, FloatType> searchFunctor;
+    while(cmpQueue.size()>0){
+        for (const auto& compareCandidate: cmpQueue.queue){
+            for (const auto& joinTarget: subProb.subGraph[compareCandidate].neighbors){
+                searchFunctor.searchValue = joinTarget.first;
+                //Check to see if A is already a neighbor of B, if so, bingo
+                auto result = std::find_if(COMneighbors.neighbors.begin(), COMneighbors.neighbors.end(), searchFunctor);
+                if(result != COMneighbors.neighbors.end()) joinQueue.PushQueue(static_cast<IndexType>(joinTarget.first));
+            }
+        }
+        cmpQueue.FlushQueue();
+
+        for (const auto& joinTarget: joinQueue.queue){
+            FloatType distance = distanceFunctor(centerOfMass, subProb.dataBlock[joinTarget]);
+            
+            if (distance <  COMneighbors.neighbors[0].second){
+                COMneighbors.PushNeigbor(std::pair<IndexType, FloatType>(joinTarget, distance));
+                cmpQueue.PushQueue(static_cast<IndexType>(joinTarget));
+            }
+        }
+        joinQueue.FlushQueue();
+    }
+
+    return COMneighbors;
+}
+
+template<typename DataEntry, typename FloatType, size_t queueMargin>
+GraphVertex<BlockIndex, FloatType> QueryCOMNeighbors(const std::valarray<FloatType>& centerOfMass,
+                                                     SubProblemData<BlockIndex, DataEntry, FloatType> subProb, 
+                                                     int numCandidates,
+                                                     COMMetric<DataEntry, std::valarray<FloatType>, FloatType> distanceFunctor){
+
+    GraphVertex<BlockIndex, FloatType> COMneighbors(numCandidates);
+    ComparisonQueue<BlockIndex> cmpQueue(numCandidates*queueMargin);
+    //Just gonna dummy it and select the first few nodes.
+    for (size_t i = 0; i < numCandidates; i+=1){
+        COMneighbors.neighbors.push_back({{subProb.dataBlock.blockNumber, i},
                                           distanceFunctor(centerOfMass, subProb.dataBlock.blockData[i])});
         cmpQueue.PushQueue(i);
     }
@@ -197,7 +240,7 @@ GraphVertex<IndexType, FloatType> QueryCOMNeighbors(const std::valarray<FloatTyp
             FloatType distance = distanceFunctor(centerOfMass, subProb.dataBlock.blockData[joinTarget]);
             
             if (distance <  COMneighbors.neighbors[0].second){
-                COMneighbors.PushNeigbor({joinTarget, distance});
+                COMneighbors.PushNeigbor({{subProb.dataBlock.blockNumber, joinTarget}, distance});
                 cmpQueue.PushQueue(joinTarget);
             }
         }

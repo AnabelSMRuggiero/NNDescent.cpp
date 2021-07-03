@@ -106,6 +106,15 @@ struct DataBlock{
         return blockData[i.dataIndex];
     }
 
+    const DataEntry& operator[](size_t i) const{
+        return blockData[i];
+    }
+
+    const DataEntry& operator[](BlockIndex i) const{
+        //static_assert(i.blockNumber == blockNumber);
+        return blockData[i.dataIndex];
+    }
+
     size_t size(){
         return blockData.size();
     }
