@@ -71,12 +71,12 @@ struct BlockIndex{
     // The block a data point exists in
     size_t blockNumber;
     // The index within that block
-    size_t blockIndex;
+    size_t dataIndex;
 
 };
 
 inline bool operator==(const BlockIndex lhs, const BlockIndex& rhs){
-    return (lhs.blockNumber == rhs.blockNumber) && (lhs.blockIndex == rhs.blockIndex);
+    return (lhs.blockNumber == rhs.blockNumber) && (lhs.dataIndex == rhs.dataIndex);
 }
 
 
@@ -96,6 +96,20 @@ struct DataBlock{
             blockData.push_back(dataSource.samples[index]);
         }
     }
+
+    DataEntry& operator[](size_t i){
+        return blockData[i];
+    }
+
+    DataEntry& operator[](BlockIndex i){
+        static_assert(i.blockNumber == blockNumber);
+        return blockData[i.dataIndex];
+    }
+
+    size_t size(){
+        return blockData.size();
+    }
+
     /*
     DataBlock(const DataSet<DataEntry>& dataSource, std::span<const size_t> dataPoints, size_t blockNumber, std::vector<BlockIndex>& indexRemapping):
     blockNumber(blockNumber), blockData(){
@@ -117,7 +131,7 @@ template<>
 struct std::hash<nnd::BlockIndex>{
 
     size_t operator()(const nnd::BlockIndex& index) const noexcept{
-        return std::hash<size_t>()(index.blockNumber ^ std::hash<size_t>()(index.blockIndex));
+        return std::hash<size_t>()(index.blockNumber ^ std::hash<size_t>()(index.dataIndex));
     };
 
 };
