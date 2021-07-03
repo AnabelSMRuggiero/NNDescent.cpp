@@ -25,8 +25,8 @@ namespace nnd{
 template<typename DataType, typename RetType=double>
 using SpaceMetric = RetType (*)(const DataType&, const DataType&);
 
-template<typename DataType, typename RetType=double>
-using COMMetric = RetType (*)(const RetType&, const DataType&);
+template<typename DataType, typename COMType, typename RetType=double>
+using COMMetric = RetType (*)(const COMType&, const DataType&);
 //using SpaceMetric = std::function<RetType(const std::valarray<DataType>&, const std::valarray<DataType>&)>;
 
 template<typename DataType, typename RetType=double>

@@ -36,7 +36,6 @@ To tackle these weaknesses, rNND uses the results of RPTrees to cluster the enti
 So far, a rough, serial version of NND has been implemented. Since the graph is randomly initialized at the time of writing, this algorithm basically does not converge for large datasets. This project has a lot further to go before being usable, including:
 
 Currently in progress:
-- Incorporation of random projection trees to initalize the graph.
 - Pay off technical debt associated with not having dedicated dev time to a structure dedicated to handling direct interactions with data.
 - Test building a final graph from smaller graphs made inside each tree.
 

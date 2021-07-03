@@ -79,12 +79,11 @@ struct MetaGraph{
     Graph<size_t, double> verticies;
 
     template<typename DataEntry>
-    MetaGraph(const std::vector<DataBlock<DataEntry>>& dataBlocks): points(0){
+    MetaGraph(const std::vector<DataBlock<DataEntry>>& dataBlocks, size_t numNeighbors): points(0), verticies(dataBlocks.size(), numNeighbors){
         for (const auto& dataBlock: dataBlocks){
             points.push_back(CalculateCOM<DataEntry>(dataBlock));
         }
-        verticies = ConstructInitialGraph<size_t, double>(points.size(), size_t(5));
-        BruteForceGraph<std::valarray<double>, double>(verticies, size_t(20), points, EuclideanNorm<double, double>);
+        BruteForceGraph<std::valarray<double>, double>(verticies, numNeighbors, points, EuclideanNorm<double, double>);
     }
 };
 
