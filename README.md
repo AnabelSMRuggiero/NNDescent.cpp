@@ -7,7 +7,7 @@ The NND algorithm is presented in ["*Efficient k-nearest neighbor graph construc
 At the time of writting, this code is unreleased and not published under a license. As a result, I currently retain all legal rights I am legally entitled to. I am currently considering using a permissive liscense for releasing this code, such as the Apache 2.0 w/LLVM exception. I will update this notice when an appropriate license has been picked.
 
 
-Embedded meta graph connecting each block to the three blocks with the most neighbors out of block.
+Embedded meta graph connecting each block to the two blocks with the most neighbors out of block.
 ![Meta Graph Embedding](Meta-Graph-Embedding.png)
 
 
