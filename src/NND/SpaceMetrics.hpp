@@ -22,13 +22,11 @@ namespace nnd{
 // /shrug
 // I can worry about optimizing these later. Get the core stuff done first.
 
-template<typename DataType, typename RetType=double>
-using SpaceMetric = RetType (*)(const DataType&, const DataType&);
+template<typename DataTypeA, typename DataTypeB, typename RetType=double>
+using SpaceMetric = RetType (*)(const DataTypeA&, const DataTypeB&);
 
-template<typename DataType, typename COMType, typename RetType=double>
-using COMMetric = RetType (*)(const COMType&, const DataType&);
 //using SpaceMetric = std::function<RetType(const std::valarray<DataType>&, const std::valarray<DataType>&)>;
-
+/*
 template<typename DataType, typename RetType=double>
 RetType EuclideanNorm(const std::valarray<DataType>& pointA, const std::valarray<DataType>& pointB){
     std::valarray<DataType> diffs = pointB-pointA;
@@ -38,15 +36,15 @@ RetType EuclideanNorm(const std::valarray<DataType>& pointA, const std::valarray
     }
     return std::sqrt(accum);
 };
-
-template<typename DataType, typename RetType=double>
-RetType EuclideanNorm(const std::valarray<RetType>& pointA, const std::valarray<DataType>& pointB){
-    std::valarray<RetType> diffs(pointA);
+*/
+template<typename DataTypeA, typename DataTypeB, typename RetType=double>
+RetType EuclideanNorm(const std::valarray<DataTypeA>& pointA, const std::valarray<DataTypeB>& pointB){
+    std::valarray<RetType> diffs(pointA.size());
     for (size_t i = 0; i<diffs.size(); i+=1){
-        diffs[i] -= RetType(pointB[i]);
+        diffs[i] = RetType(pointB[i]) - RetType(pointA[i]);
     }
     RetType accum(0);
-    for(DataType i : diffs){
+    for(RetType i : diffs){
         accum += i*i;
     }
     return std::sqrt(accum);

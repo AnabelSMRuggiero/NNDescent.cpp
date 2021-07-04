@@ -34,12 +34,12 @@ void PopulateInitialQueueStates(const Graph<IndexType, FloatType>& graphState, s
 /*
 Computes an entire iteration of NND
 */
-template<typename DataType, TriviallyCopyable IndexType, typename FloatType>
+template<typename DataEntry, TriviallyCopyable IndexType, typename FloatType>
 int ComputeLocalJoins(const MNISTData& dataSource,
                        Graph<IndexType, FloatType>& graphState, 
                        std::vector<ComparisonQueue<std::pair<size_t,size_t>>>& joinQueues, 
                        std::vector<ComparisonQueue<std::pair<size_t,size_t>>>& cmpQueues, 
-                       SpaceMetric<std::valarray<unsigned char>> distanceFunctor){
+                       SpaceMetric<DataEntry, DataEntry, FloatType> distanceFunctor){
 
     NeighborSearchFunctor<IndexType, FloatType> searchFunctor;
     int neighborListChanges(0);

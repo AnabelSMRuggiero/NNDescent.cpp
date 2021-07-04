@@ -44,11 +44,20 @@ https://github.com/AnabelSMRuggiero/NNDescent.cpp
 //namespace chrono = std::chrono;
 using namespace nnd;
 
-template<TriviallyCopyable IndexType, typename DataEntry, typename FloatType>
+template<TriviallyCopyable IndexType, typename DataEntry, std::floating_point FloatType>
 struct SubProblemData{
     Graph<IndexType, FloatType>& subGraph;
     const DataBlock<DataEntry>& dataBlock;
 };
+
+template<TriviallyCopyable IndexType, typename DataEntry, std::floating_point FloatType>
+struct QueryContext{
+    const Graph<IndexType, FloatType>& subGraph;
+    const DataBlock<DataEntry>& dataBlock;
+    const GraphVertex<IndexType, DataEntry> queryHint;
+};
+
+
 
 struct NodeTracker{
 
@@ -71,13 +80,13 @@ struct NodeTracker{
 };
 
 //Figure out to make this template take a range as a template parameter
-template<TriviallyCopyable IndexType, typename DataEntry, typename FloatType>
+template<TriviallyCopyable IndexType, typename DataEntry, std::floating_point FloatType>
 Graph<IndexType, FloatType> QuerySubGraph(SubProblemData<IndexType, DataEntry, FloatType> subGraphA,
                                           SubProblemData<IndexType, DataEntry, FloatType> subGraphB,
                                           const std::vector<IndexType>& queryPoints,
                                           const GraphVertex<IndexType, FloatType>& queryHint,
                                           int numCandidates,
-                                          SpaceMetric<DataEntry, FloatType>  distanceFunctor){
+                                          SpaceMetric<DataEntry, DataEntry, FloatType>  distanceFunctor){
 
     //Initialize results with queryHint
     Graph<IndexType, FloatType> retGraph(queryPoints.size(), numCandidates);
@@ -123,7 +132,7 @@ std::tuple<size_t, size_t, FloatType> NearestNodes(SubProblemData<IndexType, Dat
                   SubProblemData<IndexType, DataEntry, FloatType> subGraphB,
                   const GraphVertex<IndexType, FloatType>& queryHintA,
                   const GraphVertex<IndexType, FloatType>& queryHintB,
-                  SpaceMetric<DataEntry, FloatType>  distanceFunctor){
+                  SpaceMetric<DataEntry, DataEntry, FloatType>  distanceFunctor){
 
     std::pair<size_t, size_t> bestPair;
     FloatType bestDistance(std::numeric_limits<FloatType>::max());
@@ -197,7 +206,7 @@ std::tuple<size_t, size_t, FloatType> NearestNodes(SubProblemData<IndexType, Dat
 template<TriviallyCopyable IndexType, typename DataEntry, std::floating_point FloatType>
 std::tuple<size_t, size_t, FloatType> BruteNearestNodes(SubProblemData<IndexType, DataEntry, FloatType> subGraphA,
                   SubProblemData<IndexType, DataEntry, FloatType> subGraphB,
-                  SpaceMetric<DataEntry, FloatType>  distanceFunctor){
+                  SpaceMetric<DataEntry, DataEntry, FloatType>  distanceFunctor){
 
     std::pair<size_t, size_t> bestPair;
     FloatType bestDistance(std::numeric_limits<FloatType>::max());
@@ -216,11 +225,11 @@ std::tuple<size_t, size_t, FloatType> BruteNearestNodes(SubProblemData<IndexType
     return {bestPair.first, bestPair.second, bestDistance};
 }
 
-template<TriviallyCopyable IndexType, typename DataEntry, typename FloatType, size_t queueMargin>
+template<TriviallyCopyable IndexType, typename DataEntry, std::floating_point FloatType>
 GraphVertex<IndexType, FloatType> QueryCOMNeighbors(const std::valarray<FloatType>& centerOfMass,
                                                      SubProblemData<IndexType, DataEntry, FloatType> subProb, 
                                                      int numCandidates,
-                                                     COMMetric<DataEntry, std::valarray<FloatType>, FloatType> distanceFunctor){
+                                                     SpaceMetric<std::valarray<FloatType>, DataEntry, FloatType> distanceFunctor){
 
     GraphVertex<IndexType, FloatType> COMneighbors(numCandidates);
     //ComparisonQueue<IndexType> cmpQueue(numCandidates*queueMargin);
@@ -426,7 +435,7 @@ int main(){
     blockGraphs.reserve(trainMapper.dataBlocks.size());
     for (const auto& dataBlock : trainMapper.dataBlocks){
         Graph<size_t, double> blockGraph(dataBlock.blockData.size(), size_t(5));
-        BruteForceBlock<size_t, std::valarray<float>, double>(blockGraph, 5, dataBlock, EuclideanNorm<float, double>);
+        BruteForceBlock<size_t, std::valarray<float>, double>(blockGraph, 5, dataBlock, EuclideanNorm<float, float, double>);
         blockGraphs.push_back(std::move(blockGraph));
     }
     
@@ -434,10 +443,10 @@ int main(){
     std::vector<GraphVertex<size_t, double>> queryHints;
     for (size_t i = 0; i<metaGraph.points.size(); i += 1){
         SubProblemData subProb{blockGraphs[i], trainMapper.dataBlocks[i]};
-        queryHints.push_back(QueryCOMNeighbors<size_t, std::valarray<float>, double, 2>(metaGraph.points[i].centerOfMass,
+        queryHints.push_back(QueryCOMNeighbors<size_t, std::valarray<float>, double>(metaGraph.points[i].centerOfMass,
                                                                           subProb,
                                                                           5,
-                                                                          EuclideanNorm<float, double>));
+                                                                          EuclideanNorm<double, float, double>));
 
     }
     //SubProblemData subProbA{blockGraphs[0], trainMapper.dataBlocks[0]};
@@ -453,7 +462,7 @@ int main(){
             SubProblemData subProbA{blockGraphs[i], trainMapper.dataBlocks[i]};
             SubProblemData subProbB{blockGraphs[neighbor.first], trainMapper.dataBlocks[neighbor.first]};
             double nnDist;
-            std::tie(std::ignore, std::ignore, nnDist) = NearestNodes<size_t, std::valarray<float>, double>(subProbA, subProbB, queryHints[i], queryHints[neighbor.first], EuclideanNorm<float, double>);
+            std::tie(std::ignore, std::ignore, nnDist) = NearestNodes<size_t, std::valarray<float>, double>(subProbA, subProbB, queryHints[i], queryHints[neighbor.first], EuclideanNorm<float, float, double>);
             nearestNodeDistances[i].neighbors.push_back(std::pair(neighbor.first, nnDist));
         }
 
@@ -464,7 +473,7 @@ int main(){
             SubProblemData subProbB{blockGraphs[i], trainMapper.dataBlocks[i]};
             std::vector<size_t> indicies(subProbB.dataBlock.size());
             std::iota(indicies.begin(), indicies.end(), 0);
-            candidates.push_back(QuerySubGraph(subProbA, subProbB, indicies, queryHints[nearestNodeDistances[i][j].first], 5, EuclideanNorm<float, double>));
+            candidates.push_back(QuerySubGraph(subProbA, subProbB, indicies, queryHints[nearestNodeDistances[i][j].first], 5, EuclideanNorm<float, float, double>));
         }
     }
 
