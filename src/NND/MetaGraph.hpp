@@ -14,6 +14,7 @@ https://github.com/AnabelSMRuggiero/NNDescent.cpp
 #include <vector>
 #include <valarray>
 #include <ranges>
+#include <span>
 
 #include "MNISTData.hpp"
 #include "GraphStructures.hpp"
@@ -174,9 +175,9 @@ WeightedGraphEdges NeighborsOutOfBlock(const DataSet<std::valarray<int32_t>>& gr
         UnweightedGraphEdges unweightedGraph;
         for(size_t i = 0; i<groundTruth.samples.size(); i += 1){
             size_t treeIndex = testClassifications[i];
-            for(const auto& neighbor: groundTruth.samples[i]){
-            //for (size_t j = 0; j<30; j +=1){
-            //    int32_t neighbor = groundTruth.samples[i][j];
+            //for(const auto& neighbor: groundTruth.samples[i]){
+            for (size_t j = 0; j<10; j +=1){
+                int32_t neighbor = groundTruth.samples[i][j];
                 (unweightedGraph[treeIndex])[trainClassifications[neighbor].blockNumber] += 1;
             }
         }

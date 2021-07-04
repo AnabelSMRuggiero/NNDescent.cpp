@@ -18,6 +18,7 @@ https://github.com/AnabelSMRuggiero/NNDescent.cpp
 #include <iostream>
 #include <fstream>
 #include <type_traits>
+#include <span>
 
 #include "NND/SpaceMetrics.hpp"
 #include "Utilities/DataSerialization.hpp"
@@ -115,7 +116,7 @@ struct DataBlock{
         return blockData[i.dataIndex];
     }
 
-    size_t size(){
+    size_t size() const{
         return blockData.size();
     }
 
