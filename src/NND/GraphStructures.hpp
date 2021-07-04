@@ -274,7 +274,7 @@ Graph<IndexType, FloatType> ConstructInitialGraph(size_t numVerticies, size_t nu
 
 
 template<TriviallyCopyable IndexType, typename DataType, typename FloatType>
-void BruteForceBlock(Graph<IndexType, FloatType>& uninitGraph, size_t numNeighbors, const DataBlock<DataType>& dataBlock, SpaceMetric<DataType, FloatType> distanceFunctor){
+void BruteForceBlock(Graph<IndexType, FloatType>& uninitGraph, size_t numNeighbors, const DataBlock<DataType>& dataBlock, SpaceMetric<DataType, DataType, FloatType> distanceFunctor){
     
     // I can make this branchless. Check to see if /O2 or /O3 can make this branchless (I really doubt it)
     for (size_t i = 0; i < dataBlock.blockData.size(); i += 1){

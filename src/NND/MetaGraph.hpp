@@ -49,7 +49,7 @@ MetaPoint CalculateCOM(const DataBlock<DataEntry>& dataBlock){
 }
 
 template<typename DataType, typename FloatType>
-void BruteForceGraph(Graph<size_t, FloatType>& uninitGraph, size_t numNeighbors, const std::vector<MetaPoint>& dataVector, SpaceMetric<DataType, FloatType> distanceFunctor){
+void BruteForceGraph(Graph<size_t, FloatType>& uninitGraph, size_t numNeighbors, const std::vector<MetaPoint>& dataVector, SpaceMetric<DataType, DataType, FloatType> distanceFunctor){
     
     // I can make this branchless. Check to see if /O2 or /O3 can make this branchless (I really doubt it)
     for (size_t i = 0; i < dataVector.size(); i += 1){
