@@ -15,6 +15,10 @@ https://github.com/AnabelSMRuggiero/NNDescent.cpp
 #include <algorithm>
 #include <functional>
 #include <ranges>
+#include <limits>
+#include <numeric>
+#include <execution>
+#include <array>
 
 #include "UtilityFunctions.hpp"
 #include "MNISTData.hpp"
@@ -43,6 +47,7 @@ struct GraphVertex{
 
     void PushNeigbor(std::pair<IndexType, FloatType> newNeighbor){
         neighbors.push_back(newNeighbor);
+        std::push_heap(neighbors.begin(), neighbors.end(), NeighborDistanceComparison<IndexType, FloatType>);
         std::pop_heap(neighbors.begin(), neighbors.end(), NeighborDistanceComparison<IndexType, FloatType>);
         neighbors.pop_back();
     };
@@ -87,6 +92,88 @@ struct GraphVertex{
     //private:
     
 };
+
+//Prototype
+
+struct CacheLineVertex{
+
+    using iterator = std::pair<uint32_t, float>*;
+    using const_iterator = const std::pair<uint32_t, float>*;
+    // The 8th spot is a sink value, only holds 7 neighbors
+    private:
+    std::pair<uint32_t, float> neighbors[8];
+    //std::vector<size_t> reverseNeighbor;
+
+    public:
+    constexpr CacheLineVertex(std::array<std::pair<uint32_t, float>, 7> initNeighbors): neighbors{
+        initNeighbors[0],
+        initNeighbors[1],
+        initNeighbors[2],
+        initNeighbors[3],
+        initNeighbors[4],
+        initNeighbors[5],
+        initNeighbors[6],
+        {0, std::numeric_limits<float>::max()}
+    }{};
+    
+    //Branchless insertion
+    void PushNeigbor(std::pair<uint32_t, float> newNeighbor){
+        auto transformFunc = [=](std::pair<uint32_t, float> operand)->uint32_t{
+            return uint32_t(newNeighbor.second > operand.second);
+        };
+        int pos = std::transform_reduce(std::execution::unseq,
+                                        &neighbors[0],
+                                        &neighbors[7],
+                                        uint32_t(0),
+                                        std::plus<uint32_t>(),
+                                        transformFunc);
+        
+        std::copy_backward(&neighbors[pos], &neighbors[7], &neighbors[8]);
+        neighbors[pos] = newNeighbor;
+//<std::execution::unsequenced_policy, iterator, uint32_t, std::plus<uint32_t>, transformFunc>
+    };
+
+    std::pair<uint32_t, float>& operator[](size_t i){
+        return neighbors[i];
+    }
+
+    std::pair<uint32_t, float>& operator[](BlockIndex i){
+        // I'm assuming the block number is correct
+        return neighbors[i.dataIndex];
+    }
+
+    constexpr size_t size(){
+        return 7;
+    }
+    
+    constexpr iterator begin() noexcept{
+        return &neighbors[0];
+    }
+
+    constexpr const_iterator begin() const noexcept{
+        return &neighbors[0];
+    }
+
+    constexpr const_iterator cbegin() const noexcept{
+        return &neighbors[0];
+    }
+
+    constexpr iterator end() noexcept{
+        return &neighbors[7];
+    }
+
+    constexpr const_iterator end() const noexcept{
+        return &neighbors[7];
+    }
+
+    constexpr const_iterator cend() const noexcept{
+        return &neighbors[7];
+    }
+
+    //private:
+    
+};
+
 
 //Thin layer over std::vector<GraphVertex<IndexType, FloatType>> to help deal with
 //Static polymorphism via templates
@@ -186,28 +273,28 @@ Graph<IndexType, FloatType> ConstructInitialGraph(size_t numVerticies, size_t nu
 
 
 
-template<typename DataType, typename FloatType>
-void BruteForceBlock(Graph<BlockIndex, FloatType>& uninitGraph, size_t numNeighbors, const DataBlock<DataType>& dataBlock, SpaceMetric<DataType, FloatType> distanceFunctor){
+template<TriviallyCopyable IndexType, typename DataType, typename FloatType>
+void BruteForceBlock(Graph<IndexType, FloatType>& uninitGraph, size_t numNeighbors, const DataBlock<DataType>& dataBlock, SpaceMetric<DataType, FloatType> distanceFunctor){
     
     // I can make this branchless. Check to see if /O2 or /O3 can make this branchless (I really doubt it)
     for (size_t i = 0; i < dataBlock.blockData.size(); i += 1){
         for (size_t j = i+1; j < dataBlock.blockData.size(); j += 1){
             FloatType distance = distanceFunctor(dataBlock.blockData[i], dataBlock.blockData[j]);
             if (uninitGraph[i].neighbors.size() < numNeighbors){
-                uninitGraph[i].neighbors.push_back(std::pair<BlockIndex, FloatType>(BlockIndex(dataBlock.blockNumber, j), distance));
+                uninitGraph[i].neighbors.push_back(std::pair<IndexType, FloatType>(static_cast<IndexType>(j), distance));
                 if (uninitGraph[i].neighbors.size() == numNeighbors){
-                    std::make_heap(uninitGraph[i].neighbors.begin(), uninitGraph[i].neighbors.end(), NeighborDistanceComparison<BlockIndex, FloatType>);
+                    std::make_heap(uninitGraph[i].neighbors.begin(), uninitGraph[i].neighbors.end(), NeighborDistanceComparison<IndexType, FloatType>);
                 }
             } else if (distance < uninitGraph[i].neighbors[0].second){
-                uninitGraph[i].PushNeigbor(std::pair<BlockIndex, FloatType>(BlockIndex(dataBlock.blockNumber, j), distance));
+                uninitGraph[i].PushNeigbor(std::pair<IndexType, FloatType>(static_cast<IndexType>(j), distance));
             }
             if (uninitGraph[j].neighbors.size() < numNeighbors){
-                uninitGraph[j].neighbors.push_back(std::pair<BlockIndex, FloatType>(BlockIndex(dataBlock.blockNumber, i), distance));
+                uninitGraph[j].neighbors.push_back(std::pair<IndexType, FloatType>(static_cast<IndexType>(i), distance));
                 if (uninitGraph[j].neighbors.size() == numNeighbors){
-                    std::make_heap(uninitGraph[j].neighbors.begin(), uninitGraph[j].neighbors.end(), NeighborDistanceComparison<BlockIndex, FloatType>);
+                    std::make_heap(uninitGraph[j].neighbors.begin(), uninitGraph[j].neighbors.end(), NeighborDistanceComparison<IndexType, FloatType>);
                 }
             } else if (distance < uninitGraph[j].neighbors[0].second){
-                uninitGraph[j].PushNeigbor(std::pair<BlockIndex, FloatType>(BlockIndex(dataBlock.blockNumber, i), distance));
+                uninitGraph[j].PushNeigbor(std::pair<IndexType, FloatType>(static_cast<IndexType>(i), distance));
             }
         }
     }
