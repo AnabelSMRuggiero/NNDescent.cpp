@@ -41,7 +41,7 @@ int ComputeLocalJoins(const MNISTData& dataSource,
                        std::vector<ComparisonQueue<std::pair<size_t,size_t>>>& cmpQueues, 
                        SpaceMetric<std::valarray<unsigned char>> distanceFunctor){
 
-    NeighborSearchFunctor searchFunctor;
+    NeighborSearchFunctor<IndexType, FloatType> searchFunctor;
     int neighborListChanges(0);
     for (auto& joinQueue : joinQueues){
         for(auto& joinTarget : joinQueue.queue){
@@ -84,7 +84,7 @@ int ComputeLocalJoins(const MNISTData& dataSource,
 
 template<typename FloatType>
 void PopulateJoinQueueStates(const Graph<size_t, FloatType>& graphState, std::vector<ComparisonQueue<std::pair<size_t,size_t>>>& cmpQueues, std::vector<ComparisonQueue<std::pair<size_t,size_t>>>& joinQueues){
-    NeighborSearchFunctor searchFunctor;
+    NeighborSearchFunctor<size_t, FloatType> searchFunctor;
     for(auto& cmpQueue : cmpQueues){
         for(const auto& cmpTarget : cmpQueue.queue){
             //Parse through the first Vertex's neighbors for comparisons with 
