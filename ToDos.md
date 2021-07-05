@@ -31,3 +31,8 @@
 
 #Parallelization and Distributed Computing
 - Do a second pass on the MetaGraph proceedures (assuming the results look good; seems promising so far)
+- Points of caution for parallelization
+  - Splitting schemes
+    - Making sure only one thread creates a splitting vector
+  - QueryContexts
+    - Checking to avoid double calculating.
