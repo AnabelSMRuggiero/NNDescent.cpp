@@ -8,6 +8,8 @@
     - Front end some sort of generalized PCA?
     - I could just be boring and front end SVD (which doesn't really work for non-euclidian easily, but would be needed for generalized PCA init)
 
+- I just realized, some distance metrics might wanna return an integral type (binary distances like hamming)
+
 #RPTrees
 - Add way to track best splits
   - With the direction I'm planning on going this probably won't be needed.

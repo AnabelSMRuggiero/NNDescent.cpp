@@ -19,6 +19,7 @@ https://github.com/AnabelSMRuggiero/NNDescent.cpp
 #include <numeric>
 #include <execution>
 #include <array>
+#include <utility>
 
 #include "UtilityFunctions.hpp"
 #include "MNISTData.hpp"
@@ -44,13 +45,26 @@ struct GraphVertex{
     };
 
     //GraphVertex(GraphVertex&& rval): neighbors(std::forward<std::vector<std::pair<IndexType, FloatType>>>(rval.neighbors)){};
-
-    void PushNeigbor(std::pair<IndexType, FloatType> newNeighbor){
+    //Incorporate size checking in here?
+    void PushNeighbor(std::pair<IndexType, FloatType> newNeighbor){
         neighbors.push_back(newNeighbor);
         std::push_heap(neighbors.begin(), neighbors.end(), NeighborDistanceComparison<IndexType, FloatType>);
         std::pop_heap(neighbors.begin(), neighbors.end(), NeighborDistanceComparison<IndexType, FloatType>);
         neighbors.pop_back();
     };
+
+    
+    
+    //Object Composition stuff below here
+
+    constexpr void push_back(const std::pair<IndexType, FloatType>& value){
+        neighbors.push_back(value);
+    }
+
+    template<typename PairReferenceType>
+    constexpr void push_back(std::pair<IndexType, FloatType>&& value){
+        neighbors.push_back(std::forward<PairReferenceType>(value));
+    }
 
     std::pair<IndexType, FloatType>& operator[](size_t i){
         return neighbors[i];
@@ -93,6 +107,16 @@ struct GraphVertex{
     
 };
 
+template<TriviallyCopyable OtherIndex, typename OtherDist, typename ConsumerDist>
+void ConsumeVertex(GraphVertex<BlockIndex, ConsumerDist>& consumer, GraphVertex<OtherIndex, OtherDist>& consumee, size_t consumeeBlockNum){
+    std::sort(consumee.begin(), consumee.end(), NeighborDistanceComparison<OtherIndex, OtherDist>);
+    for (auto& pair: consumee){
+        if (pair.second > consumer.neighbors[0].second) return;
+        consumer.PushNeighbor({{consumeeBlockNum, pair.first}, static_cast<ConsumerDist>(pair.second)});
+    }
+}
+
+
 //Prototype
 
 struct CacheLineVertex{
@@ -117,7 +141,7 @@ struct CacheLineVertex{
     }{};
     
     //Branchless insertion
-    void PushNeigbor(std::pair<uint32_t, float> newNeighbor){
+    void PushNeighbor(std::pair<uint32_t, float> newNeighbor){
         auto transformFunc = [=](std::pair<uint32_t, float> operand)->uint32_t{
             return uint32_t(newNeighbor.second > operand.second);
         };
@@ -208,11 +232,12 @@ struct Graph{
     }
 
     constexpr void push_back(const GraphVertex<IndexType, FloatType>& value){
-        verticies.push_back(std::forward(value));
+        verticies.push_back(value);
     }
 
+    template<typename VertexReferenceType>
     constexpr void push_back(GraphVertex<IndexType, FloatType>&& value){
-        verticies.push_back(std::forward(value));
+        verticies.push_back(std::forward<VertexReferenceType>(value));
     }
 
     size_t size(){
@@ -302,7 +327,7 @@ void BruteForceBlock(Graph<IndexType, FloatType>& uninitGraph, size_t numNeighbo
                     std::make_heap(uninitGraph[i].neighbors.begin(), uninitGraph[i].neighbors.end(), NeighborDistanceComparison<IndexType, FloatType>);
                 }
             } else if (distance < uninitGraph[i].neighbors[0].second){
-                uninitGraph[i].PushNeigbor(std::pair<IndexType, FloatType>(static_cast<IndexType>(j), distance));
+                uninitGraph[i].PushNeighbor(std::pair<IndexType, FloatType>(static_cast<IndexType>(j), distance));
             }
             if (uninitGraph[j].neighbors.size() < numNeighbors){
                 uninitGraph[j].neighbors.push_back(std::pair<IndexType, FloatType>(static_cast<IndexType>(i), distance));
@@ -310,7 +335,7 @@ void BruteForceBlock(Graph<IndexType, FloatType>& uninitGraph, size_t numNeighbo
                     std::make_heap(uninitGraph[j].neighbors.begin(), uninitGraph[j].neighbors.end(), NeighborDistanceComparison<IndexType, FloatType>);
                 }
             } else if (distance < uninitGraph[j].neighbors[0].second){
-                uninitGraph[j].PushNeigbor(std::pair<IndexType, FloatType>(static_cast<IndexType>(i), distance));
+                uninitGraph[j].PushNeighbor(std::pair<IndexType, FloatType>(static_cast<IndexType>(i), distance));
             }
         }
     }
