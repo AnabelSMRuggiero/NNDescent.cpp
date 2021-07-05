@@ -29,11 +29,12 @@ https://github.com/AnabelSMRuggiero/NNDescent.cpp
 #include <cassert>
 
 
-#include "MNISTData.hpp"
+#include "Utilities/Data.hpp"
 #include "NND/SpaceMetrics.hpp"
 #include "NND/GraphStructures.hpp"
 #include "NND/Algorithm.hpp"
 #include "NND/MetaGraph.hpp"
+#include "NND/SubGraphQuerying.hpp"
 
 #include "RPTrees/SplittingScheme.hpp"
 #include "RPTrees/Forest.hpp"
@@ -45,404 +46,9 @@ https://github.com/AnabelSMRuggiero/NNDescent.cpp
 //namespace chrono = std::chrono;
 using namespace nnd;
 
-template<TriviallyCopyable IndexType, typename DataEntry, std::floating_point FloatType>
-struct SubProblemData{
-    const Graph<IndexType, FloatType>& subGraph;
-    const DataBlock<DataEntry>& dataBlock;
-};
 
 
 
-
-
-struct NodeTracker{
-
-    using reference = std::vector<bool>::reference;
-    using size_type = std::vector<bool>::size_type;
-
-    std::vector<bool> flags;
-
-    NodeTracker(size_t graphSize): flags(graphSize, false){};
-
-    reference operator[](size_type i){
-        return flags[i];
-    }
-
-    reference operator[](BlockIndex i){
-        //Assuming block index lines up here;
-        return flags[i.dataIndex];
-    }
-
-};
-
-//Figure out to make this template take a range as a template parameter
-template<TriviallyCopyable IndexType, typename DataEntry, std::floating_point FloatType>
-Graph<IndexType, FloatType> QuerySubGraph(SubProblemData<IndexType, DataEntry, FloatType> subGraphA,
-                                          SubProblemData<IndexType, DataEntry, FloatType> subGraphB,
-                                          const std::vector<IndexType>& queryPoints,
-                                          const GraphVertex<IndexType, FloatType>& queryHint,
-                                          int numCandidates,
-                                          SpaceMetric<DataEntry, DataEntry, FloatType>  distanceFunctor){
-
-    //Initialize results with queryHint
-    Graph<IndexType, FloatType> retGraph(queryPoints.size(), numCandidates);
-
-    for(auto& vertex: retGraph){
-        for (int i = 0; i < numCandidates; i+=1){
-            vertex.neighbors.push_back({queryHint.neighbors[i].first, std::numeric_limits<FloatType>::max()});
-        }
-    }
-    
-    for (size_t i = 0; i<queryPoints.size(); i += 1){
-        GraphVertex<IndexType, FloatType>& vertex = retGraph[i];
-        DataEntry queryData = subGraphB.dataBlock[queryPoints[i]];
-        
-        NodeTracker nodesVisited(subGraphA.dataBlock.size());
-        GraphVertex<IndexType, FloatType> newState(vertex);
-        bool breakVar = false;
-        while (!breakVar){
-            breakVar = true;
-            for (const auto& neighbor: vertex){
-                const GraphVertex<IndexType, FloatType>& currentNeighbor = subGraphA.subGraph[neighbor.first];
-                for (const auto& joinTarget: currentNeighbor){
-                    if (nodesVisited[joinTarget.first] == true) continue;
-                    nodesVisited[joinTarget.first] = true;
-                    FloatType distance = distanceFunctor(queryData, subGraphA.dataBlock[joinTarget.first]);
-                    if (distance < newState[0].second){
-                        newState.PushNeighbor({joinTarget.first, distance});
-                        breakVar = false;
-                    }
-                }
-            }
-            vertex = newState;
-        }
-    }
-    return retGraph;
-}
-
-
-// Think about adding neighbor updates into this. I need to tweak neighbor storing.
-//NND to find an approximation of the closest pair of points between clusters.
-/*
-template<TriviallyCopyable IndexType, typename DataEntry, std::floating_point FloatType>
-std::tuple<IndexType, IndexType, FloatType> NearestNodes(const SubProblemData<IndexType, DataEntry, FloatType> subGraphA,
-                  const SubProblemData<IndexType, DataEntry, FloatType> subGraphB,
-                  const GraphVertex<IndexType, FloatType>& queryHintA,
-                  const GraphVertex<IndexType, FloatType>& queryHintB,
-                  SpaceMetric<DataEntry, DataEntry, FloatType>  distanceFunctor){
-
-    std::pair<size_t, size_t> bestPair;
-    FloatType bestDistance(std::numeric_limits<FloatType>::max());
-    //NodeTracker nodesVisitedA(subGraphA.dataBlock.size());
-    //NodeTracker nodesVisitedB(subGraphB.dataBlock.size());
-
-    for(const auto& starterA: queryHintA.neighbors){
-        //nodesVisitedA[starterA.first] = true;
-        for (const auto& starterB: queryHintB.neighbors){
-            //nodesVisitedB[starterB.first] = true;
-            FloatType distance = distanceFunctor(subGraphA.dataBlock[starterA.first], subGraphB.dataBlock[starterB.first]);
-            if (distance < bestDistance){
-                bestDistance = distance;
-                bestPair = std::pair<size_t, size_t>(starterA.first, starterB.first);
-            }
-        }
-    }
-
-    bool breakVar = false;
-    while (!breakVar){
-        breakVar = true;
-        std::pair<size_t, size_t> tmpPair = bestPair;
-        for (const auto& neighborA: subGraphA.subGraph[bestPair.first]){
-            //if (!nodesVisitedA[neighborA.first]){
-            FloatType distance = distanceFunctor(subGraphA.dataBlock[neighborA.first], subGraphB.dataBlock[tmpPair.second]);
-            if (distance < bestDistance){
-                bestDistance = distance;
-                tmpPair.first = neighborA.first;
-                breakVar = false;
-            }
-                //nodesVisitedA[neighborA.first] = true;
-            //}  
-            
-            for (const auto& neighborOfNeighborA: subGraphA.subGraph[neighborA.first]){
-                //if (nodesVisitedA[neighborOfNeighborA.first]) continue;
-                //nodesVisitedA[neighborOfNeighborA.first] = true;
-                FloatType distance = distanceFunctor(subGraphA.dataBlock[neighborOfNeighborA.first], subGraphB.dataBlock[tmpPair.second]);
-                if (distance < bestDistance){
-                    bestDistance = distance;
-                    tmpPair.first = neighborOfNeighborA.first;
-                    breakVar = false;
-                }
-            }
-        }
-        for (const auto& neighborB: subGraphB.subGraph[bestPair.second]){
-            //if (!nodesVisitedB[neighborB.first]){
-                FloatType distance = distanceFunctor(subGraphA.dataBlock[tmpPair.first], subGraphB.dataBlock[neighborB.first]);
-            if (distance < bestDistance){
-                bestDistance = distance;
-                tmpPair.second = neighborB.first;
-                breakVar = false;
-            }
-              //  nodesVisitedB[neighborB.first] = true;
-            //}
-            for (const auto& neighborOfNeighborB: subGraphB.subGraph[neighborB.first]){
-                //nodesVisitedB[neighborOfNeighborB.first] = true;
-                FloatType distance = distanceFunctor(subGraphA.dataBlock[tmpPair.first], subGraphB.dataBlock[neighborOfNeighborB.first]);
-                if (distance < bestDistance){
-                    bestDistance = distance;
-                    tmpPair.second = neighborOfNeighborB.first;
-                    breakVar = false;
-                }
-            }
-        }
-        bestPair = tmpPair;
-    }
-    
-    return {bestPair.first, bestPair.second, bestDistance};
-}
-*/
-
-template<TriviallyCopyable IndexType, typename DataEntry, std::floating_point FloatType>
-std::tuple<size_t, size_t, FloatType> BruteNearestNodes(SubProblemData<IndexType, DataEntry, FloatType> subGraphA,
-                  SubProblemData<IndexType, DataEntry, FloatType> subGraphB,
-                  SpaceMetric<DataEntry, DataEntry, FloatType>  distanceFunctor){
-
-    std::pair<size_t, size_t> bestPair;
-    FloatType bestDistance(std::numeric_limits<FloatType>::max());
-
-
-    for(size_t i = 0; i<subGraphA.dataBlock.size(); i+=1){
-        for (size_t j = 0; j<subGraphB.dataBlock.size(); j+=1){
-            FloatType distance = distanceFunctor(subGraphA.dataBlock[i], subGraphB.dataBlock[j]);
-            if (distance < bestDistance){
-                bestDistance = distance;
-                bestPair = std::pair<size_t, size_t>(i,j);
-            }
-        }
-    }
-    
-    return {bestPair.first, bestPair.second, bestDistance};
-}
-
-template<TriviallyCopyable IndexType, typename DataEntry, std::floating_point FloatType>
-GraphVertex<IndexType, FloatType> QueryCOMNeighbors(const std::valarray<FloatType>& centerOfMass,
-                                                     const SubProblemData<IndexType, DataEntry, FloatType> subProb, 
-                                                     const int numCandidates,
-                                                     SpaceMetric<std::valarray<FloatType>, DataEntry, FloatType> distanceFunctor){
-
-    GraphVertex<IndexType, FloatType> COMneighbors(numCandidates);
-    
-    //Just gonna dummy it and select the first few nodes. Since the splitting process is randomized, this is a totally random selection, right? /s
-    NodeTracker nodesVisited(subProb.dataBlock.size());
-    for (size_t i = 0; i < numCandidates; i+=1){
-        COMneighbors.neighbors.push_back(std::pair<IndexType, FloatType>(i,
-                                          distanceFunctor(centerOfMass, subProb.dataBlock.blockData[i])));
-        nodesVisited[i] = true;
-    }
-    std::make_heap(COMneighbors.neighbors.begin(), COMneighbors.neighbors.end(), NeighborDistanceComparison<IndexType, FloatType>);
-
-    bool breakVar = false;
-    GraphVertex<IndexType, FloatType> newState(COMneighbors);
-    while (!breakVar){
-        breakVar = true;   
-        for (const auto& curCandidate: COMneighbors){
-            for (const auto& joinTarget: subProb.subGraph[curCandidate.first]){
-                if(nodesVisited[joinTarget.first]) continue;
-                nodesVisited[joinTarget.first] = true;
-                FloatType distance = distanceFunctor(centerOfMass, subProb.dataBlock[joinTarget.first]);
-                if (distance < newState[0].second){
-                    newState.PushNeighbor({joinTarget.first, distance});
-                    breakVar = false;
-                }
-                
-            }
-        }
-
-        COMneighbors = newState;
-    }
-
-    return COMneighbors;
-}
-
-
-
-
-template<TriviallyCopyable IndexType, typename DataEntry, std::floating_point FloatType>
-struct QueryContext{
-    const Graph<IndexType, FloatType>& subGraph;
-    const DataBlock<DataEntry>& dataBlock;
-    GraphVertex<IndexType, FloatType> queryHint;
-    const int numCandidates;
-    std::unordered_map<size_t, Graph<IndexType, FloatType>> neighborCandidates;
-    std::unordered_map<size_t, FloatType> distances;
-    SpaceMetric<DataEntry, DataEntry, FloatType> distanceFunctor;
-
-    QueryContext(const Graph<IndexType, FloatType>& subGraph,
-                 const DataBlock<DataEntry>& dataBlock,
-                 GraphVertex<IndexType, DataEntry> queryHint,
-                 SpaceMetric<DataEntry, DataEntry, FloatType> distanceFunctor,
-                 const int numCandidates): subGraph(subGraph), dataBlock(dataBlock), queryHint(std::move(queryHint)), numCandidates(numCandidates), neighborCandidates(), distanceFunctor(distanceFunctor){};
-
-    QueryContext(const Graph<IndexType, FloatType>& subGraph,
-                 const DataBlock<DataEntry>& dataBlock,
-                 const std::valarray<FloatType>& centerOfMass,
-                 const int numCandidates,
-                 SpaceMetric<DataEntry, DataEntry, FloatType> distanceFunctor,
-                 SpaceMetric<std::valarray<FloatType>, DataEntry, FloatType> comDistanceFunctor):
-                    subGraph(subGraph), dataBlock(dataBlock), numCandidates(numCandidates), neighborCandidates(), distanceFunctor(distanceFunctor){
-        const SubProblemData thisSub{subGraph, dataBlock};
-        queryHint = QueryCOMNeighbors<IndexType, DataEntry, FloatType>(centerOfMass, thisSub, numCandidates, comDistanceFunctor);
-        for (auto& hint: queryHint){
-            hint.second = std::numeric_limits<FloatType>::max();
-        }
-    };
-
-    //Nearest Node Distance
-    //make checking this in parallel safe
-    FloatType operator*(QueryContext& rhs){
-        auto result = this->distances.find(rhs.dataBlock.blockNumber);
-        if(result == distances.end()){
-            FloatType distance = NearestNodes(rhs);
-            this->distances[rhs.dataBlock.blockNumber] = distance;
-            rhs.distances[this->dataBlock.blockNumber] = distance;
-        }
-        return this->distances[rhs.dataBlock.blockNumber];
-
-    }
-
-    void operator||(QueryContext& rhs){
-        auto result = this->neighborCandidates.find(rhs.dataBlock.blockNumber);
-        if (result != neighborCandidates.end()) return;
-        //Query RHS data against mine
-        rhs.neighborCandidates[this->dataBlock.blockNumber] = this->QuerySubGraph(rhs);
-        //Query My data against RHS
-        this->neighborCandidates[rhs.dataBlock.blockNumber] = rhs.QuerySubGraph(*this);
-    }
-    //
-
-    template<typename QueryType>
-    GraphVertex<IndexType, FloatType> QueryHotPath(GraphVertex<IndexType, FloatType> initVertex,
-                                                   const QueryType& queryData,
-                                                   NodeTracker nodesVisited){
-        GraphVertex<IndexType, FloatType> newState(initVertex);
-        bool breakVar = false;
-        while (!breakVar){
-            breakVar = true;
-            for (const auto& neighbor: initVertex){
-                const GraphVertex<IndexType, FloatType>& currentNeighbor = subGraph[neighbor.first];
-                for (const auto& joinTarget: currentNeighbor){
-                    if (nodesVisited[joinTarget.first] == true) continue;
-                    nodesVisited[joinTarget.first] = true;
-                    FloatType distance = this->distanceFunctor(queryData, dataBlock[joinTarget.first]);
-                    if (distance < newState[0].second){
-                        newState.PushNeighbor({joinTarget.first, distance});
-                        breakVar = false;
-                    }
-                }
-            }
-            initVertex = newState;
-        }
-        return initVertex;
-    }
-
-    private:
-
-    Graph<IndexType, FloatType> QuerySubGraph(const QueryContext& rhs){
-
-        //Initialize results with queryHint
-        Graph<IndexType, FloatType> retGraph;
-
-        
-        for (size_t i = 0; i<rhs.dataBlock.size(); i += 1){
-            DataEntry queryData = rhs.dataBlock[i];
-            /*
-            template<typename QueryType>
-    GraphVertex<IndexType, FloatType> QueryHotPath(GraphVertex<IndexType, FloatType> initVertex,
-                                                   const QueryType& queryData,
-            */
-            retGraph.push_back(QueryHotPath(queryHint, queryData, NodeTracker(dataBlock.size())));
-        }
-        return retGraph;
-    }
-
-    FloatType NearestNodes(const QueryContext& rhs){
-
-        assert(this->distanceFunctor == rhs.distanceFunctor);
-
-        std::pair<size_t, size_t> bestPair;
-        FloatType bestDistance(std::numeric_limits<FloatType>::max());
-        //NodeTracker nodesVisitedA(subGraphA.dataBlock.size());
-        //NodeTracker nodesVisitedB(subGraphB.dataBlock.size());
-
-        for(const auto& starterA: this->queryHint.neighbors){
-            //nodesVisitedA[starterA.first] = true;
-            for (const auto& starterB: rhs.queryHint.neighbors){
-                //nodesVisitedB[starterB.first] = true;
-                FloatType distance = distanceFunctor(this->dataBlock[starterA.first], rhs.dataBlock[starterB.first]);
-                if (distance < bestDistance){
-                    bestDistance = distance;
-                    bestPair = std::pair<size_t, size_t>(starterA.first, starterB.first);
-                }
-            }
-        }
-
-        bool breakVar = false;
-        while (!breakVar){
-            breakVar = true;
-            std::pair<size_t, size_t> tmpPair = bestPair;
-            for (const auto& neighborA: this->subGraph[bestPair.first]){
-                //if (!nodesVisitedA[neighborA.first]){
-                FloatType distance = distanceFunctor(this->dataBlock[neighborA.first], rhs.dataBlock[tmpPair.second]);
-                if (distance < bestDistance){
-                    bestDistance = distance;
-                    tmpPair.first = neighborA.first;
-                    breakVar = false;
-                }
-                    //nodesVisitedA[neighborA.first] = true;
-                //}  
-                
-                for (const auto& neighborOfNeighborA: this->subGraph[neighborA.first]){
-                    //if (nodesVisitedA[neighborOfNeighborA.first]) continue;
-                    //nodesVisitedA[neighborOfNeighborA.first] = true;
-                    FloatType distance = this->distanceFunctor(this->dataBlock[neighborOfNeighborA.first], rhs.dataBlock[tmpPair.second]);
-                    if (distance < bestDistance){
-                        bestDistance = distance;
-                        tmpPair.first = neighborOfNeighborA.first;
-                        breakVar = false;
-                    }
-                }
-            }
-            for (const auto& neighborB: rhs.subGraph[bestPair.second]){
-                //if (!nodesVisitedB[neighborB.first]){
-                    FloatType distance = this->distanceFunctor(this->dataBlock[tmpPair.first], rhs.dataBlock[neighborB.first]);
-                if (distance < bestDistance){
-                    bestDistance = distance;
-                    tmpPair.second = neighborB.first;
-                    breakVar = false;
-                }
-                //  nodesVisitedB[neighborB.first] = true;
-                //}
-                for (const auto& neighborOfNeighborB: rhs.subGraph[neighborB.first]){
-                    //nodesVisitedB[neighborOfNeighborB.first] = true;
-                    FloatType distance = this->distanceFunctor(this->dataBlock[tmpPair.first], rhs.dataBlock[neighborOfNeighborB.first]);
-                    if (distance < bestDistance){
-                        bestDistance = distance;
-                        tmpPair.second = neighborOfNeighborB.first;
-                        breakVar = false;
-                    }
-                }
-            }
-            bestPair = tmpPair;
-        }
-        
-        return bestDistance;
-    }
-
-};
-
-
-
-
-//DataBlock(const DataSet<DataEntry>& dataSource, std::span<size_t> dataPoints, SpaceMetric<DataEntry, FloatType> metric, size_t blockNumber):
 
 int main(){
 
@@ -519,21 +125,6 @@ int main(){
     }
     
     MetaGraph metaGraph(trainMapper.dataBlocks, 5);
-    /*
-    std::vector<GraphVertex<size_t, double>> queryHints;
-    for (size_t i = 0; i<metaGraph.points.size(); i += 1){
-        SubProblemData subProb{blockGraphs[i], trainMapper.dataBlocks[i]};
-        queryHints.push_back(QueryCOMNeighbors<size_t, std::valarray<float>, double>(metaGraph.points[i].centerOfMass,
-                                                                          subProb,
-                                                                          5,
-                                                                          EuclideanNorm<double, float, double>));
-
-    }
-    */
-    //SubProblemData subProbA{blockGraphs[0], trainMapper.dataBlocks[0]};
-    //SubProblemData subProbB{blockGraphs[1], trainMapper.dataBlocks[1]};
-
-    //std::tuple<size_t, size_t, double> testBest = NearestNodes<size_t, std::valarray<float>, double>(subProbA, subProbB, queryHints[0], queryHints[1], EuclideanNorm<float, double>);
 
     
     std::vector<QueryContext<size_t, std::valarray<float>, double>> queryContexts;
@@ -597,48 +188,6 @@ int main(){
         updatedBlockGraphs.push_back(std::move(blockGraph));
     };
 
-    //std::chrono::time_point<std::chrono::steady_clock> runEnd = std::chrono::steady_clock::now();
-    //std::cout << std::chrono::duration_cast<std::chrono::seconds>(runEnd - runStart).count() << "s Pointwise Join Calcs " << std::endl;
-    /*
-
-    QueryContext(const Graph<IndexType, FloatType>& subGraph,
-                 const DataBlock<DataEntry>& dataBlock,
-                 const std::valarray<FloatType>& centerOfMass,
-                 SpaceMetric<std::valarray<FloatType>, DataEntry, FloatType> distanceFunctor,
-                 const int numCandidates)
-
-    */
-    //std::chrono::time_point<std::chrono::steady_clock> runStart = std::chrono::steady_clock::now();
-    /*
-    for (size_t i = 0; i < metaGraph.verticies.size(); i += 1){
-
-        for(const auto& neighbor: metaGraph.verticies[i]){
-            SubProblemData subProbA{blockGraphs[i], trainMapper.dataBlocks[i]};
-            SubProblemData subProbB{blockGraphs[neighbor.first], trainMapper.dataBlocks[neighbor.first]};
-            double nnDist;
-            std::tie(std::ignore, std::ignore, nnDist) = NearestNodes<size_t, std::valarray<float>, double>(subProbA, subProbB, queryHints[i], queryHints[neighbor.first], EuclideanNorm<float, float, double>);
-            nearestNodeDistances[i].neighbors.push_back(std::pair(neighbor.first, nnDist));
-        }
-
-        std::sort(nearestNodeDistances[i].begin(), nearestNodeDistances[i].end(), NeighborDistanceComparison<size_t, double>);
-        std::vector<Graph<size_t, double>> candidates;
-        for (size_t j = 0; j<10; j+=1){
-            SubProblemData subProbA{blockGraphs[nearestNodeDistances[i][j].first], trainMapper.dataBlocks[nearestNodeDistances[i][j].first]};
-            SubProblemData subProbB{blockGraphs[i], trainMapper.dataBlocks[i]};
-            std::vector<size_t> indicies(subProbB.dataBlock.size());
-            std::iota(indicies.begin(), indicies.end(), 0);
-            candidates.push_back(QuerySubGraph(subProbA, subProbB, indicies, queryHints[nearestNodeDistances[i][j].first], 5, EuclideanNorm<float, float, double>));
-        }
-    }
-    */
-    
-
-
-    //std::chrono::time_point<std::chrono::steady_clock> runEnd = std::chrono::steady_clock::now();
-    //std::cout << std::chrono::duration_cast<std::chrono::seconds>(runEnd - runStart).count() << "s Nearest Node Calcs " << std::endl;
-
-    //std::tuple<size_t, size_t, double> bfTest = BruteNearestNodes<size_t, std::valarray<float>, double>(subProbA, subProbB, EuclideanNorm<float, double>);
-
 
     //WeightedGraphEdges graphEdges = NeighborsOutOfBlock(mnistFashionTestNeighbors, trainMapper.sourceToBlockIndex, testClassifications);
 
@@ -649,6 +198,20 @@ int main(){
     //SerializeCOMS(metaGraph.points, "./TestData/MNIST-Fashion-Train-COMs.bin");
     //SerializeMetaGraph(graphEdges, "./TestData/MNIST-Fashion-Test-MetaGraphEdges.bin");
     //SerializeVector<size_t>(trainClassifications, "./TestData/MNIST-Fashion-Train-SplittingIndicies.bin");
+
+    //std::chrono::time_point<std::chrono::steady_clock> runEnd = std::chrono::steady_clock::now();
+    //std::cout << std::chrono::duration_cast<std::chrono::seconds>(runEnd - runStart).count() << "s Pointwise Join Calcs " << std::endl;
+    
+
+
+    //std::chrono::time_point<std::chrono::steady_clock> runEnd = std::chrono::steady_clock::now();
+    //std::cout << std::chrono::duration_cast<std::chrono::seconds>(runEnd - runStart).count() << "s Nearest Node Calcs " << std::endl;
+
+
+
+
+
+
 
 
     /*

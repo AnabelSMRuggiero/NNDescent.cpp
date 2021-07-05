@@ -22,7 +22,7 @@ https://github.com/AnabelSMRuggiero/NNDescent.cpp
 #include <utility>
 
 #include "UtilityFunctions.hpp"
-#include "MNISTData.hpp"
+#include "../Utilities/Data.hpp"
 #include "SpaceMetrics.hpp"
 #include "RNG.hpp"
 
