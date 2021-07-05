@@ -109,7 +109,7 @@ Graph<IndexType, FloatType> QuerySubGraph(SubProblemData<IndexType, DataEntry, F
                     nodesVisited[joinTarget.first] = true;
                     FloatType distance = distanceFunctor(queryData, subGraphA.dataBlock[joinTarget.first]);
                     if (distance < newState[0].second){
-                        newState.PushNeigbor({joinTarget.first, distance});
+                        newState.PushNeighbor({joinTarget.first, distance});
                         breakVar = false;
                     }
                 }
@@ -250,7 +250,7 @@ GraphVertex<IndexType, FloatType> QueryCOMNeighbors(const std::valarray<FloatTyp
                 nodesVisited[joinTarget.first] = true;
                 FloatType distance = distanceFunctor(centerOfMass, subProb.dataBlock[joinTarget.first]);
                 if (distance < newState[0].second){
-                    newState.PushNeigbor({joinTarget.first, distance});
+                    newState.PushNeighbor({joinTarget.first, distance});
                     breakVar = false;
                 }
                 
@@ -311,9 +311,11 @@ struct QueryContext{
 
     void operator||(QueryContext& rhs){
         auto result = this->neighborCandidates.find(rhs.dataBlock.blockNumber);
-        if (result == distances.end()) return;
-        this->neighborCandidates[rhs.dataBlock.blockNumber] = this->QuerySubGraph(rhs);
-        rhs.neighborCandidates[this->dataBlock.blockNumber] = rhs.QuerySubGraph(*this);
+        if (result != neighborCandidates.end()) return;
+        //Query RHS data against mine
+        rhs.neighborCandidates[this->dataBlock.blockNumber] = this->QuerySubGraph(rhs);
+        //Query My data against RHS
+        this->neighborCandidates[rhs.dataBlock.blockNumber] = rhs.QuerySubGraph(*this);
     }
     //
 
@@ -332,7 +334,7 @@ struct QueryContext{
                     nodesVisited[joinTarget.first] = true;
                     FloatType distance = this->distanceFunctor(queryData, dataBlock[joinTarget.first]);
                     if (distance < newState[0].second){
-                        newState.PushNeigbor({joinTarget.first, distance});
+                        newState.PushNeighbor({joinTarget.first, distance});
                         breakVar = false;
                     }
                 }
@@ -350,14 +352,14 @@ struct QueryContext{
         Graph<IndexType, FloatType> retGraph;
 
         
-        for (size_t i = 0; i<this->dataBlock.size(); i += 1){
-            DataEntry queryData = this->dataBlock[i];
+        for (size_t i = 0; i<rhs.dataBlock.size(); i += 1){
+            DataEntry queryData = rhs.dataBlock[i];
             /*
             template<typename QueryType>
     GraphVertex<IndexType, FloatType> QueryHotPath(GraphVertex<IndexType, FloatType> initVertex,
                                                    const QueryType& queryData,
             */
-            retGraph.push_back(QueryHotPath(rhs.queryHint, queryData, NodeTracker(rhs.dataBlock.size())));
+            retGraph.push_back(QueryHotPath(queryHint, queryData, NodeTracker(dataBlock.size())));
         }
         return retGraph;
     }
@@ -516,7 +518,7 @@ int main(){
         blockGraphs.push_back(std::move(blockGraph));
     }
     
-    MetaGraph metaGraph(trainMapper.dataBlocks, 20);
+    MetaGraph metaGraph(trainMapper.dataBlocks, 5);
     /*
     std::vector<GraphVertex<size_t, double>> queryHints;
     for (size_t i = 0; i<metaGraph.points.size(); i += 1){
@@ -533,7 +535,7 @@ int main(){
 
     //std::tuple<size_t, size_t, double> testBest = NearestNodes<size_t, std::valarray<float>, double>(subProbA, subProbB, queryHints[0], queryHints[1], EuclideanNorm<float, double>);
 
-    Graph<size_t, double> nearestNodeDistances(metaGraph.verticies.size(), 20);
+    
     std::vector<QueryContext<size_t, std::valarray<float>, double>> queryContexts;
 
     for (size_t i = 0; i<metaGraph.verticies.size(); i+=1){
@@ -545,6 +547,58 @@ int main(){
                                 EuclideanNorm<double, float, double>));
     }
 
+    for (size_t i = 0; i<metaGraph.verticies.size(); i+=1){
+        GraphVertex<size_t, double>& vertex = metaGraph.verticies[i];
+        std::sort(vertex.begin(), vertex.end(), NeighborDistanceComparison<size_t, double>);
+        for(size_t j = 0; j<vertex.size(); j+=1){
+            //Nearest Node distance; results are cached within objects. In fact, this op currently returns void. Maybe return a const ref to... something?
+            queryContexts[i] * queryContexts[vertex[j].first];
+        }
+    }
+
+    Graph<size_t, double> nearestNodeDistances;
+    for(auto& context: queryContexts){
+        GraphVertex<size_t, double> nearestNeighbors;
+        std::unordered_map<size_t, double> distanceMap = std::move(context.distances);
+        for(const auto& pair: distanceMap){
+            nearestNeighbors.push_back(pair);
+        }
+        std::sort(nearestNeighbors.begin(), nearestNeighbors.end(), NeighborDistanceComparison<size_t, double>);
+        nearestNodeDistances.push_back(std::move(nearestNeighbors));
+    }
+
+    //std::chrono::time_point<std::chrono::steady_clock> runStart = std::chrono::steady_clock::now();
+
+    for(size_t i = 0; i<nearestNodeDistances.size(); i+=1){
+        //Do all of them? Let's try for now. I can add in hyperparam here.
+        for(const auto& neighbor: nearestNodeDistances[i]){
+            //Compute the nodewise join of the two blocks, results cached
+            queryContexts[i] || queryContexts[neighbor.first];
+        }
+    }
+
+    std::vector<Graph<BlockIndex, double>> updatedBlockGraphs;
+    for(auto& context: queryContexts){
+        std::unordered_map<size_t, Graph<size_t, double>> candidates(std::move(context.neighborCandidates));
+        Graph<BlockIndex, double> blockGraph;
+        for (const auto& vertex: blockGraphs[context.dataBlock.blockNumber]){
+            GraphVertex<BlockIndex, double> newVert;
+            for (const auto& neighbor: vertex){
+                newVert.push_back({{context.dataBlock.blockNumber, neighbor.first}, neighbor.second});
+            }
+            blockGraph.push_back(std::move(newVert));
+        }
+
+        for (auto& [blockNum, updateGraph]: candidates){
+            for (size_t i = 0; i<updateGraph.size(); i+=1){
+                ConsumeVertex(blockGraph[i], updateGraph[i], blockNum);
+            }
+        }
+        updatedBlockGraphs.push_back(std::move(blockGraph));
+    };
+
+    //std::chrono::time_point<std::chrono::steady_clock> runEnd = std::chrono::steady_clock::now();
+    //std::cout << std::chrono::duration_cast<std::chrono::seconds>(runEnd - runStart).count() << "s Pointwise Join Calcs " << std::endl;
     /*
 
     QueryContext(const Graph<IndexType, FloatType>& subGraph,

@@ -60,13 +60,13 @@ int ComputeLocalJoins(const MNISTData& dataSource,
                     graphState[joinTarget.second].dataReference);
                 
                 if (distance < graphState[joinTarget.second].neighbors[0].second){
-                    graphState[joinTarget.second].PushNeigbor(std::pair<IndexType, double>(joinTarget.first, distance));
+                    graphState[joinTarget.second].PushNeighbor(std::pair<IndexType, double>(joinTarget.first, distance));
                     neighborListChanges++;
                     pushToCmp = true;
                 }
             }
             if (distance < graphState[joinTarget.first].neighbors[0].second){
-                graphState[joinTarget.first].PushNeigbor(std::pair<IndexType, double>(joinTarget.second, distance));
+                graphState[joinTarget.first].PushNeighbor(std::pair<IndexType, double>(joinTarget.second, distance));
                 neighborListChanges++;
                 pushToCmp = true;
             }
