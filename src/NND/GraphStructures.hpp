@@ -199,6 +199,22 @@ struct Graph{
         return verticies[i.dataIndex];
     }
 
+    constexpr const GraphVertex<IndexType, FloatType>& operator[](size_t i) const{
+        return verticies[i];
+    }
+
+    constexpr const GraphVertex<IndexType, FloatType>& operator[](BlockIndex i) const{
+        return verticies[i.dataIndex];
+    }
+
+    constexpr void push_back(const GraphVertex<IndexType, FloatType>& value){
+        verticies.push_back(std::forward(value));
+    }
+
+    constexpr void push_back(GraphVertex<IndexType, FloatType>&& value){
+        verticies.push_back(std::forward(value));
+    }
+
     size_t size(){
         return verticies.size();
     }
