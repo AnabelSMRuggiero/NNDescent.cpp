@@ -70,7 +70,7 @@ struct GraphVertex{
         return neighbors[i];
     }
 
-    std::pair<IndexType, FloatType>& operator[](BlockIndex i){
+    std::pair<IndexType, FloatType>& operator[](BlockIndecies i){
         // I'm assuming the block number is correct
         return neighbors[i.dataIndex];
     }
@@ -108,7 +108,7 @@ struct GraphVertex{
 };
 
 template<TriviallyCopyable OtherIndex, typename OtherDist, typename ConsumerDist>
-void ConsumeVertex(GraphVertex<BlockIndex, ConsumerDist>& consumer, GraphVertex<OtherIndex, OtherDist>& consumee, size_t consumeeBlockNum){
+void ConsumeVertex(GraphVertex<BlockIndecies, ConsumerDist>& consumer, GraphVertex<OtherIndex, OtherDist>& consumee, size_t consumeeBlockNum){
     std::sort(consumee.begin(), consumee.end(), NeighborDistanceComparison<OtherIndex, OtherDist>);
     for (auto& pair: consumee){
         if (pair.second > consumer.neighbors[0].second) return;
@@ -161,7 +161,7 @@ struct CacheLineVertex{
         return neighbors[i];
     }
 
-    std::pair<uint32_t, float>& operator[](BlockIndex i){
+    std::pair<uint32_t, float>& operator[](BlockIndecies i){
         // I'm assuming the block number is correct
         return neighbors[i.dataIndex];
     }
@@ -218,7 +218,7 @@ struct Graph{
         return verticies[i];
     }
 
-    GraphVertex<IndexType, FloatType>& operator[](BlockIndex i){
+    GraphVertex<IndexType, FloatType>& operator[](BlockIndecies i){
         // I'm assuming the block number is correct
         return verticies[i.dataIndex];
     }
@@ -227,7 +227,7 @@ struct Graph{
         return verticies[i];
     }
 
-    constexpr const GraphVertex<IndexType, FloatType>& operator[](BlockIndex i) const{
+    constexpr const GraphVertex<IndexType, FloatType>& operator[](BlockIndecies i) const{
         return verticies[i.dataIndex];
     }
 

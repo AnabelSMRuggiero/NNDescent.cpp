@@ -35,7 +35,7 @@ void PopulateInitialQueueStates(const Graph<IndexType, FloatType>& graphState, s
 Computes an entire iteration of NND
 */
 template<typename DataEntry, TriviallyCopyable IndexType, typename FloatType>
-int ComputeLocalJoins(const MNISTData& dataSource,
+int ComputeLocalJoins(const DataSet<DataEntry>& dataSource,
                        Graph<IndexType, FloatType>& graphState, 
                        std::vector<ComparisonQueue<std::pair<size_t,size_t>>>& joinQueues, 
                        std::vector<ComparisonQueue<std::pair<size_t,size_t>>>& cmpQueues, 

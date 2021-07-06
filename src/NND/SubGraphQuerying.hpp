@@ -14,9 +14,11 @@ https://github.com/AnabelSMRuggiero/NNDescent.cpp
 
 #include <vector>
 #include <unordered_map>
+#include <limits>
+#include <cassert>
 
 #include "../Utilities/Data.hpp"
-#include "DataDeserialization.hpp"
+#include "../Utilities/DataDeserialization.hpp"
 #include "GraphStructures.hpp"
 
 namespace nnd{
@@ -44,7 +46,7 @@ struct NodeTracker{
         return flags[i];
     }
 
-    reference operator[](BlockIndex i){
+    reference operator[](BlockIndecies i){
         //Assuming block index lines up here;
         return flags[i.dataIndex];
     }
@@ -173,7 +175,7 @@ struct QueryContext{
     template<typename QueryType>
     GraphVertex<IndexType, FloatType> QueryHotPath(GraphVertex<IndexType, FloatType> initVertex,
                                                    const QueryType& queryData){
-        NodeTracker nodesVisited(dataBlock.size)
+        NodeTracker nodesVisited(dataBlock.size());
         GraphVertex<IndexType, FloatType> newState(initVertex);
         bool breakVar = false;
         while (!breakVar){

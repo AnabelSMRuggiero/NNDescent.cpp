@@ -8,8 +8,8 @@ Please refer to the project repo for any updates regarding liscensing.
 https://github.com/AnabelSMRuggiero/NNDescent.cpp
 */
 
-#ifndef MNISTDATA_HPP
-#define MNISTDATA_HPP
+#ifndef NND_DATA_HPP
+#define NND_DATA_HPP
 #include <valarray>
 #include <string>
 #include <vector>
@@ -25,20 +25,6 @@ https://github.com/AnabelSMRuggiero/NNDescent.cpp
 
 namespace nnd{
 
-//TODO: Abstract this into the base for a data block
-struct MNISTData{
-
-    //std::valarray<unsigned char> rawData;
-
-    std::vector<std::valarray<unsigned char>> samples;
-
-    unsigned long numberOfSamples;
-    size_t vectorLength;
-    unsigned long imageWidth;
-    unsigned long imageHeight;
-
-    MNISTData(std::string& dataLocation, int targetMagic = 2051);
-};
 
 template<typename DataEntry>
 struct DataSet{
@@ -67,8 +53,18 @@ struct DataSet{
 //Conceptual layout
 
 //struct DataSet
+/*
+template<typename BlockNumberType = size_t, typename DataIndexType = size_t>
+struct BlockIndecies{
+    // The block a data point exists in
+    BlockNumberType blockNumber;
+    // The index within that block
+    DataIndexType dataIndex;
 
-struct BlockIndex{
+};
+*/
+
+struct BlockIndecies{
     // The block a data point exists in
     size_t blockNumber;
     // The index within that block
@@ -76,7 +72,8 @@ struct BlockIndex{
 
 };
 
-inline bool operator==(const BlockIndex lhs, const BlockIndex& rhs){
+
+inline bool operator==(const BlockIndecies lhs, const BlockIndecies& rhs){
     return (lhs.blockNumber == rhs.blockNumber) && (lhs.dataIndex == rhs.dataIndex);
 }
 
@@ -102,7 +99,7 @@ struct DataBlock{
         return blockData[i];
     }
 
-    DataEntry& operator[](BlockIndex i){
+    DataEntry& operator[](BlockIndecies i){
         static_assert(i.blockNumber == blockNumber);
         return blockData[i.dataIndex];
     }
@@ -111,7 +108,7 @@ struct DataBlock{
         return blockData[i];
     }
 
-    const DataEntry& operator[](BlockIndex i) const{
+    const DataEntry& operator[](BlockIndecies i) const{
         //static_assert(i.blockNumber == blockNumber);
         return blockData[i.dataIndex];
     }
@@ -138,9 +135,9 @@ struct DataBlock{
 }
 
 template<>
-struct std::hash<nnd::BlockIndex>{
+struct std::hash<nnd::BlockIndecies>{
 
-    size_t operator()(const nnd::BlockIndex& index) const noexcept{
+    size_t operator()(const nnd::BlockIndecies& index) const noexcept{
         return std::hash<size_t>()(index.blockNumber ^ std::hash<size_t>()(index.dataIndex));
     };
 
