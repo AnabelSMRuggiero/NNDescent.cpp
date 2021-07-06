@@ -9,6 +9,7 @@
     - I could just be boring and front end SVD (which doesn't really work for non-euclidian easily, but would be needed for generalized PCA init)
 
 - I just realized, some distance metrics might wanna return an integral type (binary distances like hamming)
+- Template BlockIndicies
 
 #RPTrees
 - Add way to track best splits
@@ -30,6 +31,7 @@
   - Also set it up so NearestPair calculations can update neighbor lists.
   - Prototyped CacheLineVertex
 - Wrap searching function prototypes into a search context
+- Should I move results caching outside of the query context? I kinda think having the results cached internally and not using the operator returns is an anti-patern.
 
 #Parallelization and Distributed Computing
 - Do a second pass on the MetaGraph proceedures (assuming the results look good; seems promising so far)

@@ -16,7 +16,7 @@ https://github.com/AnabelSMRuggiero/NNDescent.cpp
 #include <ranges>
 #include <span>
 
-#include "MNISTData.hpp"
+#include "../Utilities/Data.hpp"
 #include "GraphStructures.hpp"
 
 namespace nnd{
@@ -143,8 +143,8 @@ struct DataMapper{
     size_t blockCounter;
     std::vector<DataBlock<DataEntry>> dataBlocks;
     std::unordered_map<size_t, size_t> splitToBlockNum;
-    std::unordered_map<BlockIndex, size_t> blockIndexToSource;
-    std::vector<BlockIndex> sourceToBlockIndex;
+    std::unordered_map<BlockIndecies, size_t> blockIndexToSource;
+    std::vector<BlockIndecies> sourceToBlockIndex;
     std::vector<size_t> sourceToSplitIndex;
 
     DataMapper(const DataSet<DataEntry>& source):
@@ -155,9 +155,9 @@ struct DataMapper{
         splitToBlockNum[splittingIndex] = blockCounter;
         for (size_t i = 0; i<indicies.size(); i += 1){
             size_t index = indicies[i];
-            sourceToBlockIndex[index] = BlockIndex(blockCounter, i);
+            sourceToBlockIndex[index] = BlockIndecies(blockCounter, i);
             sourceToSplitIndex[index] = splittingIndex;
-            blockIndexToSource[BlockIndex(blockCounter, i)] = index;
+            blockIndexToSource[BlockIndecies(blockCounter, i)] = index;
         }
         dataBlocks.push_back(DataBlock(dataSource, indicies, blockCounter++));
     };
@@ -170,7 +170,7 @@ using UnweightedGraphEdges = std::unordered_map<size_t, std::unordered_map<size_
 using WeightedGraphEdges = std::unordered_map<size_t, std::vector<std::pair<size_t, double>>>;
 
 WeightedGraphEdges NeighborsOutOfBlock(const DataSet<std::valarray<int32_t>>& groundTruth,
-    const std::vector<BlockIndex>& trainClassifications,
+    const std::vector<BlockIndecies>& trainClassifications,
     const std::vector<size_t>& testClassifications){
         UnweightedGraphEdges unweightedGraph;
         for(size_t i = 0; i<groundTruth.samples.size(); i += 1){

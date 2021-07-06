@@ -18,15 +18,11 @@ https://github.com/AnabelSMRuggiero/NNDescent.cpp
 #include <valarray>
 #include <numeric>
 #include <cmath>
-#include <iterator>
 #include <unordered_map>
 #include <unordered_set>
 #include <bit>
-#include <fstream>
-#include <limits>
-#include <span>
 #include <ranges>
-#include <cassert>
+#include <memory>
 
 
 #include "Utilities/Data.hpp"
@@ -45,6 +41,13 @@ https://github.com/AnabelSMRuggiero/NNDescent.cpp
 
 //namespace chrono = std::chrono;
 using namespace nnd;
+
+template<typename DataIndexType>
+struct BlockQueue{
+    // If I routinely fill this up 24bytes worth duplicates from within block, use a vector instead of multiple pairs.
+    std::vector<std::pair<DataIndexType, DataIndexType>> comparisonTargets;
+    std::vector<std::pair<DataIndexType, std::vector<DataIndexType>>> joinTargets;
+};
 
 
 
@@ -168,12 +171,12 @@ int main(){
         }
     }
 
-    std::vector<Graph<BlockIndex, double>> updatedBlockGraphs;
+    std::vector<Graph<BlockIndecies, double>> updatedBlockGraphs;
     for(auto& context: queryContexts){
         std::unordered_map<size_t, Graph<size_t, double>> candidates(std::move(context.neighborCandidates));
-        Graph<BlockIndex, double> blockGraph;
+        Graph<BlockIndecies, double> blockGraph;
         for (const auto& vertex: blockGraphs[context.dataBlock.blockNumber]){
-            GraphVertex<BlockIndex, double> newVert;
+            GraphVertex<BlockIndecies, double> newVert;
             for (const auto& neighbor: vertex){
                 newVert.push_back({{context.dataBlock.blockNumber, neighbor.first}, neighbor.second});
             }
@@ -188,6 +191,16 @@ int main(){
         updatedBlockGraphs.push_back(std::move(blockGraph));
     };
 
+    //Initial filling of comparison targets.
+    std::vector<std::unordered_map<size_t, BlockQueue<size_t>>> queueMaps(updatedBlockGraphs.size());
+    for (size_t i = 0; i<updatedBlockGraphs.size(); i+=1){
+        for (size_t j = 0; j<updatedBlockGraphs[i].size(); j+=1){
+            for (const auto& neighbor: updatedBlockGraphs[i][j]){
+                if (neighbor.first.blockNumber != i) queueMaps[i][neighbor.first.blockNumber].comparisonTargets.push_back({j, neighbor.first.dataIndex});
+            }
+            // Do in-block comparisons to init joins here.
+        }
+    }
 
     //WeightedGraphEdges graphEdges = NeighborsOutOfBlock(mnistFashionTestNeighbors, trainMapper.sourceToBlockIndex, testClassifications);
 
