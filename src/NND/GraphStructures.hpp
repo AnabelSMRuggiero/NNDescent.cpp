@@ -240,7 +240,7 @@ struct Graph{
         verticies.push_back(std::forward<VertexReferenceType>(value));
     }
 
-    size_t size(){
+    size_t size() const noexcept{
         return verticies.size();
     }
     
