@@ -59,8 +59,16 @@ using ComparisonMap = std::unordered_map<BlockNumberType, ComparisonVec<DataInde
 template<typename DataIndexType>
 using JoinHint = std::pair<DataIndexType, std::vector<DataIndexType>>;
 
+/*
 template<typename DataIndexType>
-using JoinHintVec = std::vector<std::pair<DataIndexType, std::vector<DataIndexType>>>;
+struct JoinHint{
+    DataIndexType joinee;
+    std::vector<DataIndexType> joinStart;
+};
+*/
+
+template<typename DataIndexType>
+using JoinHints = std::unordered_map<DataIndexType, std::vector<DataIndexType>>;
 
 template<typename BlockNumberType, typename DataIndexType>                                   // Consider using a fixed size array
 using JoinMap = std::unordered_map<BlockNumberType, std::unordered_map<DataIndexType, std::vector<DataIndexType>>>;
@@ -95,6 +103,56 @@ JoinMap<BlockNumberType, DataIndexType> InitializeJoinMap(const std::vector<Grap
         }
     }
     return joinMap;
+}
+
+//template<typename BlockNumberType, typename DataIndexType, typename DataEntry, typename DistType>
+template<typename DataIndexType, typename DataEntry, typename DistType>
+std::vector<std::pair<DataIndexType, GraphVertex<DataIndexType, DistType>>> BlockwiseJoin(const JoinHints<DataIndexType>& startJoins,
+                   Graph<BlockIndecies, DistType>& currentGraphState,
+                   Graph<DataIndexType, DistType>& searchSubgraph,
+                   const DataBlock<DataEntry>& blockData,
+                   const QueryContext<DataIndexType, DataEntry, DistType>& targetBlock){
+    
+    std::vector<std::pair<DataIndexType, GraphVertex<DataIndexType, DistType>>> joinHints;
+    for (const auto& hint: startJoins){
+        GraphVertex<DataIndexType, DistType> queryHint;
+        for (const auto index: hint.second){
+            queryHint.push_back({index, std::numeric_limits<DistType>::max()});
+        }
+        joinHints.push_back({hint.first, std::move(queryHint)});
+    }
+    NodeTracker nodesJoined(searchSubgraph.size());
+    std::vector<std::pair<DataIndexType, GraphVertex<DataIndexType, DistType>>> joinResults;
+    
+    while(joinHints.size()){
+        for (const auto& joinHint: joinHints){
+            //GraphVertex<DataIndexType, DistType> joinResult = targetBlock || QueryPoint{joinHint.second, blockData[joinHint.first]};
+            
+            joinResults.push_back({joinHint.first, targetBlock || QueryPoint{joinHint.second, blockData[joinHint.first]}});
+            nodesJoined[joinHint.first] = true;
+        }
+        std::vector<std::pair<DataIndexType, GraphVertex<DataIndexType, DistType>>> newJoins;
+        for(const auto& result: joinResults){
+            //std::heap_sort(result.second.begin(), result.second.end(), NeighborDistanceComparison<DataIndexType, DistType>);
+            bool newNeighbor = false;
+            for (const auto& neighborCandidate: result.second){
+                if (neighborCandidate.second < currentGraphState[result.first][0]){
+                    newNeighbor = true;
+                    break;
+                }
+            }
+            if (newNeighbor){
+                
+                for(const auto& leafNeighbor: searchSubgraph[result.first]){
+                    if(!nodesJoined[leafNeighbor.first]){
+                        newJoins.push_back({leafNeighbor.first, result.second});
+                    }
+                }
+            }
+        }
+        joinHints = std::move(newJoins);
+    }
+    return joinResults;
 }
 
 
