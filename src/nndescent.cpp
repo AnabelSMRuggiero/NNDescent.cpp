@@ -41,16 +41,61 @@ https://github.com/AnabelSMRuggiero/NNDescent.cpp
 
 //namespace chrono = std::chrono;
 using namespace nnd;
-
+/*
 template<typename DataIndexType>
 struct BlockQueue{
     // If I routinely fill this up 24bytes worth duplicates from within block, use a vector instead of multiple pairs.
     std::vector<std::pair<DataIndexType, DataIndexType>> comparisonTargets;
     std::vector<std::pair<DataIndexType, std::vector<DataIndexType>>> joinTargets;
 };
+*/
 
+template<typename DataIndexType>
+using ComparisonVec = std::vector<std::pair<DataIndexType, DataIndexType>>;
 
+template<typename BlockNumberType, typename DataIndexType>
+using ComparisonMap = std::unordered_map<BlockNumberType, ComparisonVec<DataIndexType>>;
 
+template<typename DataIndexType>
+using JoinHint = std::pair<DataIndexType, std::vector<DataIndexType>>;
+
+template<typename DataIndexType>
+using JoinHintVec = std::vector<std::pair<DataIndexType, std::vector<DataIndexType>>>;
+
+template<typename BlockNumberType, typename DataIndexType>                                   // Consider using a fixed size array
+using JoinMap = std::unordered_map<BlockNumberType, std::unordered_map<DataIndexType, std::vector<DataIndexType>>>;
+// I could also do a struct where the actual data is vectors, and I use unordered_maps to remap indicies
+
+template<typename BlockNumberType, typename DataIndexType, typename DistType>
+ComparisonMap<BlockNumberType, DataIndexType> InitializeComparisonQueues(const Graph<BlockIndecies, DistType>& currentBlock, BlockNumberType blockNum){
+
+    ComparisonMap<BlockNumberType, DataIndexType> retMap;
+    for (size_t j = 0; j<currentBlock.size(); j+=1){
+        for (const auto& neighbor: currentBlock[j]){
+            if (neighbor.first.blockNumber != blockNum) retMap[neighbor.first.blockNumber].push_back({j, neighbor.first.dataIndex});
+        }
+    }
+
+    return retMap;
+}
+
+template<typename BlockNumberType, typename DataIndexType, typename DistType>
+JoinMap<BlockNumberType, DataIndexType> InitializeJoinMap(const std::vector<Graph<BlockIndecies, DistType>>& updatedBlockGraphs,
+                                                          const ComparisonMap<BlockNumberType, DataIndexType>& comparisonMap,
+                                                          const BlockNumberType currentBlock){
+    JoinMap<BlockNumberType, DataIndexType> joinMap;
+    for (auto& [targetBlock, queue]: comparisonMap){
+        //std::unordered_map<size_t, std::pair<size_t, std::vector<size_t>>> joinHints;
+        for (const auto& [sourceIndex, targetIndex]: queue){
+            for (const auto& neighbor: updatedBlockGraphs[targetBlock][targetIndex]){
+                if (neighbor.first.blockNumber == targetBlock || neighbor.first.blockNumber == currentBlock) continue;
+                auto result = std::ranges::find(joinMap[neighbor.first.blockNumber][sourceIndex], neighbor.first.dataIndex);
+                if (result == joinMap[neighbor.first.blockNumber][sourceIndex].end()) joinMap[neighbor.first.blockNumber][sourceIndex].push_back(neighbor.first.dataIndex);
+            }
+        }
+    }
+    return joinMap;
+}
 
 
 int main(){
@@ -63,9 +108,13 @@ int main(){
 
     //DataSet<std::valarray<unsigned char>> mnistDigitsTrain(trainDataFilePath, 28*28, 60'000, &ExtractNumericArray<unsigned char,dataEndianness>);
 
-    
+    //std::chrono::time_point<std::chrono::steady_clock> runStart = std::chrono::steady_clock::now();
+
     std::string trainDataFilePath("./TestData/MNIST-Fashion-Train.bin");
     DataSet<std::valarray<float>> mnistFashionTrain(trainDataFilePath, 28*28, 60'000, &ExtractNumericArray<float,dataEndianness>);
+
+    //std::chrono::time_point<std::chrono::steady_clock> runEnd = std::chrono::steady_clock::now();
+    //std::cout << std::chrono::duration_cast<std::chrono::seconds>(runEnd - runStart).count() << "s Pointwise Join Calcs " << std::endl;
 
     std::mt19937_64 rngEngine(0);
     std::uniform_int_distribution<size_t> rngDist(size_t(0), mnistFashionTrain.numberOfSamples - 1);
@@ -127,7 +176,7 @@ int main(){
         blockGraphs.push_back(std::move(blockGraph));
     }
     
-    MetaGraph metaGraph(trainMapper.dataBlocks, 5);
+    MetaGraph metaGraph(trainMapper.dataBlocks, 2);
 
     
     std::vector<QueryContext<size_t, std::valarray<float>, double>> queryContexts;
@@ -190,16 +239,20 @@ int main(){
         }
         updatedBlockGraphs.push_back(std::move(blockGraph));
     };
-
+    
     //Initial filling of comparison targets.
-    std::vector<std::unordered_map<size_t, BlockQueue<size_t>>> queueMaps(updatedBlockGraphs.size());
+    std::vector<ComparisonMap<size_t, size_t>> queueMaps;
+    queueMaps.reserve(updatedBlockGraphs.size());
     for (size_t i = 0; i<updatedBlockGraphs.size(); i+=1){
-        for (size_t j = 0; j<updatedBlockGraphs[i].size(); j+=1){
-            for (const auto& neighbor: updatedBlockGraphs[i][j]){
-                if (neighbor.first.blockNumber != i) queueMaps[i][neighbor.first.blockNumber].comparisonTargets.push_back({j, neighbor.first.dataIndex});
-            }
-            // Do in-block comparisons to init joins here.
-        }
+        queueMaps.push_back(InitializeComparisonQueues<size_t, size_t, double>(updatedBlockGraphs[i], i));
+    }
+    
+    std::vector<JoinMap<size_t, size_t>> joinHints;
+
+    for(size_t i = 0; i<queueMaps.size(); i+=1){
+        ComparisonMap<size_t, size_t>& comparisonMap = queueMaps[i];
+        
+        joinHints.push_back(InitializeJoinMap<size_t, size_t, double>(updatedBlockGraphs, comparisonMap, i));
     }
 
     //WeightedGraphEdges graphEdges = NeighborsOutOfBlock(mnistFashionTestNeighbors, trainMapper.sourceToBlockIndex, testClassifications);
