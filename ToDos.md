@@ -32,6 +32,11 @@
   - Prototyped CacheLineVertex
 - Wrap searching function prototypes into a search context
 - Should I move results caching outside of the query context? I kinda think having the results cached internally and not using the operator returns is an anti-patern.
+- Search leafGraphs don't need distances.
+
+- Try just using the COM neighbors instead of neighbors of neighbors for join hints. It takes a lot of branches and small loops to to build the hints.
+
+- On QueryHotPath: I want copies when I use the queryHint member, but not really when I'm passing in hints.
 
 #Parallelization and Distributed Computing
 - Do a second pass on the MetaGraph proceedures (assuming the results look good; seems promising so far)

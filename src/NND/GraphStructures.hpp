@@ -38,9 +38,9 @@ struct GraphVertex{
     std::vector<std::pair<IndexType, FloatType>> neighbors;
     //std::vector<size_t> reverseNeighbor;
 
-    GraphVertex() : neighbors(0){};
+    GraphVertex(): neighbors(0){};
 
-    GraphVertex(size_t numNeighbors):neighbors(0) {
+    GraphVertex(size_t numNeighbors): neighbors(0) {
         this->neighbors.reserve(numNeighbors + 1);
     };
 
@@ -53,7 +53,9 @@ struct GraphVertex{
         neighbors.pop_back();
     };
 
-    
+    void JoinPrep(){
+
+    }
     
     //Object Composition stuff below here
 
