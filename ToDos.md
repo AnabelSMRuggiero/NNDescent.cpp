@@ -1,7 +1,6 @@
 #General
 - Refactor RNG stuff
 - Refine implementation of space metrics and dot product. 
-  - std::inner_product exists
 - Think of more sensical names for the headers
 - Get a better idea of the actual data that will be fed into the algorithm.
   - Assume always array of numerics?
@@ -14,7 +13,7 @@
 #RPTrees
 - Add way to track best splits
   - With the direction I'm planning on going this probably won't be needed.
-- ~~Move forest building outside of constructor.~~
+- Move forest building outside of constructor.
 - Add in tree merge functionality
 - Think of a better way to refine tree splitting than if statement into goto.
 - Check to see if omitting the rejected split copy violates the invariance of sum of indicies
@@ -25,7 +24,6 @@
   - Add in recall checking
 - This will be forever out from now, but test builing data array inside of the control structure itself to see if it reduces cache misses.
 - Try spinning up branchless block bruteforcing.
-- Update algorithm/data structure prototypes to reflect data blocking
 - Template MetaGraph stuff
 - Rethink verticies. There should be some way to set up making operations on them more efficient.
   - Also set it up so NearestPair calculations can update neighbor lists.
@@ -35,13 +33,19 @@
 - Search leafGraphs don't need distances.
 
 - Try just using the COM neighbors instead of neighbors of neighbors for join hints. It takes a lot of branches and small loops to to build the hints.
+  - Already improved upon how I'm currently handling it
+- Maybe replace the initial bruteforce joins with the current blockwise join prototype. Use the results of NearestNode searches to seed this.
+  - Could affect recall? Might mean I don't do searches that would likely come up dead anyways, but it might mean I miss out searches that are relevant.
+  - But if it is faster, it could mean I could do more initial joins to seed a more diverse pool of searches.
 
 - On QueryHotPath: I want copies when I use the queryHint member, but not really when I'm passing in hints.
 
 #Parallelization and Distributed Computing
-- Do a second pass on the MetaGraph proceedures (assuming the results look good; seems promising so far)
+- Do a second pass on the MetaGraph procedures 
 - Points of caution for parallelization
   - Splitting schemes
     - Making sure only one thread creates a splitting vector
   - QueryContexts
     - Checking to avoid double calculating.
+
+- I think I'll end up doing a tasking model where a producer wraps the work and resources in a functor and passes the functor to the thread.

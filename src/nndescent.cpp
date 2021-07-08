@@ -105,10 +105,13 @@ JoinMap<BlockNumberType, DataIndexType> InitializeJoinMap(const std::vector<Grap
     return joinMap;
 }
 
+template<typename DataIndexType, typename DistType>
+using JoinResults = std::vector<std::pair<DataIndexType, GraphVertex<DataIndexType, DistType>>>;
+
 //template<typename BlockNumberType, typename DataIndexType, typename DataEntry, typename DistType>
 template<typename DataIndexType, typename DataEntry, typename DistType>
-std::vector<std::pair<DataIndexType, GraphVertex<DataIndexType, DistType>>> BlockwiseJoin(const JoinHints<DataIndexType>& startJoins,
-                   Graph<BlockIndecies, DistType>& currentGraphState,
+JoinResults<DataIndexType, DistType> BlockwiseJoin(const JoinHints<DataIndexType>& startJoins,
+                   const Graph<BlockIndecies, DistType>& currentGraphState,
                    Graph<DataIndexType, DistType>& searchSubgraph,
                    const DataBlock<DataEntry>& blockData,
                    const QueryContext<DataIndexType, DataEntry, DistType>& targetBlock){
@@ -132,27 +135,45 @@ std::vector<std::pair<DataIndexType, GraphVertex<DataIndexType, DistType>>> Bloc
             nodesJoined[joinHint.first] = true;
         }
         std::vector<std::pair<DataIndexType, GraphVertex<DataIndexType, DistType>>> newJoins;
-        for(const auto& result: joinResults){
+        for(auto& result: joinResults){
             //std::heap_sort(result.second.begin(), result.second.end(), NeighborDistanceComparison<DataIndexType, DistType>);
             bool newNeighbor = false;
+            GraphVertex<DataIndexType, DistType> updatedResult;
             for (const auto& neighborCandidate: result.second){
                 if (neighborCandidate.second < currentGraphState[result.first][0]){
                     newNeighbor = true;
-                    break;
+                    updatedResult.push_back(neighborCandidate);
                 }
             }
-            if (newNeighbor){
-                
+            if (newNeighbor){   
                 for(const auto& leafNeighbor: searchSubgraph[result.first]){
                     if(!nodesJoined[leafNeighbor.first]){
                         newJoins.push_back({leafNeighbor.first, result.second});
                     }
                 }
             }
+            result.second = updatedResult;
         }
         joinHints = std::move(newJoins);
     }
     return joinResults;
+}
+template<typename BlockNumberType, typename DataIndexType, typename DistType>
+void NewJoinQueues(const std::vector<std::pair<DataIndexType, GraphVertex<DataIndexType, DistType>>>& joinResults,
+                   const BlockNumberType currentBlockNum,
+                   const Graph<BlockIndecies, DistType>& targetGraphState,
+                   JoinMap<BlockNumberType, DataIndexType>& mapToUpdate){
+    
+    for (const auto& result: joinResults){
+        for (const auto index: result.second){
+            for (const auto& targetVertexNeighbor: targetGraphState[index]){
+                BlockNumberType targetBlock = targetVertexNeighbor.first.blockNumber;
+                if (targetBlock == currentBlockNum) continue;
+                auto findItr = std::find(mapToUpdate[targetBlock][result.first].begin(), mapToUpdate[targetBlock][result.first].end(), index);
+                if (findItr != mapToUpdate[targetBlock][result.first].end()) mapToUpdate[targetBlock][result.first].push_back(index);
+            } 
+        }
+    }
 }
 
 
@@ -312,6 +333,15 @@ int main(){
         
         joinHints.push_back(InitializeJoinMap<size_t, size_t, double>(updatedBlockGraphs, comparisonMap, i));
     }
+    
+    for(size_t i = 0; i<updatedBlockGraphs.size(); i+=1){
+        std::unordered_map<size_t, JoinResults<size_t, double>> blockUpdates;
+        JoinMap<size_t, size_t>& joinsToDo = joinHints[i];
+        for (auto& joinList: joinsToDo){
+            blockUpdates[joinList.first] = BlockwiseJoin(joinList.second, updatedBlockGraphs[i], blockGraphs[i], trainMapper.dataBlocks[i], queryContexts[joinList.first]);
+        }
+    }
+
 
     //WeightedGraphEdges graphEdges = NeighborsOutOfBlock(mnistFashionTestNeighbors, trainMapper.sourceToBlockIndex, testClassifications);
 
