@@ -148,7 +148,7 @@ struct DataMapper{
     std::vector<size_t> sourceToSplitIndex;
 
     DataMapper(const DataSet<DataEntry>& source):
-        dataSource(source), sourceToBlockIndex(dataSource.numberOfSamples), sourceToSplitIndex(dataSource.numberOfSamples) {};
+        dataSource(source), sourceToBlockIndex(dataSource.numberOfSamples), sourceToSplitIndex(dataSource.numberOfSamples), blockCounter(0) {};
 
     void operator()(size_t splittingIndex, std::span<const size_t> indicies){
         //[[unlikely]]if (indicies.size() == 0) return;
