@@ -31,6 +31,7 @@
 - Wrap searching function prototypes into a search context
 - Should I move results caching outside of the query context? I kinda think having the results cached internally and not using the operator returns is an anti-patern.
 - Search leafGraphs don't need distances.
+  - Form undirected search graphs
 
 - Try just using the COM neighbors instead of neighbors of neighbors for join hints. It takes a lot of branches and small loops to to build the hints.
   - Already improved upon how I'm currently handling it
@@ -39,6 +40,9 @@
   - But if it is faster, it could mean I could do more initial joins to seed a more diverse pool of searches.
 
 - On QueryHotPath: I want copies when I use the queryHint member, but not really when I'm passing in hints.
+
+- Rewrite ConsumeVertex as stream operator?
+  - I do want it to be explicit that the consumed vertex is to be discarded, and stream operators don't really do that cannonically.
 
 #Parallelization and Distributed Computing
 - Do a second pass on the MetaGraph procedures 

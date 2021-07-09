@@ -125,13 +125,14 @@ JoinResults<DataIndexType, DistType> BlockwiseJoin(const JoinHints<DataIndexType
         joinHints.push_back({hint.first, std::move(queryHint)});
     }
     NodeTracker nodesJoined(searchSubgraph.size());
-    std::vector<std::pair<DataIndexType, GraphVertex<DataIndexType, DistType>>> joinResults;
     
+    std::vector<std::pair<DataIndexType, GraphVertex<DataIndexType, DistType>>> retResults;
     while(joinHints.size()){
+        std::vector<std::pair<DataIndexType, GraphVertex<DataIndexType, DistType>>> joinResults;
         for (const auto& joinHint: joinHints){
             //GraphVertex<DataIndexType, DistType> joinResult = targetBlock || QueryPoint{joinHint.second, blockData[joinHint.first]};
-            
-            joinResults.push_back({joinHint.first, targetBlock || QueryPoint{joinHint.second, blockData[joinHint.first]}});
+            const QueryPoint<DataIndexType, DataEntry, DistType> query(joinHint.second, blockData[joinHint.first]);
+            joinResults.push_back({joinHint.first, targetBlock || query});
             nodesJoined[joinHint.first] = true;
         }
         std::vector<std::pair<DataIndexType, GraphVertex<DataIndexType, DistType>>> newJoins;
@@ -140,38 +141,43 @@ JoinResults<DataIndexType, DistType> BlockwiseJoin(const JoinHints<DataIndexType
             bool newNeighbor = false;
             GraphVertex<DataIndexType, DistType> updatedResult;
             for (const auto& neighborCandidate: result.second){
-                if (neighborCandidate.second < currentGraphState[result.first][0]){
+                if (neighborCandidate.second < currentGraphState[result.first][0].second){
                     newNeighbor = true;
                     updatedResult.push_back(neighborCandidate);
                 }
             }
             if (newNeighbor){   
+                
                 for(const auto& leafNeighbor: searchSubgraph[result.first]){
                     if(!nodesJoined[leafNeighbor.first]){
                         newJoins.push_back({leafNeighbor.first, result.second});
+                        //We can add these to nodesJoined a touch early to prevent dupes
+                        nodesJoined[leafNeighbor.first] = true;
                     }
                 }
+                retResults.push_back({result.first, std::move(updatedResult)});
             }
-            result.second = updatedResult;
+            //result.second = updatedResult;
         }
         joinHints = std::move(newJoins);
     }
-    return joinResults;
+    return retResults;
 }
 template<typename BlockNumberType, typename DataIndexType, typename DistType>
 void NewJoinQueues(const std::vector<std::pair<DataIndexType, GraphVertex<DataIndexType, DistType>>>& joinResults,
-                   const BlockNumberType currentBlockNum,
+                   const NodeTracker& blocksJoined,
                    const Graph<BlockIndecies, DistType>& targetGraphState,
                    JoinMap<BlockNumberType, DataIndexType>& mapToUpdate){
     
     for (const auto& result: joinResults){
         for (const auto index: result.second){
-            for (const auto& targetVertexNeighbor: targetGraphState[index]){
+            for (const auto& targetVertexNeighbor: targetGraphState[index.first]){
                 BlockNumberType targetBlock = targetVertexNeighbor.first.blockNumber;
-                if (targetBlock == currentBlockNum) continue;
-                auto findItr = std::find(mapToUpdate[targetBlock][result.first].begin(), mapToUpdate[targetBlock][result.first].end(), index);
-                if (findItr != mapToUpdate[targetBlock][result.first].end()) mapToUpdate[targetBlock][result.first].push_back(index);
+                if (blocksJoined[targetBlock]) continue;
+                auto findItr = std::find(mapToUpdate[targetBlock][result.first].begin(), mapToUpdate[targetBlock][result.first].end(), index.first);
+                if (findItr != mapToUpdate[targetBlock][result.first].end()) mapToUpdate[targetBlock][result.first].push_back(index.first);
             } 
+            
         }
     }
 }
@@ -250,12 +256,12 @@ int main(){
     std::vector<Graph<size_t, double>> blockGraphs(0);
     blockGraphs.reserve(trainMapper.dataBlocks.size());
     for (const auto& dataBlock : trainMapper.dataBlocks){
-        Graph<size_t, double> blockGraph(dataBlock.blockData.size(), size_t(5));
-        BruteForceBlock<size_t, std::valarray<float>, double>(blockGraph, 5, dataBlock, EuclideanNorm<float, float, double>);
+        Graph<size_t, double> blockGraph(dataBlock.blockData.size(), size_t(10));
+        BruteForceBlock<size_t, std::valarray<float>, double>(blockGraph, 10, dataBlock, EuclideanNorm<float, float, double>);
         blockGraphs.push_back(std::move(blockGraph));
     }
     
-    MetaGraph metaGraph(trainMapper.dataBlocks, 2);
+    MetaGraph metaGraph(trainMapper.dataBlocks, 6);
 
     
     std::vector<QueryContext<size_t, std::valarray<float>, double>> queryContexts;
@@ -264,7 +270,7 @@ int main(){
         queryContexts.push_back(QueryContext<size_t, std::valarray<float>, double>::QueryContext(blockGraphs[i],
                                 trainMapper.dataBlocks[i],
                                 metaGraph.points[i].centerOfMass,
-                                5,
+                                10,
                                 EuclideanNorm<float, float, double>,
                                 EuclideanNorm<double, float, double>));
     }
@@ -293,9 +299,11 @@ int main(){
 
     for(size_t i = 0; i<nearestNodeDistances.size(); i+=1){
         //Do all of them? Let's try for now. I can add in hyperparam here.
-        for(const auto& neighbor: nearestNodeDistances[i]){
+        //for(const auto& neighbor: nearestNodeDistances[i]){
+        for (size_t j = 0; j<(nearestNodeDistances[i].size()/2); j+=1){
+            
             //Compute the nodewise join of the two blocks, results cached
-            queryContexts[i] || queryContexts[neighbor.first];
+            queryContexts[i] || queryContexts[nearestNodeDistances[i][j].first];
         }
     }
 
@@ -333,13 +341,57 @@ int main(){
         
         joinHints.push_back(InitializeJoinMap<size_t, size_t, double>(updatedBlockGraphs, comparisonMap, i));
     }
-    
-    for(size_t i = 0; i<updatedBlockGraphs.size(); i+=1){
-        std::unordered_map<size_t, JoinResults<size_t, double>> blockUpdates;
-        JoinMap<size_t, size_t>& joinsToDo = joinHints[i];
-        for (auto& joinList: joinsToDo){
-            blockUpdates[joinList.first] = BlockwiseJoin(joinList.second, updatedBlockGraphs[i], blockGraphs[i], trainMapper.dataBlocks[i], queryContexts[joinList.first]);
+
+
+    std::vector<std::unordered_map<size_t, JoinResults<size_t, double>>> blockUpdates(updatedBlockGraphs.size());
+    std::vector<NodeTracker> blockJoinTrackers(updatedBlockGraphs.size(), NodeTracker(updatedBlockGraphs.size()));
+
+    GraphVertex<BlockIndecies, double> nullVertex;
+    nullVertex.neighbors = {{{0,0}, std::numeric_limits<double>::max()},
+                            {{0,0}, std::numeric_limits<double>::max()},
+                            {{0,0}, std::numeric_limits<double>::max()},
+                            {{0,0}, std::numeric_limits<double>::max()},
+                            {{0,0}, std::numeric_limits<double>::max()}};
+    int iteration(1);
+    int graphUpdates(1);
+    while(graphUpdates>0){
+        graphUpdates = 0;
+        std::vector<std::unordered_map<size_t, JoinResults<size_t, double>>> blockUpdates(updatedBlockGraphs.size());
+        for(size_t i = 0; i<updatedBlockGraphs.size(); i+=1){
+            JoinMap<size_t, size_t>& joinsToDo = joinHints[i];
+            JoinMap<size_t, size_t> newJoinHints;
+            blockJoinTrackers[i][i] = true;
+            for (auto& joinList: joinsToDo){
+                blockJoinTrackers[i][joinList.first] = true;
+            }
+            for (auto& joinList: joinsToDo){
+                blockUpdates[i][joinList.first] = BlockwiseJoin(joinList.second, updatedBlockGraphs[i], blockGraphs[i], trainMapper.dataBlocks[i], queryContexts[joinList.first]);
+                NewJoinQueues<size_t, size_t, double>(blockUpdates[i][joinList.first], blockJoinTrackers[i], updatedBlockGraphs[joinList.first], newJoinHints);
+            }
+            joinHints[i] = std::move(newJoinHints);  
         }
+
+        for (size_t i = 0; i<blockUpdates.size(); i+=1){
+            std::unordered_map<size_t, GraphVertex<BlockIndecies, double>> consolidatedResults;
+            for (auto& blockResult: blockUpdates[i]){
+                for (auto& result: blockResult.second){
+                    //GraphVertex<BlockIndecies, double> newVertex;
+                    //for (const auto& resultEntry: result.second){
+                    //    newVertex.push_back({{blockResult.first, resultEntry.first}, resultEntry.second});
+                    //}
+                    if(consolidatedResults.find(result.first) == consolidatedResults.end()){
+                        consolidatedResults[result.first] = nullVertex;
+                    }
+                    ConsumeVertex(consolidatedResults[result.first], result.second, blockResult.first);
+                }
+            }
+
+            for(auto& consolidatedResult: consolidatedResults){
+                graphUpdates += ConsumeVertex(updatedBlockGraphs[i][consolidatedResult.first], consolidatedResult.second);
+            }
+        }
+        std::cout << graphUpdates << " updates in iteration " << iteration << std::endl;
+        iteration += 1;
     }
 
 
@@ -361,45 +413,6 @@ int main(){
     //std::chrono::time_point<std::chrono::steady_clock> runEnd = std::chrono::steady_clock::now();
     //std::cout << std::chrono::duration_cast<std::chrono::seconds>(runEnd - runStart).count() << "s Nearest Node Calcs " << std::endl;
 
-
-
-
-
-
-
-
-    /*
-    Graph<unsigned char> initGraph = ConstructInitialGraph<unsigned char>(digits, 5, rngFunctor, &EuclideanNorm<unsigned char>);
-    std::vector<ComparisonQueue> joinQueues = ConstructQueues(digits.numberOfSamples, 100);
-    std::vector<ComparisonQueue> candidateQueues = ConstructQueues(digits.numberOfSamples, 10);
-
-    std::chrono::time_point<std::chrono::steady_clock> runStart = std::chrono::steady_clock::now();
-    std::vector<std::chrono::time_point<std::chrono::steady_clock>> timePoints(0);
-    timePoints.push_back(runStart);
-
-    PopulateInitialQueueStates(initGraph, joinQueues);
-
-    std::vector<int> joinsPerCycle;
-    int totalJoins = ComputeLocalJoins(digits, initGraph, joinQueues, candidateQueues, &EuclideanNorm<unsigned char>);
-    
-    joinsPerCycle.push_back(totalJoins);
-    timePoints.push_back(std::chrono::steady_clock::now());
-    std::cout << std::chrono::duration_cast<std::chrono::seconds>(timePoints[timePoints.size()-1]-timePoints[timePoints.size()-2]).count() << "s for iteration 0." << std::endl;
-    std::cout << "Number of joins this iteration: " << totalJoins << std::endl;
-    //VerifyGraphState(initGraph);
-
-    for (size_t i = 0; i < 149; i++){
-        PopulateJoinQueueStates(initGraph, candidateQueues, joinQueues);
-        totalJoins = ComputeLocalJoins(digits, initGraph, joinQueues, candidateQueues, &EuclideanNorm<unsigned char>);
-        timePoints.push_back(std::chrono::steady_clock::now());
-        std::cout << std::chrono::duration_cast<std::chrono::seconds>(timePoints[timePoints.size()-1]-timePoints[timePoints.size()-2]).count() << "s for iteration "<< i+1 << "." << std::endl;
-        joinsPerCycle.push_back(totalJoins);
-        std::cout << "Number of joins this iteration: " << totalJoins << std::endl;
-        //VerifyGraphState(initGraph);
-    }
-    */
-
-    // compQueues(0);
 
     return 0;
 }
