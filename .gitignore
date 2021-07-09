@@ -8,3 +8,7 @@
 /.vs
 /.vscode.zip
 *.json
+/x64
+*.props
+*.sln
+*.vcxproj*

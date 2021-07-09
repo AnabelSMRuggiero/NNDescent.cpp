@@ -197,10 +197,23 @@ int main(){
 
     std::string trainDataFilePath("./TestData/MNIST-Fashion-Train.bin");
     DataSet<std::valarray<float>> mnistFashionTrain(trainDataFilePath, 28*28, 60'000, &ExtractNumericArray<float,dataEndianness>);
+    /*
+    volatile float resultA, resultB, resultC;
+    for (size_t i =0; i<10'000; i +=1){
+        resultA = Dot<float, float>(mnistFashionTrain.samples[0], mnistFashionTrain.samples[1]);
+    }
 
+    for (size_t i =0; i<1'000'000; i +=1){
+        resultB = EuclideanNorm<float, float>(mnistFashionTrain.samples[0], mnistFashionTrain.samples[1]);
+    }
+
+    for (size_t i =0; i<1'000'000; i +=1){
+        resultC = TestEuclideanNorm<float, float>(mnistFashionTrain.samples[0], mnistFashionTrain.samples[1]);
+    }
+    */
     //std::chrono::time_point<std::chrono::steady_clock> runEnd = std::chrono::steady_clock::now();
     //std::cout << std::chrono::duration_cast<std::chrono::seconds>(runEnd - runStart).count() << "s Pointwise Join Calcs " << std::endl;
-
+    
     std::mt19937_64 rngEngine(0);
     std::uniform_int_distribution<size_t> rngDist(size_t(0), mnistFashionTrain.numberOfSamples - 1);
     StlRngFunctor<std::mt19937_64, std::uniform_int_distribution, size_t> rngFunctor(std::move(rngEngine), std::move(rngDist));
@@ -219,7 +232,7 @@ int main(){
     
     DataMapper<std::valarray<float>> trainMapper(mnistFashionTrain);
     CrawlTerminalLeaves(rpTreesTrain, trainMapper);
-
+    
 
     /*
     std::string testDataFilePath("./TestData/MNIST-Fashion-Data.bin");
@@ -398,7 +411,7 @@ int main(){
     for (size_t i = 0; i<updatedBlockGraphs.size(); i+=1){
         VerifySubGraphState(updatedBlockGraphs[i], i);
     }
-
+    
 
     //WeightedGraphEdges graphEdges = NeighborsOutOfBlock(mnistFashionTestNeighbors, trainMapper.sourceToBlockIndex, testClassifications);
 

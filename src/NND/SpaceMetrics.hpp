@@ -13,6 +13,7 @@ https://github.com/AnabelSMRuggiero/NNDescent.cpp
 
 #include <valarray>
 #include <cmath>
+#include <execution>
 //#include <functional>
 
 namespace nnd{
@@ -27,16 +28,33 @@ using SpaceMetric = RetType (*)(const DataTypeA&, const DataTypeB&);
 
 //using SpaceMetric = std::function<RetType(const std::valarray<DataType>&, const std::valarray<DataType>&)>;
 /*
-template<typename DataType, typename RetType=double>
-RetType EuclideanNorm(const std::valarray<DataType>& pointA, const std::valarray<DataType>& pointB){
-    std::valarray<DataType> diffs = pointB-pointA;
+template<typename DataTypeA, typename DataTypeB, typename RetType=double>
+RetType EuclideanNorm(const std::valarray<DataTypeA>& pointA, const std::valarray<DataTypeB>& pointB){
     RetType accum(0);
-    for(DataType i : diffs){
-        accum += i*i;
+    for (size_t i = 0; i<diffs.size(); i+=1){
+        RetType diff = RetType(pointB[i]) - RetType(pointA[i]);
+        accum += diff*diff;
     }
     return std::sqrt(accum);
 };
 */
+template<typename DataTypeA, typename DataTypeB, typename RetType=double>
+RetType EuclideanNorm(const std::valarray<DataTypeA>& pointA, const std::valarray<DataTypeB>& pointB){
+    auto transformFunc = [](DataTypeA operandA, DataTypeB operandB){
+        RetType diff = static_cast<RetType>(operandA) - static_cast<RetType>(operandB);
+        return diff*diff;
+    };
+    RetType accum = std::transform_reduce(std::execution::unseq,
+                                    std::begin(pointA),
+                                    std::end(pointA),
+                                    std::begin(pointB),
+                                    RetType(0),
+                                    std::plus<RetType>(),
+                                    transformFunc);
+    return std::sqrt(accum);
+};
+
+/*
 template<typename DataTypeA, typename DataTypeB, typename RetType=double>
 RetType EuclideanNorm(const std::valarray<DataTypeA>& pointA, const std::valarray<DataTypeB>& pointB){
     std::valarray<RetType> diffs(pointA.size());
@@ -49,6 +67,7 @@ RetType EuclideanNorm(const std::valarray<DataTypeA>& pointA, const std::valarra
     }
     return std::sqrt(accum);
 };
+*/
 
 template<typename DataType, typename RetType=double>
 RetType Dot(const std::valarray<DataType>& pointA, const std::valarray<DataType>& pointB){

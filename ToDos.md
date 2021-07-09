@@ -33,6 +33,10 @@
 - Search leafGraphs don't need distances.
   - Form undirected search graphs
 
+- Rewrite TreeLeaf
+- Most of my run time is in distance calcs. While optimizing the calculation will be important, I need to squeeze as much as I can out of every call.
+  - I'm only storing results from calculations on one side for every query. Figure out how to save calculations for both sides.
+
 - Try just using the COM neighbors instead of neighbors of neighbors for join hints. It takes a lot of branches and small loops to to build the hints.
   - Already improved upon how I'm currently handling it
 - Maybe replace the initial bruteforce joins with the current blockwise join prototype. Use the results of NearestNode searches to seed this.
