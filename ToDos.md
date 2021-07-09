@@ -37,16 +37,13 @@
 - Most of my run time is in distance calcs. While optimizing the calculation will be important, I need to squeeze as much as I can out of every call.
   - I'm only storing results from calculations on one side for every query. Figure out how to save calculations for both sides.
 
-- Try just using the COM neighbors instead of neighbors of neighbors for join hints. It takes a lot of branches and small loops to to build the hints.
-  - Already improved upon how I'm currently handling it
 - Maybe replace the initial bruteforce joins with the current blockwise join prototype. Use the results of NearestNode searches to seed this.
   - Could affect recall? Might mean I don't do searches that would likely come up dead anyways, but it might mean I miss out searches that are relevant.
   - But if it is faster, it could mean I could do more initial joins to seed a more diverse pool of searches.
 
 - On QueryHotPath: I want copies when I use the queryHint member, but not really when I'm passing in hints.
 
-- Rewrite ConsumeVertex as stream operator?
-  - I do want it to be explicit that the consumed vertex is to be discarded, and stream operators don't really do that cannonically.
+- UndirectedGraph BlockIndices template specialization.
 
 #Parallelization and Distributed Computing
 - Do a second pass on the MetaGraph procedures 

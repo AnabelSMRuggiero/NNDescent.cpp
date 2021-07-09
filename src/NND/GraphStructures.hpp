@@ -304,6 +304,89 @@ struct Graph{
 };
 
 
+template<TriviallyCopyable IndexType>
+struct UndirectedGraph{
+
+    using iterator = std::vector<std::vector<IndexType>>::iterator;
+    using const_iterator = std::vector<std::vector<IndexType>>::const_iterator;
+
+    std::vector<std::vector<IndexType>> verticies;
+
+    UndirectedGraph(): verticies(){};
+
+    UndirectedGraph(size_t numVerticies, size_t numNeighbors): 
+        verticies(numVerticies, std::vector<IndexType>(numNeighbors)){};
+
+    template<typename DistType>
+    UndirectedGraph(const Graph<IndexType, DistType>& directedGraph): verticies(directedGraph.size()){
+
+        for (size_t i = 0; i<directedGraph.size(); i +=1) verticies[i].reserve(1.5*directedGraph[0].size());
+        
+        for (size_t i = 0; const auto& vertex: directedGraph){
+                for (const auto&: neighbor){
+                    verticies[i].pushBack(neighbor.first);
+                    verticies[neighbor.first].push_back(i);
+                }
+            i++;
+        }
+    }
+
+    std::vector<IndexType>& operator[](size_t i){
+        return verticies[i];
+    }
+
+    std::vector<IndexType>& operator[](BlockIndecies i){
+        // I'm assuming the block number is correct
+        return verticies[i.dataIndex];
+    }
+
+    constexpr const std::vector<IndexType>& operator[](size_t i) const{
+        return this->verticies[i];
+    }
+
+    constexpr const std::vector<IndexType>& operator[](BlockIndecies i) const{
+        return this->verticies[i.dataIndex];
+    }
+
+    constexpr void push_back(const std::vector<IndexType>& value){
+        verticies.push_back(value);
+    }
+
+    template<typename VertexReferenceType>
+    constexpr void push_back(std::vector<IndexType>&& value){
+        verticies.push_back(std::forward<VertexReferenceType>(value));
+    }
+
+    size_t size() const noexcept{
+        return verticies.size();
+    }
+    
+    constexpr iterator begin() noexcept{
+        return verticies.begin();
+    }
+
+    constexpr const_iterator begin() const noexcept{
+        return verticies.begin();
+    }
+
+    constexpr const_iterator cbegin() const noexcept{
+        return verticies.cbegin();
+    }
+
+    constexpr iterator end() noexcept{
+        return verticies.end();
+    }
+
+    constexpr const_iterator end() const noexcept{
+        return verticies.end();
+    }
+
+    constexpr const_iterator cend() const noexcept{
+        return verticies.cend();
+    }
+};
+
+
 //template<TriviallyCopyable IndexType, typename FloatType>
 //using Graph = std::vector<GraphVertex<IndexType, FloatType>>;
 
