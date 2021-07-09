@@ -209,10 +209,10 @@ struct QueryContext{
             }
             int indexOffset(0);
             for (int i = 0; i < -sizeDif; i += 1){
-                while (nodesInHint[i+indexOffset]){
+                while (nodesInHint[queryHint[i+indexOffset].first]){
                     indexOffset += 1;
                 }
-                initVertex.push_back(queryHint[i]);
+                initVertex.push_back(queryHint[i+indexOffset]);
             }
         }
         for (auto& queryStart: initVertex){
