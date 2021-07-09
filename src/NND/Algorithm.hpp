@@ -110,7 +110,7 @@ void PopulateJoinQueueStates(const Graph<size_t, FloatType>& graphState, std::ve
 }
 
 //Mainly For Debugging to make sure I didn't screw up my graph state.
-template<typename DataType, typename FloatType>
+template<typename FloatType>
 void VerifyGraphState(const Graph<size_t, FloatType>& currentGraph){
     for (const auto& vertex : currentGraph){
         for (const auto& neighbor : vertex.neighbors){
@@ -123,6 +123,19 @@ void VerifyGraphState(const Graph<size_t, FloatType>& currentGraph){
     }
 }
 
+template<typename FloatType>
+void VerifySubGraphState(const Graph<BlockIndecies, FloatType>& currentGraph, size_t blockNum){
+    for (size_t i = 0; i<currentGraph.size(); i+=1){
+        const GraphVertex<BlockIndecies, FloatType>& vertex = currentGraph[i];
+        for (const auto& neighbor : vertex.neighbors){
+            if (neighbor.first == BlockIndecies{blockNum, i}) throw("Vertex is own neighbor");
+            for (const auto& neighbor1 : vertex.neighbors){
+                if (&neighbor == &neighbor1) continue;
+                if (neighbor.first == neighbor1.first) throw("Duplicate neighbor in heap");
+            }
+        }
+    }
+}
 
 }
 #endif //NND_ALGORITHM_HPP

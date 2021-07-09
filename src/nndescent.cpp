@@ -90,13 +90,13 @@ ComparisonMap<BlockNumberType, DataIndexType> InitializeComparisonQueues(const G
 template<typename BlockNumberType, typename DataIndexType, typename DistType>
 JoinMap<BlockNumberType, DataIndexType> InitializeJoinMap(const std::vector<Graph<BlockIndecies, DistType>>& updatedBlockGraphs,
                                                           const ComparisonMap<BlockNumberType, DataIndexType>& comparisonMap,
-                                                          const BlockNumberType currentBlock){
+                                                          const NodeTracker& nodesJoined){
     JoinMap<BlockNumberType, DataIndexType> joinMap;
     for (auto& [targetBlock, queue]: comparisonMap){
         //std::unordered_map<size_t, std::pair<size_t, std::vector<size_t>>> joinHints;
         for (const auto& [sourceIndex, targetIndex]: queue){
             for (const auto& neighbor: updatedBlockGraphs[targetBlock][targetIndex]){
-                if (neighbor.first.blockNumber == targetBlock || neighbor.first.blockNumber == currentBlock) continue;
+                if (neighbor.first.blockNumber == targetBlock || nodesJoined[neighbor.first.blockNumber]) continue;
                 auto result = std::ranges::find(joinMap[neighbor.first.blockNumber][sourceIndex], neighbor.first.dataIndex);
                 if (result == joinMap[neighbor.first.blockNumber][sourceIndex].end()) joinMap[neighbor.first.blockNumber][sourceIndex].push_back(neighbor.first.dataIndex);
             }
@@ -297,11 +297,15 @@ int main(){
 
     //std::chrono::time_point<std::chrono::steady_clock> runStart = std::chrono::steady_clock::now();
 
+    std::vector<NodeTracker> blockJoinTrackers(blockGraphs.size(), NodeTracker(blockGraphs.size()));
+
     for(size_t i = 0; i<nearestNodeDistances.size(); i+=1){
         //Do all of them? Let's try for now. I can add in hyperparam here.
         //for(const auto& neighbor: nearestNodeDistances[i]){
+        blockJoinTrackers[i][i] = true;
         for (size_t j = 0; j<(nearestNodeDistances[i].size()/2); j+=1){
-            
+            blockJoinTrackers[i][nearestNodeDistances[i][j].first] = true;
+            blockJoinTrackers[nearestNodeDistances[i][j].first][i] = true;
             //Compute the nodewise join of the two blocks, results cached
             queryContexts[i] || queryContexts[nearestNodeDistances[i][j].first];
         }
@@ -339,19 +343,17 @@ int main(){
     for(size_t i = 0; i<queueMaps.size(); i+=1){
         ComparisonMap<size_t, size_t>& comparisonMap = queueMaps[i];
         
-        joinHints.push_back(InitializeJoinMap<size_t, size_t, double>(updatedBlockGraphs, comparisonMap, i));
+        joinHints.push_back(InitializeJoinMap<size_t, size_t, double>(updatedBlockGraphs, comparisonMap, blockJoinTrackers[i]));
     }
 
 
     std::vector<std::unordered_map<size_t, JoinResults<size_t, double>>> blockUpdates(updatedBlockGraphs.size());
-    std::vector<NodeTracker> blockJoinTrackers(updatedBlockGraphs.size(), NodeTracker(updatedBlockGraphs.size()));
+    
 
     GraphVertex<BlockIndecies, double> nullVertex;
-    nullVertex.neighbors = {{{0,0}, std::numeric_limits<double>::max()},
-                            {{0,0}, std::numeric_limits<double>::max()},
-                            {{0,0}, std::numeric_limits<double>::max()},
-                            {{0,0}, std::numeric_limits<double>::max()},
-                            {{0,0}, std::numeric_limits<double>::max()}};
+    for(size_t i = 0; i<10; i+=1){
+        nullVertex.push_back({{0,0}, std::numeric_limits<double>::max()});
+    }
     int iteration(1);
     int graphUpdates(1);
     while(graphUpdates>0){
@@ -360,7 +362,6 @@ int main(){
         for(size_t i = 0; i<updatedBlockGraphs.size(); i+=1){
             JoinMap<size_t, size_t>& joinsToDo = joinHints[i];
             JoinMap<size_t, size_t> newJoinHints;
-            blockJoinTrackers[i][i] = true;
             for (auto& joinList: joinsToDo){
                 blockJoinTrackers[i][joinList.first] = true;
             }
@@ -392,6 +393,10 @@ int main(){
         }
         std::cout << graphUpdates << " updates in iteration " << iteration << std::endl;
         iteration += 1;
+    }
+
+    for (size_t i = 0; i<updatedBlockGraphs.size(); i+=1){
+        VerifySubGraphState(updatedBlockGraphs[i], i);
     }
 
 
