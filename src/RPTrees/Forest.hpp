@@ -101,32 +101,36 @@ struct RandomProjectionForest{
 
         TreeLeaf& AddLeftLeaf(size_t index1, size_t index2, size_t splittingIndex){
             this->children.first = enclosingVector->size();
+            size_t indexToWrite = thisIndex;
             TreeLeaf& newLeaf = enclosingVector->emplace_back(index1, index2, splittingIndex, enclosingVector->size(), enclosingVector);
-            newLeaf.parent = thisIndex;
+            newLeaf.parent = indexToWrite;
             
             return newLeaf;
         };
 
         TreeLeaf& AddLeftLeaf(std::pair<size_t, size_t> indecies, size_t splittingIndex){
             this->children.first = enclosingVector->size();
+            size_t indexToWrite = thisIndex;
             TreeLeaf& newLeaf = enclosingVector->emplace_back(indecies, splittingIndex, enclosingVector->size(), enclosingVector);
-            newLeaf.parent = thisIndex;
+            newLeaf.parent = indexToWrite;
 
             return newLeaf;
         };
 
         TreeLeaf& AddRightLeaf(size_t index1, size_t index2, size_t splittingIndex, std::ptrdiff_t parentDiff){
             this->children.second = enclosingVector->size();
+            size_t indexToWrite = thisIndex;
             TreeLeaf& newLeaf = enclosingVector->emplace_back(index1, index2, splittingIndex, enclosingVector->size(), enclosingVector);
-            newLeaf.parent = thisIndex;
+            newLeaf.parent = indexToWrite;
 
             return newLeaf;
         };
 
         TreeLeaf& AddRightLeaf(std::pair<size_t, size_t> indecies, size_t splittingIndex){
             this->children.second = enclosingVector->size();
+            size_t indexToWrite = thisIndex;
             TreeLeaf& newLeaf = enclosingVector->emplace_back(indecies, splittingIndex, enclosingVector->size(), enclosingVector);
-            newLeaf.parent = thisIndex;
+            newLeaf.parent = indexToWrite;
             return newLeaf;
         };
 
@@ -195,8 +199,7 @@ struct RandomProjectionForest{
 
                     TreeLeaf& leftSplit = (treeLeaves[currentIndex].AddLeftLeaf(std::pair<size_t, size_t>(treeLeaves[currentIndex].splitRange.first, treeLeaves[currentIndex].splitRange.first + numSplit),
                                                                     treeLeaves[currentIndex].splittingIndex * 2 + 1));
-                    TreeLeaf& rightSplit = (treeLeaves[currentIndex].AddRightLeaf(std::pair<size_t, size_t>(treeLeaves[currentIndex].splitRange.first + numSplit, treeLeaves[currentIndex].splitRange.second),
-                                                                    treeLeaves[currentIndex].splittingIndex * 2 + 2));
+                    
 
                     if (leftSplit.splitRange.second - leftSplit.splitRange.first > heurisitics.splitThreshold) splitQueue2.push_back(leftSplit.thisIndex);
                     else{
@@ -210,12 +213,15 @@ struct RandomProjectionForest{
                         auto toIt = indexVector1.begin();
                         std::advance(toIt, leftSplit->splitRange.first);
                         */
-                        auto fromIt = &(indexVector2[leftSplit.splitRange.first]);
-                        auto endFrom = &(indexVector2[leftSplit.splitRange.second]);
-                        auto toIt = &(indexVector1[leftSplit.splitRange.first]);
+                        auto fromIt = indexVector2.begin()+leftSplit.splitRange.first;
+                        auto endFrom = indexVector2.begin()+leftSplit.splitRange.second;
+                        auto toIt = indexVector1.begin()+leftSplit.splitRange.first;
 
                         std::copy(fromIt, endFrom, toIt);
                     }
+
+                    TreeLeaf& rightSplit = (treeLeaves[currentIndex].AddRightLeaf(std::pair<size_t, size_t>(treeLeaves[currentIndex].splitRange.first + numSplit, treeLeaves[currentIndex].splitRange.second),
+                        treeLeaves[currentIndex].splittingIndex * 2 + 2));
 
                     if (rightSplit.splitRange.second - rightSplit.splitRange.first > heurisitics.splitThreshold) splitQueue2.push_back(rightSplit.thisIndex);
                     else{
@@ -230,9 +236,9 @@ struct RandomProjectionForest{
                         std::advance(toIt, rightSplit->splitRange.first);
                         */
 
-                        auto fromIt = &(indexVector2[rightSplit.splitRange.first]);
-                        auto endFrom = &(indexVector2[rightSplit.splitRange.second]);
-                        auto toIt = &(indexVector1[rightSplit.splitRange.first]);
+                        auto fromIt = indexVector2.begin() + rightSplit.splitRange.first;
+                        auto endFrom = indexVector2.begin() + rightSplit.splitRange.second;
+                        auto toIt = indexVector1.begin() + rightSplit.splitRange.first;
 
 
                         std::copy(fromIt, endFrom, toIt);
@@ -243,9 +249,9 @@ struct RandomProjectionForest{
                 }else{
                     // Undo the attempted split. This may be unneeded, but I want to be safe for now.
                     // TODO: Check to see if omitting this copy violates the invariance of sum
-                    auto fromIt = &(indexVector1[treeLeaves[currentIndex].splitRange.first]);
-                    auto endFrom = &(indexVector1[treeLeaves[currentIndex].splitRange.second]);
-                    auto toIt = &(indexVector2[treeLeaves[currentIndex].splitRange.first]);
+                    auto fromIt = indexVector1.begin() + treeLeaves[currentIndex].splitRange.first;
+                    auto endFrom = indexVector1.begin() + treeLeaves[currentIndex].splitRange.second;
+                    auto toIt = indexVector2.begin() + treeLeaves[currentIndex].splitRange.first;
 
 
                     std::copy(fromIt, endFrom, toIt);
@@ -386,47 +392,48 @@ void CrawlTerminalLeaves(const RandomProjectionForest& forest, Functor& terminal
     pathState.push_back(0);
 
     size_t highestIndex = 0;
-
+    size_t counter = 0;
     size_t currentIndex = 0;
 
-    auto leafAccesor = [&] (size_t index) -> const std::vector<RandomProjectionForest::TreeLeaf>::const_iterator{
-        return forest.treeLeaves.begin()+index;
+    //Fix this
+    auto leafAccesor = [&] (size_t index) -> const RandomProjectionForest::TreeLeaf{
+        return *(forest.treeLeaves.begin()+index);
     };
     //const RandomProjectionForest::TreeLeaf* currentLeaf = &(forest.treeLeaves[0]);
 
 
     while (treePath.size() != 0){
 
-        if(leafAccesor(currentIndex)->children.first != 0 && leafAccesor(currentIndex)->children.second != 0){
+        if(forest.treeLeaves[currentIndex].children.first != 0 && forest.treeLeaves[currentIndex].children.second != 0){
             if (pathState.back() == 0){
                 pathState.back() = 1;
-                currentIndex = leafAccesor(currentIndex)->children.first;
-                treePath.push_back(leafAccesor(currentIndex)->splittingIndex);
+                currentIndex = forest.treeLeaves[currentIndex].children.first;
+                treePath.push_back(forest.treeLeaves[currentIndex].splittingIndex);
                 pathState.push_back(0);
                 continue;    
             } else if (pathState.back() == 1) {
                 pathState.back() = 2;
-                currentIndex = leafAccesor(currentIndex)->children.second;
-                treePath.push_back(leafAccesor(currentIndex)->splittingIndex);
+                currentIndex = forest.treeLeaves[currentIndex].children.second;
+                treePath.push_back(forest.treeLeaves[currentIndex].splittingIndex);
                 pathState.push_back(0);
                 continue;
             } else if (pathState.back() == 2) {
-                currentIndex = leafAccesor(currentIndex)->parent;
+                currentIndex = forest.treeLeaves[currentIndex].parent;
                 pathState.pop_back();
                 treePath.pop_back();
                 continue;
             }
             throw std::logic_error("Invalid Crawl State");
             
-        } else if (leafAccesor(currentIndex)->children.first == 0 && leafAccesor(currentIndex)->children.second == 0){
-            highestIndex = std::max(highestIndex, leafAccesor(currentIndex)->splittingIndex);
-            
-            std::span indexSpan(&(forest.indexArray[leafAccesor(currentIndex)->splitRange.first]),
-                              size_t(leafAccesor(currentIndex)->splitRange.second - leafAccesor(currentIndex)->splitRange.first));
+        } else if (forest.treeLeaves[currentIndex].children.first == 0 && forest.treeLeaves[currentIndex].children.second == 0){
+            highestIndex = std::max(highestIndex, forest.treeLeaves[currentIndex].splittingIndex);
+            counter += 1;
+            std::span indexSpan(&(forest.indexArray[forest.treeLeaves[currentIndex].splitRange.first]),
+                              size_t(forest.treeLeaves[currentIndex].splitRange.second - forest.treeLeaves[currentIndex].splitRange.first));
 
-            terminalFunctor(leafAccesor(currentIndex)->splittingIndex, indexSpan);
+            terminalFunctor(forest.treeLeaves[currentIndex].splittingIndex, indexSpan);
 
-            currentIndex = leafAccesor(currentIndex)->parent;
+            currentIndex = forest.treeLeaves[currentIndex].parent;
             pathState.pop_back();
             treePath.pop_back();
             
