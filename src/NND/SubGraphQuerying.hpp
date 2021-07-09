@@ -32,21 +32,31 @@ struct SubProblemData{
 
 
 
-
+//Maybe a block specific one that reads i.blockNumber from a BlockIndecies
 struct NodeTracker{
 
     using reference = std::vector<bool>::reference;
+    using const_reference = std::vector<bool>::const_reference;
     using size_type = std::vector<bool>::size_type;
 
     std::vector<bool> flags;
 
     NodeTracker(size_t graphSize): flags(graphSize, false){};
 
-    reference operator[](size_type i){
+    constexpr reference operator[](size_type i){
         return flags[i];
     }
 
-    reference operator[](BlockIndecies i){
+    constexpr const_reference operator[](size_type i) const {
+        return flags[i];
+    }
+
+    constexpr reference operator[](BlockIndecies i){
+        //Assuming block index lines up here;
+        return flags[i.dataIndex];
+    }
+
+    constexpr const_reference operator[](BlockIndecies i) const{
         //Assuming block index lines up here;
         return flags[i.dataIndex];
     }
@@ -118,8 +128,10 @@ GraphVertex<IndexType, FloatType> QueryCOMNeighbors(const std::valarray<FloatTyp
 
 template<TriviallyCopyable IndexType, typename QueryType, typename DistType>
 struct QueryPoint{
-    GraphVertex<IndexType, DistType>& queryHint;
+    const GraphVertex<IndexType, DistType>& queryHint;
     const QueryType& queryData;
+
+    QueryPoint(const GraphVertex<IndexType, DistType>& hint, const QueryType& data): queryHint(hint), queryData(data){}
 };
 
 
@@ -187,11 +199,32 @@ struct QueryContext{
     GraphVertex<IndexType, DistType> QueryHotPath(GraphVertex<IndexType, DistType> initVertex,
                                                    const QueryType& queryData) const {
         NodeTracker nodesVisited(dataBlock.size());
-        
+        int sizeDif = initVertex.size() - numCandidates;
+        //if sizeDif is negative, fill to numCandidates
+        if(sizeDif<0){
+            //Gotta avoid dupes
+            NodeTracker nodesInHint(dataBlock.size());
+            for (const auto& hint: initVertex){
+                nodesInHint[hint.first] = true;
+            }
+            int indexOffset(0);
+            for (int i = 0; i < -sizeDif; i += 1){
+                while (nodesInHint[i+indexOffset]){
+                    indexOffset += 1;
+                }
+                initVertex.push_back(queryHint[i]);
+            }
+        }
         for (auto& queryStart: initVertex){
             queryStart.second = this->distanceFunctor(queryData, dataBlock[queryStart.first]);
+            nodesVisited[queryStart.first] = true;
         }
         std::make_heap(initVertex.begin(), initVertex.end(), NeighborDistanceComparison<IndexType, DistType>);
+        //if sizeDif is positive, reduce to numCandidates
+        for (int i = 0; i < sizeDif; i+=1){
+            std::pop_heap(initVertex.begin(), initVertex.end(), NeighborDistanceComparison<IndexType, DistType>);
+            initVertex.pop_back();
+        }
 
         GraphVertex<IndexType, DistType> newState(initVertex);
         bool breakVar = false;

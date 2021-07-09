@@ -54,10 +54,18 @@ struct GraphVertex{
     };
 
     void JoinPrep(){
+        std::make_heap(neighbors.begin(), neighbors.end(), NeighborDistanceComparison<IndexType, FloatType>);
+    }
 
+    void UnPrep(){
+        std::sort_heap(neighbors.begin(), neighbors.end(), NeighborDistanceComparison<IndexType, FloatType>);
     }
     
     //Object Composition stuff below here
+
+    constexpr void pop_back(){
+        neighbors.pop_back();
+    }
 
     constexpr void push_back(const std::pair<IndexType, FloatType>& value){
         neighbors.push_back(value);
@@ -68,11 +76,20 @@ struct GraphVertex{
         neighbors.push_back(std::forward<PairReferenceType>(value));
     }
 
-    std::pair<IndexType, FloatType>& operator[](size_t i){
+    constexpr std::pair<IndexType, FloatType>& operator[](size_t i){
         return neighbors[i];
     }
 
-    std::pair<IndexType, FloatType>& operator[](BlockIndecies i){
+    constexpr const std::pair<IndexType, FloatType>& operator[](size_t i) const{
+        return neighbors[i];
+    }
+
+    constexpr std::pair<IndexType, FloatType>& operator[](BlockIndecies i){
+        // I'm assuming the block number is correct
+        return neighbors[i.dataIndex];
+    }
+
+    constexpr const std::pair<IndexType, FloatType>& operator[](BlockIndecies i) const{
         // I'm assuming the block number is correct
         return neighbors[i.dataIndex];
     }
@@ -109,11 +126,26 @@ struct GraphVertex{
     
 };
 
+//Rewrite as stream operator?
+template<typename DistType>
+int ConsumeVertex(GraphVertex<BlockIndecies, DistType>& consumer, GraphVertex<BlockIndecies, DistType>& consumee){
+    std::sort(consumee.begin(), consumee.end(), NeighborDistanceComparison<BlockIndecies, DistType>);
+    int neighborsAdded(0);
+    for (auto& pair: consumee){
+        if (pair.second >= consumer.neighbors[0].second) return neighborsAdded;
+        consumer.PushNeighbor(pair);
+        neighborsAdded++;
+    }
+    return neighborsAdded;
+}
+
+
+
 template<TriviallyCopyable OtherIndex, typename OtherDist, typename ConsumerDist>
 void ConsumeVertex(GraphVertex<BlockIndecies, ConsumerDist>& consumer, GraphVertex<OtherIndex, OtherDist>& consumee, size_t consumeeBlockNum){
     std::sort(consumee.begin(), consumee.end(), NeighborDistanceComparison<OtherIndex, OtherDist>);
     for (auto& pair: consumee){
-        if (pair.second > consumer.neighbors[0].second) return;
+        if (pair.second >= consumer.neighbors[0].second) return;
         consumer.PushNeighbor({{consumeeBlockNum, pair.first}, static_cast<ConsumerDist>(pair.second)});
     }
 }
@@ -226,11 +258,11 @@ struct Graph{
     }
 
     constexpr const GraphVertex<IndexType, FloatType>& operator[](size_t i) const{
-        return verticies[i];
+        return this->verticies[i];
     }
 
     constexpr const GraphVertex<IndexType, FloatType>& operator[](BlockIndecies i) const{
-        return verticies[i.dataIndex];
+        return this->verticies[i.dataIndex];
     }
 
     constexpr void push_back(const GraphVertex<IndexType, FloatType>& value){
