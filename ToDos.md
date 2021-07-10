@@ -10,6 +10,8 @@
 - I just realized, some distance metrics might wanna return an integral type (binary distances like hamming)
 - Template BlockIndicies
 
+- Fix my I/O. My I/O is bad. (I spend so much time in the stream operator).
+
 #RPTrees
 - Add way to track best splits
   - With the direction I'm planning on going this probably won't be needed.
