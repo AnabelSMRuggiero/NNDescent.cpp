@@ -174,8 +174,8 @@ void NewJoinQueues(const std::vector<std::pair<DataIndexType, GraphVertex<DataIn
             for (const auto& targetVertexNeighbor: targetGraphState[index.first]){
                 BlockNumberType targetBlock = targetVertexNeighbor.first.blockNumber;
                 if (blocksJoined[targetBlock]) continue;
-                auto findItr = std::find(mapToUpdate[targetBlock][result.first].begin(), mapToUpdate[targetBlock][result.first].end(), index.first);
-                if (findItr == mapToUpdate[targetBlock][result.first].end()) mapToUpdate[targetBlock][result.first].push_back(index.first);
+                auto findItr = std::find(mapToUpdate[targetBlock][result.first].begin(), mapToUpdate[targetBlock][result.first].end(), targetVertexNeighbor.first.dataIndex);
+                if (findItr == mapToUpdate[targetBlock][result.first].end()) mapToUpdate[targetBlock][result.first].push_back(targetVertexNeighbor.first.dataIndex);
             } 
             
         }
@@ -197,6 +197,11 @@ int main(){
 
     std::string trainDataFilePath("./TestData/MNIST-Fashion-Train.bin");
     DataSet<std::valarray<float>> mnistFashionTrain(trainDataFilePath, 28*28, 60'000, &ExtractNumericArray<float,dataEndianness>);
+
+    std::string testDataFilePath("./TestData/MNIST-Fashion-Data.bin");
+    std::string testNeighborsFilePath("./TestData/MNIST-Fashion-Neighbors.bin");
+    DataSet<std::valarray<float>> mnistFashionTest(testDataFilePath, 28*28, 10'000, &ExtractNumericArray<float,dataEndianness>);
+    DataSet<std::valarray<int32_t>> mnistFashionTestNeighbors(testNeighborsFilePath, 100, 10'000, &ExtractNumericArray<int32_t,dataEndianness>);
     /*
     volatile float resultA, resultB, resultC;
     for (size_t i =0; i<10'000; i +=1){
@@ -213,7 +218,12 @@ int main(){
     */
     //std::chrono::time_point<std::chrono::steady_clock> runEnd = std::chrono::steady_clock::now();
     //std::cout << std::chrono::duration_cast<std::chrono::seconds>(runEnd - runStart).count() << "s Pointwise Join Calcs " << std::endl;
-    
+
+    std::cout << "I/O done: I know it's pretty scuffed at the moment." << std::endl;
+
+
+    std::chrono::time_point<std::chrono::steady_clock> runStart = std::chrono::steady_clock::now();
+
     std::mt19937_64 rngEngine(0);
     std::uniform_int_distribution<size_t> rngDist(size_t(0), mnistFashionTrain.numberOfSamples - 1);
     StlRngFunctor<std::mt19937_64, std::uniform_int_distribution, size_t> rngFunctor(std::move(rngEngine), std::move(rngDist));
@@ -373,19 +383,20 @@ int main(){
                 graphUpdates += ConsumeVertex(updatedBlockGraphs[i][consolidatedResult.first], consolidatedResult.second);
             }
         }
-        std::cout << graphUpdates << " updates in iteration " << iteration << std::endl;
+        //std::cout << graphUpdates << " updates in iteration " << iteration << std::endl;
         iteration += 1;
     }
 
-    for (size_t i = 0; i<updatedBlockGraphs.size(); i+=1){
-        VerifySubGraphState(updatedBlockGraphs[i], i);
-    }
+    std::chrono::time_point<std::chrono::steady_clock> runEnd = std::chrono::steady_clock::now();
+    std::cout << std::chrono::duration_cast<std::chrono::seconds>(runEnd - runStart).count() << "s total for index building " << std::endl;
+
+    //for (size_t i = 0; i<updatedBlockGraphs.size(); i+=1){
+    //    VerifySubGraphState(updatedBlockGraphs[i], i);
+    //}
     
     // Lets try and get searching up and running
-    std::string testDataFilePath("./TestData/MNIST-Fashion-Data.bin");
-    std::string testNeighborsFilePath("./TestData/MNIST-Fashion-Neighbors.bin");
-    DataSet<std::valarray<float>> mnistFashionTest(testDataFilePath, 28*28, 10'000, &ExtractNumericArray<float,dataEndianness>);
-    DataSet<std::valarray<int32_t>> mnistFashionTestNeighbors(testNeighborsFilePath, 100, 10'000, &ExtractNumericArray<int32_t,dataEndianness>);
+    
+    std::chrono::time_point<std::chrono::steady_clock> runStart2 = std::chrono::steady_clock::now();
 
     EuclidianTransform<float, float> transformingScheme(mnistFashionTest, splitterFunc.target<EuclidianTrain<float, float>>()->splittingVectors);
     
@@ -427,13 +438,15 @@ int main(){
         return retVec;
     };
     
+    //std::chrono::time_point<std::chrono::steady_clock> runStart = std::chrono::steady_clock::now();
+
     for (size_t i=0; const auto& dataBlock : testMapper.dataBlocks){
         Graph<size_t, float> blockGraph(dataBlock.blockData.size(), size_t(10));
         BruteForceBlock<size_t, std::valarray<float>, float>(blockGraph, 10, dataBlock, EuclideanNorm<float, float, float>);
         reflexiveGraphs.push_back(std::move(blockGraph));
         nearestNeighbors.push_back(Graph<BlockIndecies, float>(dataBlock.size(), 10));
         for (size_t j = 0; auto& vertex: nearestNeighbors[i]){
-            for(size_t k = 0; k<10; k+=1){
+            for(size_t k = 0; k<15; k+=1){
                 vertex.push_back({{0,0}, std::numeric_limits<float>::max()});
             }
             testJoinHints[i][i][j] = std::vector<size_t>();
@@ -482,10 +495,38 @@ int main(){
                 graphUpdates += ConsumeVertex(nearestNeighbors[i][consolidatedResult.first], consolidatedResult.second);
             }
         }
-        std::cout << graphUpdates << " updates in iteration " << iteration << std::endl;
-        iteration += 1;
+        //std::cout << graphUpdates << " updates in iteration " << iteration << std::endl;
+        //iteration += 1;
+    }
+    std::chrono::time_point<std::chrono::steady_clock> runEnd2 = std::chrono::steady_clock::now();
+    std::cout << std::chrono::duration_cast<std::chrono::seconds>(runEnd2 - runStart2).count() << "s test set search " << std::endl;
+
+    std::vector<std::vector<size_t>> results(mnistFashionTest.samples.size());
+    for (size_t i = 0; auto& testBlock: nearestNeighbors){
+        for (size_t j = 0; auto& result: testBlock){
+            size_t testIndex = testMapper.blockIndexToSource[{i,j}];
+            std::sort_heap(result.begin(), result.end(), NeighborDistanceComparison<BlockIndecies, float>);
+            for (const auto& neighbor: result){
+                results[testIndex].push_back(trainMapper.blockIndexToSource[neighbor.first]);
+            }
+            j++;
+        }
+        i++;
+    }
+    size_t numNeighborsCorrect(0);
+    for(size_t i = 0; const auto& result: results){
+        for(size_t j = 0; const auto& neighbor: result){
+            auto findItr = std::find(std::begin(mnistFashionTestNeighbors.samples[i]), std::begin(mnistFashionTestNeighbors.samples[i]) + 10, neighbor);
+            if (findItr != (std::begin(mnistFashionTestNeighbors.samples[i]) + 10)){
+                numNeighborsCorrect++;
+            }
+            j++;
+        }
+        i++;
     }
     
+    double recall = double(numNeighborsCorrect)/ double(10*mnistFashionTestNeighbors.samples.size());
+    std::cout << "Recall: " << (recall * 100) << "%" << std::endl;
     //WeightedGraphEdges graphEdges = NeighborsOutOfBlock(mnistFashionTestNeighbors, trainMapper.sourceToBlockIndex, testClassifications);
 
     //for (size_t i = 0; i < trainMapper.sourceToBlockIndex.size(); i += 1){
@@ -503,6 +544,7 @@ int main(){
 
     //std::chrono::time_point<std::chrono::steady_clock> runEnd = std::chrono::steady_clock::now();
     //std::cout << std::chrono::duration_cast<std::chrono::seconds>(runEnd - runStart).count() << "s Nearest Node Calcs " << std::endl;
+
 
 
     return 0;
