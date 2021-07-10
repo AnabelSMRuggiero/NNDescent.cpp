@@ -175,7 +175,7 @@ void NewJoinQueues(const std::vector<std::pair<DataIndexType, GraphVertex<DataIn
                 BlockNumberType targetBlock = targetVertexNeighbor.first.blockNumber;
                 if (blocksJoined[targetBlock]) continue;
                 auto findItr = std::find(mapToUpdate[targetBlock][result.first].begin(), mapToUpdate[targetBlock][result.first].end(), index.first);
-                if (findItr != mapToUpdate[targetBlock][result.first].end()) mapToUpdate[targetBlock][result.first].push_back(index.first);
+                if (findItr == mapToUpdate[targetBlock][result.first].end()) mapToUpdate[targetBlock][result.first].push_back(index.first);
             } 
             
         }
@@ -418,6 +418,14 @@ int main(){
     nearestNeighbors.reserve(testMapper.dataBlocks.size());
 
     std::vector<JoinMap<size_t, size_t>> testJoinHints(testMapper.dataBlocks.size());
+
+    auto hintBuilder = [](const QueryContext<size_t, std::valarray<float>, float>& context) -> std::vector<size_t>{
+        std::vector<size_t> retVec;
+        for (const auto& neighbor: context.queryHint){
+            retVec.push_back(neighbor.first);
+        }
+        return retVec;
+    };
     
     for (size_t i=0; const auto& dataBlock : testMapper.dataBlocks){
         Graph<size_t, float> blockGraph(dataBlock.blockData.size(), size_t(10));
@@ -428,7 +436,7 @@ int main(){
             for(size_t k = 0; k<10; k+=1){
                 vertex.push_back({{0,0}, std::numeric_limits<float>::max()});
             }
-            testJoinHints[i][i][j] = std::vector<size_t>();;
+            testJoinHints[i][i][j] = std::vector<size_t>();
             j++;
         }
         
