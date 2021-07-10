@@ -22,23 +22,24 @@ https://github.com/AnabelSMRuggiero/NNDescent.cpp
 namespace nnd{
 
 // Todo might need to use something other than valarray if I need to handle truly arbitrary data types.
+template<typename FloatType>
 struct MetaPoint{
     int weight;
-    std::valarray<double> centerOfMass;
+    std::valarray<FloatType> centerOfMass;
 };
 
 
 
-template<std::ranges::random_access_range DataEntry>
-MetaPoint CalculateCOM(const DataBlock<DataEntry>& dataBlock){
+template<std::ranges::random_access_range DataEntry, typename FloatType>
+MetaPoint<FloatType> CalculateCOM(const DataBlock<DataEntry>& dataBlock){
 
-    MetaPoint retPoint;
+    MetaPoint<FloatType> retPoint;
     retPoint.weight = std::ranges::size(dataBlock.blockData);
-    retPoint.centerOfMass = std::valarray<double>(std::ranges::size(dataBlock.blockData[0]));
+    retPoint.centerOfMass = std::valarray<FloatType>(std::ranges::size(dataBlock.blockData[0]));
     
     for (size_t i = 0; i<dataBlock.blockData.size(); i += 1){
         for(size_t j = 0; j<dataBlock.blockData[i].size(); j += 1){
-            retPoint.centerOfMass[j] += static_cast<double>(dataBlock.blockData[i][j]);
+            retPoint.centerOfMass[j] += static_cast<FloatType>(dataBlock.blockData[i][j]);
         }
     }
 
@@ -49,7 +50,7 @@ MetaPoint CalculateCOM(const DataBlock<DataEntry>& dataBlock){
 }
 
 template<typename DataType, typename FloatType>
-void BruteForceGraph(Graph<size_t, FloatType>& uninitGraph, size_t numNeighbors, const std::vector<MetaPoint>& dataVector, SpaceMetric<DataType, DataType, FloatType> distanceFunctor){
+void BruteForceGraph(Graph<size_t, FloatType>& uninitGraph, size_t numNeighbors, const std::vector<MetaPoint<FloatType>>& dataVector, SpaceMetric<DataType, DataType, FloatType> distanceFunctor){
     
     // I can make this branchless. Check to see if /O2 or /O3 can make this branchless (I really doubt it)
     for (size_t i = 0; i < dataVector.size(); i += 1){
@@ -75,16 +76,17 @@ void BruteForceGraph(Graph<size_t, FloatType>& uninitGraph, size_t numNeighbors,
     }
 }
 
+template<typename IndexType, typename FloatType>
 struct MetaGraph{
-    std::vector<MetaPoint> points;
-    Graph<size_t, double> verticies;
+    std::vector<MetaPoint<FloatType>> points;
+    Graph<IndexType, FloatType> verticies;
 
     template<typename DataEntry>
     MetaGraph(const std::vector<DataBlock<DataEntry>>& dataBlocks, size_t numNeighbors): points(0), verticies(dataBlocks.size(), numNeighbors){
         for (const auto& dataBlock: dataBlocks){
-            points.push_back(CalculateCOM<DataEntry>(dataBlock));
+            points.push_back(CalculateCOM<DataEntry, FloatType>(dataBlock));
         }
-        BruteForceGraph<std::valarray<double>, double>(verticies, numNeighbors, points, EuclideanNorm<double, double>);
+        BruteForceGraph<std::valarray<FloatType>, FloatType>(verticies, numNeighbors, points, EuclideanNorm<FloatType, FloatType, FloatType>);
     }
 };
 
@@ -103,8 +105,8 @@ struct MetaGraph{
     xxxx     8 byte double  secondEntry.COM[0]        0th (first) dimension value
 
 */
-
-void SerializeCOMS(const std::vector<MetaPoint>& COMs, const std::string& outputFile){
+template<typename DistType>
+void SerializeCOMS(const std::vector<MetaPoint<DistType>>& COMs, const std::string& outputFile){
     std::ofstream outStream(outputFile, std::ios_base::binary);
 
     SerializeData<size_t, std::endian::big>(outStream, COMs.size());
@@ -113,7 +115,7 @@ void SerializeCOMS(const std::vector<MetaPoint>& COMs, const std::string& output
     for(const auto& point : COMs){
         SerializeData<size_t, std::endian::big>(outStream, point.weight);
         for(const auto& extent : point.centerOfMass){
-            SerializeData<double, std::endian::big>(outStream, extent);
+            SerializeData<DistType, std::endian::big>(outStream, extent);
         }
 
     }
