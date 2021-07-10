@@ -321,12 +321,12 @@ struct UndirectedGraph{
     UndirectedGraph(const Graph<IndexType, DistType>& directedGraph): verticies(directedGraph.size()){
 
         for (size_t i = 0; i<directedGraph.size(); i +=1) verticies[i].reserve(1.5*directedGraph[0].size());
-        
+
         for (size_t i = 0; const auto& vertex: directedGraph){
-                for (const auto&: neighbor){
-                    verticies[i].pushBack(neighbor.first);
-                    verticies[neighbor.first].push_back(i);
-                }
+            for (const auto& neighbor: vertex){
+                verticies[i].pushBack(neighbor.first);
+                verticies[neighbor.first].push_back(i);
+            }
             i++;
         }
     }

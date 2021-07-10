@@ -218,13 +218,13 @@ int main(){
     std::uniform_int_distribution<size_t> rngDist(size_t(0), mnistFashionTrain.numberOfSamples - 1);
     StlRngFunctor<std::mt19937_64, std::uniform_int_distribution, size_t> rngFunctor(std::move(rngEngine), std::move(rngDist));
 
-    EuclidianTrain<float, double> splittingScheme(mnistFashionTrain);
+    EuclidianTrain<float, float> splittingScheme(mnistFashionTrain);
     TrainingSplittingScheme splitterFunc(splittingScheme);
     
     RandomProjectionForest rpTreesTrain(size_t(mnistFashionTrain.numberOfSamples), rngFunctor, splitterFunc);
 
 
-    std::vector<size_t> trainClassifications(mnistFashionTrain.numberOfSamples);
+    //std::vector<size_t> trainClassifications(mnistFashionTrain.numberOfSamples);
     
 
     
@@ -234,77 +234,46 @@ int main(){
     CrawlTerminalLeaves(rpTreesTrain, trainMapper);
     
 
-    /*
-    std::string testDataFilePath("./TestData/MNIST-Fashion-Data.bin");
-    std::string testNeighborsFilePath("./TestData/MNIST-Fashion-Neighbors.bin");
-    DataSet<std::valarray<float>> mnistFashionTest(testDataFilePath, 28*28, 10'000, &ExtractNumericArray<float,dataEndianness>);
-    DataSet<std::valarray<int32_t>> mnistFashionTestNeighbors(testNeighborsFilePath, 100, 10'000, &ExtractNumericArray<int32_t,dataEndianness>);
-
-    EuclidianTransform<float, double> transformingScheme(mnistFashionTest, splitterFunc.target<EuclidianTrain<float, double>>()->splittingVectors);
     
-    std::unordered_set<size_t> splittingIndicies;
-    for (auto& leaf: rpTreesTrain.treeLeaves){
-        if(leaf.children.first == 0 && leaf.children.second == 0) continue;
-        splittingIndicies.insert(leaf.splittingIndex);
-    }
-
-    TransformingSplittingScheme transformingFunc(transformingScheme);
-
-    RandomProjectionForest rpTreesTest(mnistFashionTest.numberOfSamples, transformingFunc, splittingIndicies);
-
-
-    std::vector<size_t> testClassifications(mnistFashionTest.numberOfSamples);
-
-    auto testClassificationFunction = [&testClassifications, &trainMapper](size_t splittingIndex, std::span<const size_t> indicies){
-        for (const auto& index : indicies){
-            testClassifications[index] = trainMapper.splitToBlockNum.at(splittingIndex);
-        }
-    };
-
-    DataMapper<std::valarray<float>> testMapper(mnistFashionTest);
-    CrawlTerminalLeaves(rpTreesTest, testClassificationFunction);
-    */
-
-    
-    std::vector<Graph<size_t, double>> blockGraphs(0);
+    std::vector<Graph<size_t, float>> blockGraphs(0);
     blockGraphs.reserve(trainMapper.dataBlocks.size());
     for (const auto& dataBlock : trainMapper.dataBlocks){
-        Graph<size_t, double> blockGraph(dataBlock.blockData.size(), size_t(10));
-        BruteForceBlock<size_t, std::valarray<float>, double>(blockGraph, 10, dataBlock, EuclideanNorm<float, float, double>);
+        Graph<size_t, float> blockGraph(dataBlock.blockData.size(), size_t(10));
+        BruteForceBlock<size_t, std::valarray<float>, float>(blockGraph, 10, dataBlock, EuclideanNorm<float, float, float>);
         blockGraphs.push_back(std::move(blockGraph));
     }
     
-    MetaGraph metaGraph(trainMapper.dataBlocks, 6);
+    MetaGraph<size_t, float> metaGraph(trainMapper.dataBlocks, 10);
 
     
-    std::vector<QueryContext<size_t, std::valarray<float>, double>> queryContexts;
+    std::vector<QueryContext<size_t, std::valarray<float>, float>> queryContexts;
 
     for (size_t i = 0; i<metaGraph.verticies.size(); i+=1){
-        queryContexts.push_back(QueryContext<size_t, std::valarray<float>, double>::QueryContext(blockGraphs[i],
+        queryContexts.push_back(QueryContext<size_t, std::valarray<float>, float>::QueryContext(blockGraphs[i],
                                 trainMapper.dataBlocks[i],
                                 metaGraph.points[i].centerOfMass,
                                 10,
-                                EuclideanNorm<float, float, double>,
-                                EuclideanNorm<double, float, double>));
+                                EuclideanNorm<float, float, float>,
+                                EuclideanNorm<float, float, float>));
     }
 
     for (size_t i = 0; i<metaGraph.verticies.size(); i+=1){
-        GraphVertex<size_t, double>& vertex = metaGraph.verticies[i];
-        std::sort(vertex.begin(), vertex.end(), NeighborDistanceComparison<size_t, double>);
+        GraphVertex<size_t, float>& vertex = metaGraph.verticies[i];
+        std::sort(vertex.begin(), vertex.end(), NeighborDistanceComparison<size_t, float>);
         for(size_t j = 0; j<vertex.size(); j+=1){
             //Nearest Node distance; results are cached within objects. In fact, this op currently returns void. Maybe return a const ref to... something?
             queryContexts[i] * queryContexts[vertex[j].first];
         }
     }
 
-    Graph<size_t, double> nearestNodeDistances;
+    Graph<size_t, float> nearestNodeDistances;
     for(auto& context: queryContexts){
-        GraphVertex<size_t, double> nearestNeighbors;
-        std::unordered_map<size_t, double> distanceMap = std::move(context.distances);
+        GraphVertex<size_t, float> nearestNeighbors;
+        std::unordered_map<size_t, float> distanceMap = std::move(context.nearestNodeDistances);
         for(const auto& pair: distanceMap){
             nearestNeighbors.push_back(pair);
         }
-        std::sort(nearestNeighbors.begin(), nearestNeighbors.end(), NeighborDistanceComparison<size_t, double>);
+        std::sort(nearestNeighbors.begin(), nearestNeighbors.end(), NeighborDistanceComparison<size_t, float>);
         nearestNodeDistances.push_back(std::move(nearestNeighbors));
     }
 
@@ -324,12 +293,12 @@ int main(){
         }
     }
 
-    std::vector<Graph<BlockIndecies, double>> updatedBlockGraphs;
+    std::vector<Graph<BlockIndecies, float>> updatedBlockGraphs;
     for(auto& context: queryContexts){
-        std::unordered_map<size_t, Graph<size_t, double>> candidates(std::move(context.neighborCandidates));
-        Graph<BlockIndecies, double> blockGraph;
+        std::unordered_map<size_t, Graph<size_t, float>> candidates(std::move(context.neighborCandidates));
+        Graph<BlockIndecies, float> blockGraph;
         for (const auto& vertex: blockGraphs[context.dataBlock.blockNumber]){
-            GraphVertex<BlockIndecies, double> newVert;
+            GraphVertex<BlockIndecies, float> newVert;
             for (const auto& neighbor: vertex){
                 newVert.push_back({{context.dataBlock.blockNumber, neighbor.first}, neighbor.second});
             }
@@ -348,7 +317,7 @@ int main(){
     std::vector<ComparisonMap<size_t, size_t>> queueMaps;
     queueMaps.reserve(updatedBlockGraphs.size());
     for (size_t i = 0; i<updatedBlockGraphs.size(); i+=1){
-        queueMaps.push_back(InitializeComparisonQueues<size_t, size_t, double>(updatedBlockGraphs[i], i));
+        queueMaps.push_back(InitializeComparisonQueues<size_t, size_t, float>(updatedBlockGraphs[i], i));
     }
     
     std::vector<JoinMap<size_t, size_t>> joinHints;
@@ -356,22 +325,22 @@ int main(){
     for(size_t i = 0; i<queueMaps.size(); i+=1){
         ComparisonMap<size_t, size_t>& comparisonMap = queueMaps[i];
         
-        joinHints.push_back(InitializeJoinMap<size_t, size_t, double>(updatedBlockGraphs, comparisonMap, blockJoinTrackers[i]));
+        joinHints.push_back(InitializeJoinMap<size_t, size_t, float>(updatedBlockGraphs, comparisonMap, blockJoinTrackers[i]));
     }
 
 
-    std::vector<std::unordered_map<size_t, JoinResults<size_t, double>>> blockUpdates(updatedBlockGraphs.size());
+    std::vector<std::unordered_map<size_t, JoinResults<size_t, float>>> blockUpdates(updatedBlockGraphs.size());
     
 
-    GraphVertex<BlockIndecies, double> nullVertex;
+    GraphVertex<BlockIndecies, float> nullVertex;
     for(size_t i = 0; i<10; i+=1){
-        nullVertex.push_back({{0,0}, std::numeric_limits<double>::max()});
+        nullVertex.push_back({{0,0}, std::numeric_limits<float>::max()});
     }
     int iteration(1);
     int graphUpdates(1);
     while(graphUpdates>0){
         graphUpdates = 0;
-        std::vector<std::unordered_map<size_t, JoinResults<size_t, double>>> blockUpdates(updatedBlockGraphs.size());
+        std::vector<std::unordered_map<size_t, JoinResults<size_t, float>>> blockUpdates(updatedBlockGraphs.size());
         for(size_t i = 0; i<updatedBlockGraphs.size(); i+=1){
             JoinMap<size_t, size_t>& joinsToDo = joinHints[i];
             JoinMap<size_t, size_t> newJoinHints;
@@ -380,13 +349,13 @@ int main(){
             }
             for (auto& joinList: joinsToDo){
                 blockUpdates[i][joinList.first] = BlockwiseJoin(joinList.second, updatedBlockGraphs[i], blockGraphs[i], trainMapper.dataBlocks[i], queryContexts[joinList.first]);
-                NewJoinQueues<size_t, size_t, double>(blockUpdates[i][joinList.first], blockJoinTrackers[i], updatedBlockGraphs[joinList.first], newJoinHints);
+                NewJoinQueues<size_t, size_t, float>(blockUpdates[i][joinList.first], blockJoinTrackers[i], updatedBlockGraphs[joinList.first], newJoinHints);
             }
             joinHints[i] = std::move(newJoinHints);  
         }
 
         for (size_t i = 0; i<blockUpdates.size(); i+=1){
-            std::unordered_map<size_t, GraphVertex<BlockIndecies, double>> consolidatedResults;
+            std::unordered_map<size_t, GraphVertex<BlockIndecies, float>> consolidatedResults;
             for (auto& blockResult: blockUpdates[i]){
                 for (auto& result: blockResult.second){
                     //GraphVertex<BlockIndecies, double> newVertex;
@@ -412,7 +381,103 @@ int main(){
         VerifySubGraphState(updatedBlockGraphs[i], i);
     }
     
+    // Lets try and get searching up and running
+    std::string testDataFilePath("./TestData/MNIST-Fashion-Data.bin");
+    std::string testNeighborsFilePath("./TestData/MNIST-Fashion-Neighbors.bin");
+    DataSet<std::valarray<float>> mnistFashionTest(testDataFilePath, 28*28, 10'000, &ExtractNumericArray<float,dataEndianness>);
+    DataSet<std::valarray<int32_t>> mnistFashionTestNeighbors(testNeighborsFilePath, 100, 10'000, &ExtractNumericArray<int32_t,dataEndianness>);
 
+    EuclidianTransform<float, float> transformingScheme(mnistFashionTest, splitterFunc.target<EuclidianTrain<float, float>>()->splittingVectors);
+    
+    std::unordered_set<size_t> splittingIndicies;
+    for (auto& leaf: rpTreesTrain.treeLeaves){
+        if(leaf.children.first == 0 && leaf.children.second == 0) continue;
+        splittingIndicies.insert(leaf.splittingIndex);
+    }
+
+    TransformingSplittingScheme transformingFunc(transformingScheme);
+
+    RandomProjectionForest rpTreesTest(mnistFashionTest.numberOfSamples, transformingFunc, splittingIndicies);
+
+    
+    //std::vector<size_t> testClassifications(mnistFashionTest.numberOfSamples);
+    /*
+    auto testClassificationFunction = [&testClassifications, &trainMapper](size_t splittingIndex, std::span<const size_t> indicies){
+        for (const auto& index : indicies){
+            testClassifications[index] = trainMapper.splitToBlockNum.at(splittingIndex);
+        }
+    };
+    */
+    
+    DataMapper<std::valarray<float>> testMapper(mnistFashionTest);
+    CrawlTerminalLeaves(rpTreesTest, testMapper);
+    
+    std::vector<Graph<size_t, float>> reflexiveGraphs(0);
+    reflexiveGraphs.reserve(testMapper.dataBlocks.size());
+    std::vector<Graph<BlockIndecies,float>> nearestNeighbors;
+    nearestNeighbors.reserve(testMapper.dataBlocks.size());
+
+    std::vector<JoinMap<size_t, size_t>> testJoinHints(testMapper.dataBlocks.size());
+    
+    for (size_t i=0; const auto& dataBlock : testMapper.dataBlocks){
+        Graph<size_t, float> blockGraph(dataBlock.blockData.size(), size_t(10));
+        BruteForceBlock<size_t, std::valarray<float>, float>(blockGraph, 10, dataBlock, EuclideanNorm<float, float, float>);
+        reflexiveGraphs.push_back(std::move(blockGraph));
+        nearestNeighbors.push_back(Graph<BlockIndecies, float>(dataBlock.size(), 10));
+        for (size_t j = 0; auto& vertex: nearestNeighbors[i]){
+            for(size_t k = 0; k<10; k+=1){
+                vertex.push_back({{0,0}, std::numeric_limits<float>::max()});
+            }
+            testJoinHints[i][i][j] = std::vector<size_t>();;
+            j++;
+        }
+        
+        i++;
+    }
+
+    std::vector<NodeTracker> testJoinTrackers(blockGraphs.size(), NodeTracker(blockGraphs.size()));
+    
+    iteration = 1;
+    graphUpdates = 1;
+    while(graphUpdates>0){
+        graphUpdates = 0;
+        std::vector<std::unordered_map<size_t, JoinResults<size_t, float>>> blockUpdates(nearestNeighbors.size());
+        for(size_t i = 0; i<nearestNeighbors.size(); i+=1){
+            JoinMap<size_t, size_t>& joinsToDo = testJoinHints[i];
+            JoinMap<size_t, size_t> newJoinHints;
+            for (auto& joinList: joinsToDo){
+                testJoinTrackers[i][joinList.first] = true;
+            }
+            for (auto& joinList: joinsToDo){
+                blockUpdates[i][joinList.first] = BlockwiseJoin(joinList.second, nearestNeighbors[i], reflexiveGraphs[i], testMapper.dataBlocks[i], queryContexts[joinList.first]);
+                NewJoinQueues<size_t, size_t, float>(blockUpdates[i][joinList.first], testJoinTrackers[i], updatedBlockGraphs[joinList.first], newJoinHints);
+            }
+            testJoinHints[i] = std::move(newJoinHints);  
+        }
+
+        for (size_t i = 0; i<blockUpdates.size(); i+=1){
+            std::unordered_map<size_t, GraphVertex<BlockIndecies, float>> consolidatedResults;
+            for (auto& blockResult: blockUpdates[i]){
+                for (auto& result: blockResult.second){
+                    //GraphVertex<BlockIndecies, double> newVertex;
+                    //for (const auto& resultEntry: result.second){
+                    //    newVertex.push_back({{blockResult.first, resultEntry.first}, resultEntry.second});
+                    //}
+                    if(consolidatedResults.find(result.first) == consolidatedResults.end()){
+                        consolidatedResults[result.first] = nullVertex;
+                    }
+                    ConsumeVertex(consolidatedResults[result.first], result.second, blockResult.first);
+                }
+            }
+
+            for(auto& consolidatedResult: consolidatedResults){
+                graphUpdates += ConsumeVertex(nearestNeighbors[i][consolidatedResult.first], consolidatedResult.second);
+            }
+        }
+        std::cout << graphUpdates << " updates in iteration " << iteration << std::endl;
+        iteration += 1;
+    }
+    
     //WeightedGraphEdges graphEdges = NeighborsOutOfBlock(mnistFashionTestNeighbors, trainMapper.sourceToBlockIndex, testClassifications);
 
     //for (size_t i = 0; i < trainMapper.sourceToBlockIndex.size(); i += 1){
