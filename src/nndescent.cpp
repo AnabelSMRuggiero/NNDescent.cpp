@@ -185,6 +185,24 @@ void NewJoinQueues(const std::vector<std::pair<DataIndexType, GraphVertex<DataIn
 
 int main(){
 
+    std::cout << "NNDescent.cpp prototype - 7/10/2021" << std::endl;
+    std::cout << "This binary was compiled with Microsoft (R) C/C++ Optimizing Compiler Version 19.29.30038.1 for x64" << std::endl;
+    std::cout << "With the following settings:" << std::endl;
+    std::cout << "/Zi /EHsc /nologo /std:c++latest /O2 /fp:fast /arch:AVX2" << std::endl;
+    std::cout << "This binary is a single threaded, extremely early prototype that has some preconditions for running." << std::endl;
+    std::cout << "It needs the MNIST fashion data set or other similarly size data set, like MNIST digits." << std::endl;
+    std::cout << "All of the data must be in big endian format (odd, I know, for my testing I just ended up going with big because I forgot what the common x64 endianess was)." << std::endl;
+    std::cout << "The training and test data must be 32-bit floating point numbers, the ground truth must be 32-bit ints with 100 entries per test point." << std::endl;
+    std::cout << "The data must use the following paths:" << std::endl;
+    std::cout << "./TestData/MNIST-Fashion-Train.bin" << std::endl;
+    std::cout << "./TestData/MNIST-Fashion-Data.bin" << std::endl;
+    std::cout << "./TestData/MNIST-Fashion-Neighbors.bin" << std::endl;
+    std::cout << std::endl;
+    std::cout << "The source code for this binary may be found at:" << std::endl;
+    std::cout << "https://github.com/AnabelSMRuggiero/NNDescent.cpp/tree/initial-prototype-archive" << std::endl;
+    std::cout << std::endl;
+
+    
     static const std::endian dataEndianness = std::endian::big;
 
     //std::string trainDataFilePath("./TestData/train-images.idx3-ubyte");
