@@ -142,12 +142,15 @@ int ConsumeVertex(GraphVertex<BlockIndecies, DistType>& consumer, GraphVertex<Bl
 
 
 template<TriviallyCopyable OtherIndex, typename OtherDist, typename ConsumerDist>
-void ConsumeVertex(GraphVertex<BlockIndecies, ConsumerDist>& consumer, GraphVertex<OtherIndex, OtherDist>& consumee, size_t consumeeBlockNum){
+int ConsumeVertex(GraphVertex<BlockIndecies, ConsumerDist>& consumer, GraphVertex<OtherIndex, OtherDist>& consumee, size_t consumeeBlockNum){
     std::sort(consumee.begin(), consumee.end(), NeighborDistanceComparison<OtherIndex, OtherDist>);
+    int neighborsAdded(0);
     for (auto& pair: consumee){
-        if (pair.second >= consumer.neighbors[0].second) return;
+        if (pair.second >= consumer.neighbors[0].second) return neighborsAdded;
         consumer.PushNeighbor({{consumeeBlockNum, pair.first}, static_cast<ConsumerDist>(pair.second)});
+        neighborsAdded++;
     }
+    return neighborsAdded;
 }
 
 

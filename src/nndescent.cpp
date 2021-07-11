@@ -163,6 +163,7 @@ JoinResults<DataIndexType, DistType> BlockwiseJoin(const JoinHints<DataIndexType
     }
     return retResults;
 }
+
 template<typename BlockNumberType, typename DataIndexType, typename DistType>
 void NewJoinQueues(const std::vector<std::pair<DataIndexType, GraphVertex<DataIndexType, DistType>>>& joinResults,
                    const NodeTracker& blocksJoined,
@@ -182,6 +183,51 @@ void NewJoinQueues(const std::vector<std::pair<DataIndexType, GraphVertex<DataIn
     }
 }
 
+template<typename BlockNumberType, typename DataIndexType, typename DataEntry, typename DistType>
+int CompareBlocks(JoinHints<DataIndexType>&& joinsToDo,
+                  NodeTracker& blockJoinTracker,
+                  Graph<BlockIndecies, DistType>& updatedBlockGraph, 
+                  const Graph<BlockIndecies, DistType>& targetBlockGraph,
+                  const DataBlock<DataEntry>& targetDataBlock,
+                  const BlockNumberType targetBlockNumber,
+                  QueryContext<DataIndexType, DataEntry, DistType>& targetContext){
+
+    
+        
+    JoinMap<size_t, size_t> newJoinHints;
+    
+    blockJoinTracker[targetBlockNumber] = true;
+    
+    
+    JoinResults<DataIndexType, DistType> blockUpdates = BlockwiseJoin(joinsToDo, updatedBlockGraph, targetBlockGraph, targetDataBlock, targetContext);
+    //Once I finish refactoring this, have NewJoinQueues return a JoinMap instead
+    NewJoinQueues<size_t, size_t, float>(blockUpdates, blockJoinTracker, updatedBlockGraph, newJoinHints);
+
+ 
+
+
+
+    int graphUpdates(0);
+    for (auto& blockResult: blockUpdates){
+
+        graphUpdates += ConsumeVertex(updatedBlockGraph[blockResult.first], blockResult.second);
+    }
+
+    return graphUpdates;
+}
+
+template<typename BlockNumberType, typename DataIndexType, typename DataEntry, typename DistType>
+struct BlockUpdateContext {
+    NodeTracker blockJoinTracker;
+    DataBlock<DataEntry> dataBlock;
+    JoinMap<BlockNumberType, DataIndexType> joinsToDo;
+    QueryContext<DataIndexType, DataEntry, DistType> queryContext;
+    BlockNumberType blockNumber;
+    Graph<DataIndexType, DistType> leafGraph;
+    Graph<BlockIndecies, DistType> currentGraph;
+
+
+};
 
 int main(){
 
@@ -279,9 +325,9 @@ int main(){
     Graph<size_t, float> nearestNodeDistances;
     for(auto& context: queryContexts){
         GraphVertex<size_t, float> nearestNeighbors;
-        std::unordered_map<size_t, float> distanceMap = std::move(context.nearestNodeDistances);
+        std::unordered_map<size_t, std::tuple<size_t, size_t, float>> distanceMap = std::move(context.nearestNodeDistances);
         for(const auto& pair: distanceMap){
-            nearestNeighbors.push_back(pair);
+            nearestNeighbors.push_back({pair.first, std::get<2>(pair.second)});
         }
         std::sort(nearestNeighbors.begin(), nearestNeighbors.end(), NeighborDistanceComparison<size_t, float>);
         nearestNodeDistances.push_back(std::move(nearestNeighbors));

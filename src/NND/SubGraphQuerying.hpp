@@ -142,7 +142,7 @@ struct QueryContext{
     GraphVertex<IndexType, DistType> queryHint;
     const int numCandidates;
     std::unordered_map<size_t, Graph<IndexType, DistType>> neighborCandidates;
-    std::unordered_map<size_t, DistType> nearestNodeDistances;
+    std::unordered_map<size_t, std::tuple<IndexType, IndexType, DistType>> nearestNodeDistances;
     SpaceMetric<DataEntry, DataEntry, DistType> distanceFunctor;
 
     QueryContext(const Graph<IndexType, DistType>& subGraph,
@@ -167,10 +167,10 @@ struct QueryContext{
 
     //Nearest Node Distance
     //make checking this in parallel safe
-    DistType operator*(QueryContext& rhs){
+    std::tuple<IndexType, IndexType, DistType> operator*(QueryContext& rhs){
         auto result = this->nearestNodeDistances.find(rhs.dataBlock.blockNumber);
         if(result == nearestNodeDistances.end()){
-            DistType distance = NearestNodes(rhs);
+            std::tuple<IndexType, IndexType, DistType> distance = NearestNodes(rhs);
             this->nearestNodeDistances[rhs.dataBlock.blockNumber] = distance;
             rhs.nearestNodeDistances[this->dataBlock.blockNumber] = distance;
         }
@@ -260,7 +260,7 @@ struct QueryContext{
         return retGraph;
     }
 
-    DistType NearestNodes(const QueryContext& rhs){
+    std::tuple<IndexType, IndexType, DistType> NearestNodes(const QueryContext& rhs){
 
         assert(this->distanceFunctor == rhs.distanceFunctor);
 
@@ -330,7 +330,7 @@ struct QueryContext{
             bestPair = tmpPair;
         }
         
-        return bestDistance;
+        return {bestPair.first, bestPair.second, bestDistance};
     }
 
 };

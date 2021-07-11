@@ -151,8 +151,12 @@ struct RandomProjectionForest{
 
         std::vector<size_t> indexVector1(numberOfSamples);
         std::iota(indexVector1.begin(), indexVector1.end(), 0);
+
+        #ifdef _DEBUG
         size_t sum = std::accumulate(indexVector1.begin(), indexVector1.end(), 0);
         size_t tmpSum(sum);
+        #endif
+
         std::vector<size_t> indexVector2(numberOfSamples);
 
         std::function<bool(size_t)> splittingFunction;
@@ -254,7 +258,7 @@ struct RandomProjectionForest{
                     auto toIt = indexVector2.begin() + treeLeaves[currentIndex].splitRange.first;
 
 
-                    std::copy(fromIt, endFrom, toIt);
+                    //std::copy(fromIt, endFrom, toIt);
                 }
                 splitQueue1.pop_back();
 
@@ -262,10 +266,12 @@ struct RandomProjectionForest{
             
             std::swap(indexVector1, indexVector2);
             std::swap(splitQueue1, splitQueue2);
+            #ifdef _DEBUG
             tmpSum = std::accumulate(indexVector1.begin(), indexVector1.end(), 0);
             if (sum != tmpSum){
                 throw std::logic_error("Sum of indicies should be invariant.");
             };
+            #endif
 
         } //end for
         indexArray = std::move(indexVector1);
@@ -423,6 +429,7 @@ void CrawlTerminalLeaves(const RandomProjectionForest& forest, Functor& terminal
                 treePath.pop_back();
                 continue;
             }
+            
             throw std::logic_error("Invalid Crawl State");
             
         } else if (forest.treeLeaves[currentIndex].children.first == 0 && forest.treeLeaves[currentIndex].children.second == 0){

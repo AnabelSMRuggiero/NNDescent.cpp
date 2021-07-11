@@ -82,21 +82,12 @@ struct EuclidianTrain{
                                    &splitter = splittingVectors[splitIndex].first,
                                    offset = splittingVectors[splitIndex].second]
                                    (size_t comparisonIndex) -> bool{
-                // This is some janky type conversion shenanigans here. I need to either
-                // remove the assertion of arbitrary (but single) data type and turn everything into a float/double
-                // or define these ops in terms of something other than valarrays.
-                // I just wanna get prototyping rptrees done.
-                // TODO: KILL THIS IMPLEMENTATION (jfc, this is NOT GOOD)
-                std::valarray<FloatType> temporaryArr(data[comparisonIndex].size());
-                for(size_t i = 0; i < temporaryArr.size(); i += 1){
-                    temporaryArr[i] = FloatType(data[comparisonIndex][i]);
-                }
-
-                FloatType distanceFromPlane = (Dot(temporaryArr, splitter) + offset);
+                /*
+                FloatType distanceFromPlane = (Dot(data[comparisonIndex], splitter) + offset);
                 //std::cout << distanceFromPlane << std::endl;
                 bool result = 0.0 < distanceFromPlane;
-
-                return result;
+                */
+                return 0.0 < (Dot(data[comparisonIndex], splitter) + offset);
 
         };
         return std::function<bool(size_t)> (comparisonFunction);

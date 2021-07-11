@@ -12,3 +12,4 @@
 *.props
 *.sln
 *.vcxproj*
+/PyNNDescent-Comparison

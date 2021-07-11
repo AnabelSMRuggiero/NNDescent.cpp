@@ -1,6 +1,5 @@
 #General
 - Refactor RNG stuff
-- Refine implementation of space metrics and dot product. 
 - Think of more sensical names for the headers
 - Get a better idea of the actual data that will be fed into the algorithm.
   - Assume always array of numerics?
@@ -13,8 +12,6 @@
 - Fix my I/O. My I/O is bad. (I spend so much time in the stream operator).
 
 #RPTrees
-- Add way to track best splits
-  - With the direction I'm planning on going this probably won't be needed.
 - Move forest building outside of constructor.
 - Add in tree merge functionality
 - Think of a better way to refine tree splitting than if statement into goto.
@@ -23,14 +20,15 @@
 
 #NNDescent
 - Add in some more robust benchmarking
-  - Add in recall checking
 - This will be forever out from now, but test builing data array inside of the control structure itself to see if it reduces cache misses.
 - Try spinning up branchless block bruteforcing.
 - Template MetaGraph stuff
+  - Partially done
 - Rethink verticies. There should be some way to set up making operations on them more efficient.
   - Also set it up so NearestPair calculations can update neighbor lists.
   - Prototyped CacheLineVertex
 - Wrap searching function prototypes into a search context
+  - In progress
 - Should I move results caching outside of the query context? I kinda think having the results cached internally and not using the operator returns is an anti-patern.
 - Search leafGraphs don't need distances.
   - Form undirected search graphs

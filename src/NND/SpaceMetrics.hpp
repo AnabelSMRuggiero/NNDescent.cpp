@@ -69,13 +69,20 @@ RetType EuclideanNorm(const std::valarray<DataTypeA>& pointA, const std::valarra
 };
 */
 
-template<typename DataType, typename RetType=double>
-RetType Dot(const std::valarray<DataType>& pointA, const std::valarray<DataType>& pointB){
-    std::valarray<DataType> components = pointB*pointA;
-    RetType accum(0);
-    for(DataType i : components){
-        accum += i;
-    }
+template<typename DataTypeA, typename DataTypeB, typename RetType=double>
+RetType Dot(const std::valarray<DataTypeA>& pointA, const std::valarray<DataTypeB>& pointB){
+    auto transformFunc = [](DataTypeA operandA, DataTypeB operandB){
+        return static_cast<RetType>(operandA) * static_cast<RetType>(operandB);
+    };
+
+    RetType accum = std::transform_reduce(std::execution::unseq,
+                                    std::begin(pointA),
+                                    std::end(pointA),
+                                    std::begin(pointB),
+                                    RetType(0),
+                                    std::plus<RetType>(),
+                                    transformFunc);
+
     return accum;
 };
 
