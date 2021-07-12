@@ -152,19 +152,18 @@ GraphVertex<DataIndexType, DistType> QueryHintFromCOM(const std::valarray<COMExt
     return retHint;
 }
 
-template<TriviallyCopyable IndexType, typename DataEntry, typename DistType>
+template<TriviallyCopyable BlockNumberType, TriviallyCopyable IndexType, typename DataEntry, typename DistType>
 struct QueryContext{
     const Graph<IndexType, DistType>& subGraph;
     const DataBlock<DataEntry>& dataBlock;
-    GraphVertex<IndexType, DistType> queryHint;
+    const GraphVertex<IndexType, DistType> queryHint;
     const int numCandidates;
-    std::unordered_map<size_t, Graph<IndexType, DistType>> neighborCandidates;
-    std::unordered_map<size_t, std::tuple<IndexType, IndexType, DistType>> nearestNodeDistances;
+    //std::unordered_map<BlockNumberType, Graph<IndexType, DistType>> neighborCandidates;
     SpaceMetric<DataEntry, DataEntry, DistType> distanceFunctor;
 
     QueryContext(const Graph<IndexType, DistType>& subGraph,
                  const DataBlock<DataEntry>& dataBlock,
-                 GraphVertex<IndexType, DistType> queryHint,
+                 const GraphVertex<IndexType, DistType> queryHint,
                  SpaceMetric<DataEntry, DataEntry, DistType> distanceFunctor,
                  const int numCandidates): subGraph(subGraph), dataBlock(dataBlock), queryHint(std::move(queryHint)), numCandidates(numCandidates), neighborCandidates(), distanceFunctor(distanceFunctor){};
 
@@ -186,24 +185,13 @@ struct QueryContext{
 
     //Nearest Node Distance
     //make checking this in parallel safe
-    std::tuple<IndexType, IndexType, DistType> operator*(QueryContext& rhs){
-        auto result = this->nearestNodeDistances.find(rhs.dataBlock.blockNumber);
-        if(result == nearestNodeDistances.end()){
-            std::tuple<IndexType, IndexType, DistType> distance = NearestNodes(rhs);
-            this->nearestNodeDistances[rhs.dataBlock.blockNumber] = distance;
-            rhs.nearestNodeDistances[this->dataBlock.blockNumber] = distance;
-        }
-        return this->nearestNodeDistances[rhs.dataBlock.blockNumber];
-
+    std::tuple<IndexType, IndexType, DistType> operator*(const QueryContext& rhs) const{
+           return NearestNodes(rhs);
     }
 
-    void operator||(QueryContext& rhs){
-        auto result = this->neighborCandidates.find(rhs.dataBlock.blockNumber);
-        if (result != neighborCandidates.end()) return;
-        //Query RHS data against mine
-        rhs.neighborCandidates[this->dataBlock.blockNumber] = this->QuerySubGraph(rhs);
-        //Query My data against RHS
-        this->neighborCandidates[rhs.dataBlock.blockNumber] = rhs.QuerySubGraph(*this);
+    std::pair<Graph<IndexType, DistType>, Graph<IndexType, DistType>> operator||(const QueryContext& rhs) const{
+        //Get my updates by querying my data against RHS    Get RHS updates by querying RHS data against mine
+        return {rhs.QuerySubGraph(*this),                   this->QuerySubGraph(rhs)}
     }
     //
 
@@ -266,9 +254,7 @@ struct QueryContext{
         return initVertex;
     }
 
-    private:
-
-    Graph<IndexType, DistType> QuerySubGraph(const QueryContext& rhs){
+    Graph<IndexType, DistType> QuerySubGraph(const QueryContext& rhs) const{
 
         Graph<IndexType, DistType> retGraph;
 
@@ -279,7 +265,7 @@ struct QueryContext{
         return retGraph;
     }
 
-    std::tuple<IndexType, IndexType, DistType> NearestNodes(const QueryContext& rhs){
+    std::tuple<IndexType, IndexType, DistType> NearestNodes(const QueryContext& rhs) const{
 
         assert(this->distanceFunctor == rhs.distanceFunctor);
 

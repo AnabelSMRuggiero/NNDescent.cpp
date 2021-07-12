@@ -94,7 +94,7 @@ struct GraphVertex{
         return neighbors[i.dataIndex];
     }
 
-    size_t size(){
+    size_t size() const noexcept{
         return neighbors.size();
     }
     
@@ -120,6 +120,10 @@ struct GraphVertex{
 
     constexpr const_iterator cend() const noexcept{
         return neighbors.cend();
+    }
+
+    constexpr void resize(size_t count){
+        neighbors.resize(count);
     }
 
     //private:
