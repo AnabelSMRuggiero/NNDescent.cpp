@@ -6,6 +6,9 @@
     - Front end some sort of generalized PCA?
     - I could just be boring and front end SVD (which doesn't really work for non-euclidian easily, but would be needed for generalized PCA init)
 
+- Try turning space metrics into functors, and have the type as a template parameter
+  - Compilers tend to be very good at inlining functor calls.
+
 - I just realized, some distance metrics might wanna return an integral type (binary distances like hamming)
 - Template BlockIndicies
 
@@ -15,7 +18,6 @@
 - Move forest building outside of constructor.
 - Add in tree merge functionality
 - Think of a better way to refine tree splitting than if statement into goto.
-- Check to see if omitting the rejected split copy violates the invariance of sum of indicies
 
 
 #NNDescent

@@ -216,18 +216,56 @@ int CompareBlocks(JoinHints<DataIndexType>&& joinsToDo,
     return graphUpdates;
 }
 
+template<typename DataIndexType, typename DataEntry, typename DistType>
+struct QueryContextInitArgs{
+    GraphVertex<DataIndexType, DistType>& queryHint;
+    SpaceMetric<DataEntry, DataEntry, DistType> distanceFunctor;
+
+    QueryContextInitArgs(GraphVertex<DataIndexType, DistType>& queryHint, SpaceMetric<DataEntry, DataEntry, DistType> distanceFunctor):
+        queryHint(queryHint),
+        distanceFunctor(distanceFunctor) {};
+};
+
 template<typename BlockNumberType, typename DataIndexType, typename DataEntry, typename DistType>
 struct BlockUpdateContext {
+
+    
+    using TemplatedSubProblem = SubProblemData<DataIndexType, DataEntry, DistType>;
+    using TemplatedContextInitArgs = QueryContextInitArgs<DataIndexType, DataEntry, DistType>;
+
     NodeTracker blockJoinTracker;
-    DataBlock<DataEntry> dataBlock;
+    const DataBlock<DataEntry>& dataBlock;
     JoinMap<BlockNumberType, DataIndexType> joinsToDo;
     QueryContext<DataIndexType, DataEntry, DistType> queryContext;
-    BlockNumberType blockNumber;
-    Graph<DataIndexType, DistType> leafGraph;
+    const Graph<DataIndexType, DistType>& leafGraph;
     Graph<BlockIndecies, DistType> currentGraph;
 
 
+    BlockUpdateContext(const TemplatedSubProblem subProbResults, const TemplatedContextInitArgs contextArgs, const BlockNumberType numberOfBlocksToJoin):
+        leafGraph(subProbResults.subGraph),
+        dataBlock(subProbResults.dataBlock),
+        queryContext(subProbResults.subGraph, subProbResults.dataBlock, contextArgs.queryHint, contextArgs.distanceFunctor, contextArgs.queryHint.size()),
+        currentGraph(subProbResults.dataBlock.size(), contextArgs.queryHint.size()),
+        joinsToDo(),
+        blockJoinTracker(numberOfBlocksToJoin){
+            for(size_t i = 0; auto& vertex: currentGraph){
+                for (const auto& neighbor: leafGraph[i]){
+                    vertex.push_back({{dataBlock.blockNumber, neighbor.first}, neighbor.second});
+                }
+                i++;
+            }
+    }
+
 };
+/*
+template<typename BlockNumberType, typename DataIndexType, typename DataEntry, typename DistType>
+struct SubProblemResults{
+    const BlockNumberType blockNumber;
+    const DataBlock<DataEntry>& dataBlock;
+    const Graph<DataIndexType, DistType>& leafGraph;
+};
+*/
+
 
 int main(){
 
@@ -289,30 +327,45 @@ int main(){
     DataMapper<std::valarray<float>> trainMapper(mnistFashionTrain);
     CrawlTerminalLeaves(rpTreesTrain, trainMapper);
     
-
+    MetaGraph<size_t, float> metaGraph(trainMapper.dataBlocks, 10);
     
     std::vector<Graph<size_t, float>> blockGraphs(0);
     blockGraphs.reserve(trainMapper.dataBlocks.size());
     for (const auto& dataBlock : trainMapper.dataBlocks){
-        Graph<size_t, float> blockGraph(dataBlock.blockData.size(), size_t(10));
-        BruteForceBlock<size_t, std::valarray<float>, float>(blockGraph, 10, dataBlock, EuclideanNorm<float, float, float>);
-        blockGraphs.push_back(std::move(blockGraph));
+        blockGraphs.push_back(BruteForceBlock<size_t, std::valarray<float>, float>(10, dataBlock, EuclideanNorm<float, float, float>));
     }
     
-    MetaGraph<size_t, float> metaGraph(trainMapper.dataBlocks, 10);
 
+    std::vector<BlockUpdateContext<size_t, size_t, std::valarray<float>, float>> blockUpdateContexts;
     
+
     std::vector<QueryContext<size_t, std::valarray<float>, float>> queryContexts;
 
     for (size_t i = 0; i<metaGraph.verticies.size(); i+=1){
-        queryContexts.push_back(QueryContext<size_t, std::valarray<float>, float>::QueryContext(blockGraphs[i],
-                                trainMapper.dataBlocks[i],
-                                metaGraph.points[i].centerOfMass,
-                                10,
-                                EuclideanNorm<float, float, float>,
-                                EuclideanNorm<float, float, float>));
-    }
+        GraphVertex<size_t, float> queryHint = QueryHintFromCOM<size_t, std::valarray<float>, float, float>(metaGraph.points[i].centerOfMass, 
+                                                                                                            {blockGraphs[i], trainMapper.dataBlocks[i]}, 
+                                                                                                            10, 
+                                                                                                            EuclideanNorm<float, float, float>);
 
+        blockUpdateContexts.emplace_back(SubProblemData{blockGraphs[i], trainMapper.dataBlocks[i]},
+                                         QueryContextInitArgs<size_t, std::valarray<float>, float>(queryHint, EuclideanNorm<float, float, float>),
+                                         metaGraph.verticies.size());
+
+        queryContexts.emplace_back(blockGraphs[i],
+                                trainMapper.dataBlocks[i],
+                                QueryHintFromCOM<size_t, std::valarray<float>, float, float>(metaGraph.points[i].centerOfMass, {blockGraphs[i], trainMapper.dataBlocks[i]}, 10, EuclideanNorm<float, float, float>),
+                                EuclideanNorm<float, float, float>,
+                                10);
+    }
+    /*
+    const Graph<IndexType, DistType>& subGraph,
+                 const DataBlock<DataEntry>& dataBlock,
+                 GraphVertex<IndexType, DistType> queryHint,
+                 SpaceMetric<DataEntry, DataEntry, DistType> distanceFunctor,
+                 const int numCandidates): subGraph(subGraph), dataBlock(dataBlock), queryHint(std::move(queryHint)), numCandidates(numCandidates), neighborCandidates(), distanceFunctor(distanceFunctor){};
+
+
+    */
     for (size_t i = 0; i<metaGraph.verticies.size(); i+=1){
         GraphVertex<size_t, float>& vertex = metaGraph.verticies[i];
         std::sort(vertex.begin(), vertex.end(), NeighborDistanceComparison<size_t, float>);
@@ -487,8 +540,7 @@ int main(){
     //std::chrono::time_point<std::chrono::steady_clock> runStart = std::chrono::steady_clock::now();
 
     for (size_t i=0; const auto& dataBlock : testMapper.dataBlocks){
-        Graph<size_t, float> blockGraph(dataBlock.blockData.size(), size_t(10));
-        BruteForceBlock<size_t, std::valarray<float>, float>(blockGraph, 10, dataBlock, EuclideanNorm<float, float, float>);
+        Graph<size_t, float> blockGraph = BruteForceBlock<size_t, std::valarray<float>, float>(10, dataBlock, EuclideanNorm<float, float, float>);
         reflexiveGraphs.push_back(std::move(blockGraph));
         nearestNeighbors.push_back(Graph<BlockIndecies, float>(dataBlock.size(), 10));
         for (size_t j = 0; auto& vertex: nearestNeighbors[i]){

@@ -390,75 +390,37 @@ struct UndirectedGraph{
 };
 
 
-//template<TriviallyCopyable IndexType, typename FloatType>
-//using Graph = std::vector<GraphVertex<IndexType, FloatType>>;
-
-//Operator() of rngFunctor must return a random size_t in [0, data.size())
-template<TriviallyCopyable IndexType, typename FloatType>
-Graph<IndexType, FloatType> ConstructInitialGraph(size_t numVerticies, size_t numNeighbors){
-    Graph<IndexType, FloatType> retGraph(0);
-    retGraph.reserve(numVerticies);
-
-    for (size_t i = 0; i<numVerticies; i+=1){
-        //std::slice vertexSlice(0, dataSource.vectorLength, 1);
-
-        retGraph.push_back(GraphVertex<IndexType, FloatType>(numNeighbors));
-        
-    }
-    /*
-    //Temporary method for initialization of graph neighbors. This will likely be replaced by rp-tree construction
-    for (size_t i = 0; i<retGraph.size(); i+=1){
-        for (size_t j = 0; j<numNeighbors; j += 1){
-            size_t randomIndex(rngFunctor());
-            while(true){
-                if (randomIndex == i) randomIndex += (i == 0) ? 1 : -1;
-                searchFunctor.searchValue = randomIndex;
-                //Check to see if A is already a neighbor of B, if so, bingo
-                auto result = std::find_if(retGraph[randomIndex].neighbors.begin(), retGraph[randomIndex].neighbors.end(), searchFunctor);
-                if (result == retGraph[randomIndex].neighbors.end()) break;
-                randomIndex = rngFunctor();
-            }
-            double distance = distanceFunctor(
-                    retGraph[i].dataReference,
-                    retGraph[randomIndex].dataReference);
-
-            retGraph[i].neighbors.emplace_back(randomIndex, distance);
-
-            //std::pair<size_t, double> ()
-        }
-        std::make_heap(retGraph[i].neighbors.begin(), retGraph[i].neighbors.end(), NeighborDistanceComparison);
-    }
-    */
-    return retGraph;
-};
 
 
 
-template<TriviallyCopyable IndexType, typename DataType, typename FloatType>
-void BruteForceBlock(Graph<IndexType, FloatType>& uninitGraph, size_t numNeighbors, const DataBlock<DataType>& dataBlock, SpaceMetric<DataType, DataType, FloatType> distanceFunctor){
-    
+
+template<TriviallyCopyable DataIndexType, typename DataType, typename DistType>
+Graph<DataIndexType, DistType> BruteForceBlock(const size_t numNeighbors, const DataBlock<DataType>& dataBlock, SpaceMetric<DataType, DataType, DistType> distanceFunctor){
+    Graph<DataIndexType, DistType> retGraph(dataBlock.size(), numNeighbors);
     // I can make this branchless. Check to see if /O2 or /O3 can make this branchless (I really doubt it)
-    for (size_t i = 0; i < dataBlock.blockData.size(); i += 1){
-        for (size_t j = i+1; j < dataBlock.blockData.size(); j += 1){
-            FloatType distance = distanceFunctor(dataBlock.blockData[i], dataBlock.blockData[j]);
-            if (uninitGraph[i].neighbors.size() < numNeighbors){
-                uninitGraph[i].neighbors.push_back(std::pair<IndexType, FloatType>(static_cast<IndexType>(j), distance));
-                if (uninitGraph[i].neighbors.size() == numNeighbors){
-                    std::make_heap(uninitGraph[i].neighbors.begin(), uninitGraph[i].neighbors.end(), NeighborDistanceComparison<IndexType, FloatType>);
+    for (size_t i = 0; i < dataBlock.size(); i += 1){
+        for (size_t j = i+1; j < dataBlock.size(); j += 1){
+            DistType distance = distanceFunctor(dataBlock[i], dataBlock[j]);
+            if (retGraph[i].size() < numNeighbors){
+                retGraph[i].push_back(std::pair<DataIndexType, DistType>(static_cast<DataIndexType>(j), distance));
+                if (retGraph[i].size() == numNeighbors){
+                    retGraph[i].JoinPrep();
                 }
-            } else if (distance < uninitGraph[i].neighbors[0].second){
-                uninitGraph[i].PushNeighbor(std::pair<IndexType, FloatType>(static_cast<IndexType>(j), distance));
+            } else if (distance < retGraph[i][0].second){
+                retGraph[i].PushNeighbor(std::pair<DataIndexType, DistType>(static_cast<DataIndexType>(j), distance));
             }
-            if (uninitGraph[j].neighbors.size() < numNeighbors){
-                uninitGraph[j].neighbors.push_back(std::pair<IndexType, FloatType>(static_cast<IndexType>(i), distance));
-                if (uninitGraph[j].neighbors.size() == numNeighbors){
-                    std::make_heap(uninitGraph[j].neighbors.begin(), uninitGraph[j].neighbors.end(), NeighborDistanceComparison<IndexType, FloatType>);
+            if (retGraph[j].size() < numNeighbors){
+                retGraph[j].push_back(std::pair<DataIndexType, DistType>(static_cast<DataIndexType>(i), distance));
+                if (retGraph[j].size() == numNeighbors){
+                    retGraph[j].JoinPrep();
                 }
-            } else if (distance < uninitGraph[j].neighbors[0].second){
-                uninitGraph[j].PushNeighbor(std::pair<IndexType, FloatType>(static_cast<IndexType>(i), distance));
+            } else if (distance < retGraph[j].neighbors[0].second){
+                retGraph[j].PushNeighbor(std::pair<DataIndexType, DistType>(static_cast<DataIndexType>(i), distance));
             }
         }
     }
+
+    return retGraph;
 }
 
 

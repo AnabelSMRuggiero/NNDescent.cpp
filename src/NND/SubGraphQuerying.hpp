@@ -16,6 +16,7 @@ https://github.com/AnabelSMRuggiero/NNDescent.cpp
 #include <unordered_map>
 #include <limits>
 #include <cassert>
+#include <cstdint>
 
 #include "../Utilities/Data.hpp"
 #include "../Utilities/DataDeserialization.hpp"
@@ -23,10 +24,13 @@ https://github.com/AnabelSMRuggiero/NNDescent.cpp
 
 namespace nnd{
 
-template<TriviallyCopyable IndexType, typename DataEntry, std::floating_point FloatType>
+template<TriviallyCopyable DataIndexType, typename DataEntry, typename DistType>
 struct SubProblemData{
-    const Graph<IndexType, FloatType>& subGraph;
+
+    const Graph<DataIndexType, DistType>& subGraph;
     const DataBlock<DataEntry>& dataBlock;
+
+    SubProblemData(const Graph<DataIndexType, DistType>& subGraph, const DataBlock<DataEntry>& dataBlock): subGraph(subGraph), dataBlock(dataBlock) {};
 };
 
 
@@ -86,32 +90,32 @@ std::tuple<size_t, size_t, FloatType> BruteNearestNodes(SubProblemData<IndexType
     return {bestPair.first, bestPair.second, bestDistance};
 }
 
-template<TriviallyCopyable IndexType, typename DataEntry, std::floating_point FloatType>
-GraphVertex<IndexType, FloatType> QueryCOMNeighbors(const std::valarray<FloatType>& centerOfMass,
-                                                     const SubProblemData<IndexType, DataEntry, FloatType> subProb, 
+template<TriviallyCopyable DataIndexType, typename DataEntry, std::floating_point COMExtentType, typename DistType>
+GraphVertex<DataIndexType, DistType> QueryCOMNeighbors(const std::valarray<DistType>& centerOfMass,
+                                                     const SubProblemData<DataIndexType, DataEntry, DistType> subProb, 
                                                      const int numCandidates,
-                                                     SpaceMetric<std::valarray<FloatType>, DataEntry, FloatType> distanceFunctor){
+                                                     SpaceMetric<std::valarray<COMExtentType>, DataEntry, COMExtentType> distanceFunctor){
 
-    GraphVertex<IndexType, FloatType> COMneighbors(numCandidates);
+    GraphVertex<DataIndexType, DistType> COMneighbors(numCandidates);
     
     //Just gonna dummy it and select the first few nodes. Since the splitting process is randomized, this is a totally random selection, right? /s
     NodeTracker nodesVisited(subProb.dataBlock.size());
     for (size_t i = 0; i < numCandidates; i+=1){
-        COMneighbors.neighbors.push_back(std::pair<IndexType, FloatType>(i,
+        COMneighbors.neighbors.push_back(std::pair<DataIndexType, DistType>(i,
                                           distanceFunctor(centerOfMass, subProb.dataBlock.blockData[i])));
         nodesVisited[i] = true;
     }
-    std::make_heap(COMneighbors.neighbors.begin(), COMneighbors.neighbors.end(), NeighborDistanceComparison<IndexType, FloatType>);
+    std::make_heap(COMneighbors.neighbors.begin(), COMneighbors.neighbors.end(), NeighborDistanceComparison<DataIndexType, COMExtentType>);
 
     bool breakVar = false;
-    GraphVertex<IndexType, FloatType> newState(COMneighbors);
+    GraphVertex<DataIndexType, COMExtentType> newState(COMneighbors);
     while (!breakVar){
         breakVar = true;   
         for (const auto& curCandidate: COMneighbors){
             for (const auto& joinTarget: subProb.subGraph[curCandidate.first]){
                 if(nodesVisited[joinTarget.first]) continue;
                 nodesVisited[joinTarget.first] = true;
-                FloatType distance = distanceFunctor(centerOfMass, subProb.dataBlock[joinTarget.first]);
+                COMExtentType distance = distanceFunctor(centerOfMass, subProb.dataBlock[joinTarget.first]);
                 if (distance < newState[0].second){
                     newState.PushNeighbor({joinTarget.first, distance});
                     breakVar = false;
@@ -134,6 +138,19 @@ struct QueryPoint{
     QueryPoint(const GraphVertex<IndexType, DistType>& hint, const QueryType& data): queryHint(hint), queryData(data){}
 };
 
+template<typename DataIndexType, typename DataEntry, typename DistType, typename COMExtentType>
+GraphVertex<DataIndexType, DistType> QueryHintFromCOM(const std::valarray<COMExtentType>& centerOfMass,
+                                                       const SubProblemData<DataIndexType, DataEntry, DistType> subProb,
+                                                       const std::uint32_t numCandidates,
+                                                       SpaceMetric<std::valarray<COMExtentType>, DataEntry, DistType> comDistanceFunctor){
+    GraphVertex<DataIndexType, COMExtentType> comNeighbors = QueryCOMNeighbors<DataIndexType, DataEntry, COMExtentType, DistType>(centerOfMass, subProb, numCandidates, comDistanceFunctor);
+    GraphVertex<DataIndexType, DistType> retHint;
+    for (auto& hint: comNeighbors){
+        //This should be an emplace_back
+        retHint.push_back({hint.first, std::numeric_limits<DistType>::max()});
+    }
+    return retHint;
+}
 
 template<TriviallyCopyable IndexType, typename DataEntry, typename DistType>
 struct QueryContext{
@@ -147,16 +164,17 @@ struct QueryContext{
 
     QueryContext(const Graph<IndexType, DistType>& subGraph,
                  const DataBlock<DataEntry>& dataBlock,
-                 GraphVertex<IndexType, DataEntry> queryHint,
+                 GraphVertex<IndexType, DistType> queryHint,
                  SpaceMetric<DataEntry, DataEntry, DistType> distanceFunctor,
                  const int numCandidates): subGraph(subGraph), dataBlock(dataBlock), queryHint(std::move(queryHint)), numCandidates(numCandidates), neighborCandidates(), distanceFunctor(distanceFunctor){};
 
+    /*
     QueryContext(const Graph<IndexType, DistType>& subGraph,
                  const DataBlock<DataEntry>& dataBlock,
-                 const std::valarray<DistType>& centerOfMass,
+                 const std::valarray<COMExtent>& centerOfMass,
                  const int numCandidates,
                  SpaceMetric<DataEntry, DataEntry, DistType> distanceFunctor,
-                 SpaceMetric<std::valarray<DistType>, DataEntry, DistType> comDistanceFunctor):
+                 SpaceMetric<std::valarray<COMExtent>, DataEntry, DistType> comDistanceFunctor):
                     subGraph(subGraph), dataBlock(dataBlock), numCandidates(numCandidates), neighborCandidates(), distanceFunctor(distanceFunctor){
         const SubProblemData thisSub{subGraph, dataBlock};
         queryHint = QueryCOMNeighbors<IndexType, DataEntry, DistType>(centerOfMass, thisSub, numCandidates, comDistanceFunctor);
@@ -164,6 +182,7 @@ struct QueryContext{
             hint.second = std::numeric_limits<DistType>::max();
         }
     };
+    */
 
     //Nearest Node Distance
     //make checking this in parallel safe
