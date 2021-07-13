@@ -88,23 +88,7 @@ ComparisonMap<BlockNumberType, DataIndexType> InitializeComparisonQueues(const G
     return retMap;
 }
 
-template<typename BlockNumberType, typename DataIndexType, typename DataEntry, typename DistType>
-JoinMap<BlockNumberType, DataIndexType> InitializeJoinMap(const std::vector<BlockUpdateContext<BlockNumberType, DataIndexType, DataEntry, DistType>>& blockUpdateContexts,
-                                                          const ComparisonMap<BlockNumberType, DataIndexType>& comparisonMap,
-                                                          const NodeTracker& nodesJoined){
-    JoinMap<BlockNumberType, DataIndexType> joinMap;
-    for (auto& [targetBlock, queue]: comparisonMap){
-        //std::unordered_map<size_t, std::pair<size_t, std::vector<size_t>>> joinHints;
-        for (const auto& [sourceIndex, targetIndex]: queue){
-            for (const auto& neighbor: blockUpdateContexts[targetBlock].currentGraph[targetIndex]){
-                if (neighbor.first.blockNumber == targetBlock || nodesJoined[neighbor.first.blockNumber]) continue;
-                auto result = std::ranges::find(joinMap[neighbor.first.blockNumber][sourceIndex], neighbor.first.dataIndex);
-                if (result == joinMap[neighbor.first.blockNumber][sourceIndex].end()) joinMap[neighbor.first.blockNumber][sourceIndex].push_back(neighbor.first.dataIndex);
-            }
-        }
-    }
-    return joinMap;
-}
+
 
 template<typename DataIndexType, typename DistType>
 using JoinResults = std::vector<std::pair<DataIndexType, GraphVertex<DataIndexType, DistType>>>;
@@ -113,7 +97,7 @@ using JoinResults = std::vector<std::pair<DataIndexType, GraphVertex<DataIndexTy
 template<typename BlockNumberType, typename DataIndexType, typename DataEntry, typename DistType>
 JoinResults<DataIndexType, DistType> BlockwiseJoin(const JoinHints<DataIndexType>& startJoins,
                    const Graph<BlockIndecies, DistType>& currentGraphState,
-                   Graph<DataIndexType, DistType>& searchSubgraph,
+                   const Graph<DataIndexType, DistType>& searchSubgraph,
                    const DataBlock<DataEntry>& blockData,
                    const QueryContext<BlockNumberType, DataIndexType, DataEntry, DistType>& targetBlock){
     
@@ -205,6 +189,7 @@ struct BlockUpdateContext {
     NodeTracker blockJoinTracker;
     const DataBlock<DataEntry>& dataBlock;
     JoinMap<BlockNumberType, DataIndexType> joinsToDo;
+    JoinMap<BlockNumberType, DataIndexType> newJoins;
     QueryContext<BlockNumberType, DataIndexType, DataEntry, DistType> queryContext;
     const Graph<DataIndexType, DistType>& leafGraph;
     Graph<BlockIndecies, DistType> currentGraph;
@@ -225,12 +210,34 @@ struct BlockUpdateContext {
             }
     }
 
+    void SetNextJoins(){
+        joinsToDo = std::move(newJoins);
+        newJoins = JoinMap<BlockNumberType, DataIndexType>();
+    }
 };
+
+template<typename BlockNumberType, typename DataIndexType, typename DataEntry, typename DistType>
+JoinMap<BlockNumberType, DataIndexType> InitializeJoinMap(const std::vector<BlockUpdateContext<BlockNumberType, DataIndexType, DataEntry, DistType>>& blockUpdateContexts,
+                                                          const ComparisonMap<BlockNumberType, DataIndexType>& comparisonMap,
+                                                          const NodeTracker& nodesJoined){
+    JoinMap<BlockNumberType, DataIndexType> joinMap;
+    for (auto& [targetBlock, queue]: comparisonMap){
+        //std::unordered_map<size_t, std::pair<size_t, std::vector<size_t>>> joinHints;
+        for (const auto& [sourceIndex, targetIndex]: queue){
+            for (const auto& neighbor: blockUpdateContexts[targetBlock].currentGraph[targetIndex]){
+                if (neighbor.first.blockNumber == targetBlock || nodesJoined[neighbor.first.blockNumber]) continue;
+                auto result = std::ranges::find(joinMap[neighbor.first.blockNumber][sourceIndex], neighbor.first.dataIndex);
+                if (result == joinMap[neighbor.first.blockNumber][sourceIndex].end()) joinMap[neighbor.first.blockNumber][sourceIndex].push_back(neighbor.first.dataIndex);
+            }
+        }
+    }
+    return joinMap;
+}
 
 
 template<typename BlockNumberType, typename DataIndexType, typename DataEntry, typename DistType>
-int JoinAndUpdateBlocks(BlockUpdateContext<BlockNumberType, DataIndexType, DataEntry, DistType>& blockLHS,
-                        BlockUpdateContext<BlockNumberType, DataIndexType, DataEntry, DistType>& blockRHS){
+int UpdateBlocks(BlockUpdateContext<BlockNumberType, DataIndexType, DataEntry, DistType>& blockLHS,
+                 BlockUpdateContext<BlockNumberType, DataIndexType, DataEntry, DistType>& blockRHS){
 /*(JoinHints<DataIndexType>&& joinsToDo,
                   NodeTracker& blockJoinTracker,
                   Graph<BlockIndecies, DistType>& updatedBlockGraph, 
@@ -255,15 +262,17 @@ int JoinAndUpdateBlocks(BlockUpdateContext<BlockNumberType, DataIndexType, DataE
                                                                          blockRHS.dataBlock,
                                                                          blockRHS.queryContext);
     
-    JoinResults<DataIndexType, DistType> blockRHSUpdates = BlockwiseJoin(blockRHS.joinsToDo[blockRHS.dataBlock.blockNumber],
+    JoinResults<DataIndexType, DistType> blockRHSUpdates = BlockwiseJoin(blockRHS.joinsToDo[blockLHS.dataBlock.blockNumber],
                                                                          blockRHS.currentGraph,
                                                                          blockLHS.leafGraph,
                                                                          blockLHS.dataBlock,
                                                                          blockLHS.queryContext);
     
-    NewJoinQueues<size_t, size_t, float>(blockLHSUpdates, blockLHS.blockJoinTracker, blockLHS.currentGraph, blockLHS.joinsToDo);
+    //blockRHS.joinsToDo.erase(blockLHS.dataBlock.blockNumber);
+    //blockLHS.joinsToDo.erase(blockRHS.dataBlock.blockNumber);
 
-    NewJoinQueues<size_t, size_t, float>(blockRHSUpdates, blockRHS.blockJoinTracker, blockRHS.currentGraph, blockRHS.joinsToDo);
+    NewJoinQueues<size_t, size_t, float>(blockLHSUpdates, blockLHS.blockJoinTracker, blockLHS.currentGraph, blockLHS.newJoins);
+    NewJoinQueues<size_t, size_t, float>(blockRHSUpdates, blockRHS.blockJoinTracker, blockRHS.currentGraph, blockRHS.newJoins);
 
     int graphUpdates(0);
     for (auto& result: blockLHSUpdates){
@@ -389,10 +398,10 @@ int main(){
         for (size_t j = 0; const auto& vertex: graph){
             newGraph[j].resize(graph[j].size());
             auto emplaceFunctor = [&](size_t index){
-                newGraph[j][index] = {{i, vertex[index].first}, j};
+                newGraph[j][index] = {{i, vertex[index].first}, vertex[index].second};
             };
             std::ranges::iota_view indecies(size_t(0), vertex.size());
-            std::for_each(std::execution::unseq, indecies.begin(), indecies.end(), emplaceFunctor);
+            std::for_each(indecies.begin(), indecies.end(), emplaceFunctor);
             j++;
         }
         blockUpdateContexts[i].currentGraph = std::move(newGraph);
@@ -489,16 +498,16 @@ int main(){
         queueMaps.push_back(InitializeComparisonQueues<size_t, size_t, float>(blockUpdateContexts[i].currentGraph, i));
     }
     
-    std::vector<JoinMap<size_t, size_t>> joinHints;
+    //std::vector<JoinMap<size_t, size_t>> joinHints;
 
     for(size_t i = 0; i<queueMaps.size(); i+=1){
         ComparisonMap<size_t, size_t>& comparisonMap = queueMaps[i];
         
-        joinHints.push_back(InitializeJoinMap<size_t, size_t, std::valarray<float>, float>(blockUpdateContexts, comparisonMap, blockUpdateContexts[i].blockJoinTracker));
+        blockUpdateContexts[i].joinsToDo = InitializeJoinMap<size_t, size_t, std::valarray<float>, float>(blockUpdateContexts, comparisonMap, blockUpdateContexts[i].blockJoinTracker);
     }
 
 
-    std::vector<std::unordered_map<size_t, JoinResults<size_t, float>>> blockUpdates(blockUpdateContexts.size());
+    //std::vector<std::unordered_map<size_t, JoinResults<size_t, float>>> blockUpdates(blockUpdateContexts.size());
     
 
     GraphVertex<BlockIndecies, float> nullVertex;
@@ -509,8 +518,13 @@ int main(){
     int graphUpdates(1);
     while(graphUpdates>0){
         graphUpdates = 0;
-        std::vector<std::unordered_map<size_t, JoinResults<size_t, float>>> blockUpdates(updatedBlockGraphs.size());
-        for(size_t i = 0; i<updatedBlockGraphs.size(); i+=1){
+       // std::vector<std::unordered_map<size_t, JoinResults<size_t, float>>> blockUpdates(updatedBlockGraphs.size());
+        for(size_t i = 0; i<blockUpdateContexts.size(); i+=1){
+            for (auto& joinList: blockUpdateContexts[i].joinsToDo){
+                graphUpdates += UpdateBlocks(blockUpdateContexts[i], blockUpdateContexts[joinList.first]);
+                blockUpdateContexts[joinList.first].joinsToDo.erase(i);
+            }
+            /*
             JoinMap<size_t, size_t>& joinsToDo = joinHints[i];
             JoinMap<size_t, size_t> newJoinHints;
             for (auto& joinList: joinsToDo){
@@ -521,8 +535,12 @@ int main(){
                 NewJoinQueues<size_t, size_t, float>(blockUpdates[i][joinList.first], blockJoinTrackers[i], updatedBlockGraphs[joinList.first], newJoinHints);
             }
             joinHints[i] = std::move(newJoinHints);  
+            */
         }
-
+        for (auto& context: blockUpdateContexts){
+            context.SetNextJoins();
+        }
+        /*
         for (size_t i = 0; i<blockUpdates.size(); i+=1){
             std::unordered_map<size_t, GraphVertex<BlockIndecies, float>> consolidatedResults;
             for (auto& blockResult: blockUpdates[i]){
@@ -542,6 +560,7 @@ int main(){
                 graphUpdates += ConsumeVertex(updatedBlockGraphs[i][consolidatedResult.first], consolidatedResult.second);
             }
         }
+        */
         //std::cout << graphUpdates << " updates in iteration " << iteration << std::endl;
         iteration += 1;
     }
@@ -589,7 +608,7 @@ int main(){
 
     std::vector<JoinMap<size_t, size_t>> testJoinHints(testMapper.dataBlocks.size());
 
-    auto hintBuilder = [](const QueryContext<size_t, std::valarray<float>, float>& context) -> std::vector<size_t>{
+    auto hintBuilder = [](const QueryContext<size_t, size_t, std::valarray<float>, float>& context) -> std::vector<size_t>{
         std::vector<size_t> retVec;
         for (const auto& neighbor: context.queryHint){
             retVec.push_back(neighbor.first);
@@ -629,7 +648,7 @@ int main(){
             }
             for (auto& joinList: joinsToDo){
                 blockUpdates[i][joinList.first] = BlockwiseJoin(joinList.second, nearestNeighbors[i], reflexiveGraphs[i], testMapper.dataBlocks[i], queryContexts[joinList.first]);
-                NewJoinQueues<size_t, size_t, float>(blockUpdates[i][joinList.first], testJoinTrackers[i], updatedBlockGraphs[joinList.first], newJoinHints);
+                NewJoinQueues<size_t, size_t, float>(blockUpdates[i][joinList.first], testJoinTrackers[i], blockUpdateContexts[joinList.first].currentGraph, newJoinHints);
             }
             testJoinHints[i] = std::move(newJoinHints);  
         }

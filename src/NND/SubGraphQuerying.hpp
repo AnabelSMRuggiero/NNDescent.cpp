@@ -165,7 +165,7 @@ struct QueryContext{
                  const DataBlock<DataEntry>& dataBlock,
                  const GraphVertex<IndexType, DistType> queryHint,
                  SpaceMetric<DataEntry, DataEntry, DistType> distanceFunctor,
-                 const int numCandidates): subGraph(subGraph), dataBlock(dataBlock), queryHint(std::move(queryHint)), numCandidates(numCandidates), neighborCandidates(), distanceFunctor(distanceFunctor){};
+                 const int numCandidates): subGraph(subGraph), dataBlock(dataBlock), queryHint(std::move(queryHint)), numCandidates(numCandidates), distanceFunctor(distanceFunctor){};
 
     /*
     QueryContext(const Graph<IndexType, DistType>& subGraph,
@@ -191,7 +191,7 @@ struct QueryContext{
 
     std::pair<Graph<IndexType, DistType>, Graph<IndexType, DistType>> operator||(const QueryContext& rhs) const{
         //Get my updates by querying my data against RHS    Get RHS updates by querying RHS data against mine
-        return {rhs.QuerySubGraph(*this),                   this->QuerySubGraph(rhs)}
+        return {rhs.QuerySubGraph(*this),                   this->QuerySubGraph(rhs)};
     }
     //
 
