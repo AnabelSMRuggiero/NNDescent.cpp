@@ -14,6 +14,8 @@
 
 - Fix my I/O. My I/O is bad. (I spend so much time in the stream operator).
 
+- An actual, good, pair hashing func that's not from a library.
+
 #RPTrees
 - Move forest building outside of constructor.
 - Add in tree merge functionality

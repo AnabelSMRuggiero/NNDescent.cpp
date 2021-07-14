@@ -50,13 +50,11 @@ void SerializeVector(const std::vector<DataType>& readVector, const std::string&
 
     for(const auto& entry : readVector){
         SerializeData<DataType, std::endian::big>(outStream, entry);
-    }
+    };
 
-;}
-
+};
 
 
 }
-
 
 #endif

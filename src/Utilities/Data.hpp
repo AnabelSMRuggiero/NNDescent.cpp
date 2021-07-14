@@ -128,9 +128,32 @@ struct DataBlock{
         }
     }
     */
+
+
 };
 
+template<typename DataEntry, typename TargetDataType, std::endian endianness>
+void SerializeDataSet(const DataSet<DataEntry>& dataSet, const std::string filePath){
 
+    std::ofstream outStream(filePath, std::ios_base::binary);
+
+    for(const auto& sample : dataSet.samples){
+        for (const auto value : sample){
+            TargetDataType valueToSerialize = static_cast<TargetDataType>(value);
+            SerializeData<TargetDataType, endianness>(outStream, value);
+        }
+    };
+
+}
+
+template<std::integral IndexType>
+struct IntegralPairHasher{
+
+    size_t operator()(const std::pair<IndexType, IndexType>& pair) const noexcept{
+        return std::hash<IndexType>()(size_t(pair.first)*634018663193ul ^ std::hash<IndexType>()(pair.second)*354019652443ul);
+    }
+
+};
 
 }
 
@@ -142,6 +165,9 @@ struct std::hash<nnd::BlockIndecies>{
     };
 
 };
+
+
+
 
 
 #endif //MNISTDATA_HPP

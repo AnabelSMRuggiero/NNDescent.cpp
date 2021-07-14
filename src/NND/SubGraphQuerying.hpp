@@ -134,8 +134,8 @@ template<TriviallyCopyable IndexType, typename QueryType, typename DistType>
 struct QueryPoint{
     const GraphVertex<IndexType, DistType>& queryHint;
     const QueryType& queryData;
-
-    QueryPoint(const GraphVertex<IndexType, DistType>& hint, const QueryType& data): queryHint(hint), queryData(data){}
+    const IndexType dataIndex;
+    QueryPoint(const GraphVertex<IndexType, DistType>& hint, const QueryType& data, const IndexType index): queryHint(hint), queryData(data), dataIndex(index){}
 };
 
 template<typename DataIndexType, typename DataEntry, typename DistType, typename COMExtentType>
@@ -152,12 +152,27 @@ GraphVertex<DataIndexType, DistType> QueryHintFromCOM(const std::valarray<COMExt
     return retHint;
 }
 
+template<typename DataIndexType, typename DataEntry, typename DistType>
+struct DefaultQueryFunctor{
+    const DataBlock<DataEntry>& dataBlock;
+    SpaceMetric<DataEntry, DataEntry, DistType> distanceFunctor;
+
+    //DefaultQueryFunctor(SpaceMetric<DataEntry, DataEntry, DistType> distanceFunctor, const DataBlock<DataEntry>& dataBlock):
+    //    distanceFunctor(distanceFunctor), dataBlock(dataBlock){
+    //};
+    
+    DistType operator()(DataIndexType LHSIndex, DataIndexType RHSIndex, const DataEntry& queryData) const{
+        return this->distanceFunctor(dataBlock[LHSIndex], queryData);
+    }
+};
+
 template<TriviallyCopyable BlockNumberType, TriviallyCopyable IndexType, typename DataEntry, typename DistType>
 struct QueryContext{
     const Graph<IndexType, DistType>& subGraph;
     const DataBlock<DataEntry>& dataBlock;
     const GraphVertex<IndexType, DistType> queryHint;
     const int numCandidates;
+    const DefaultQueryFunctor<IndexType, DataEntry, DistType> defaultQueryFunctor;
     //std::unordered_map<BlockNumberType, Graph<IndexType, DistType>> neighborCandidates;
     SpaceMetric<DataEntry, DataEntry, DistType> distanceFunctor;
 
@@ -165,7 +180,16 @@ struct QueryContext{
                  const DataBlock<DataEntry>& dataBlock,
                  const GraphVertex<IndexType, DistType> queryHint,
                  SpaceMetric<DataEntry, DataEntry, DistType> distanceFunctor,
-                 const int numCandidates): subGraph(subGraph), dataBlock(dataBlock), queryHint(std::move(queryHint)), numCandidates(numCandidates), distanceFunctor(distanceFunctor){};
+                 const int numCandidates):
+                    subGraph(subGraph),
+                    dataBlock(dataBlock),
+                    queryHint(std::move(queryHint)),
+                    numCandidates(numCandidates),
+                    distanceFunctor(distanceFunctor),
+                    defaultQueryFunctor(dataBlock, distanceFunctor){
+            
+            //defaultQueryFunctor = DefaultQueryFunctor<IndexType, DataEntry, DistType>(distanceFunctor, dataBlock);
+    };
 
     /*
     QueryContext(const Graph<IndexType, DistType>& subGraph,
@@ -197,14 +221,16 @@ struct QueryContext{
 
     template<typename QueryType>
     GraphVertex<IndexType, DistType> operator||(const QueryPoint<IndexType, QueryType, DistType>& queryPoint) const {
-        return QueryHotPath(queryPoint.queryHint, queryPoint.queryData);
+        return QueryHotPath(queryPoint.queryHint, queryPoint.queryData, queryPoint.dataIndex, defaultQueryFunctor);
     }
 
     //I want copies when I use the queryHint member, but not really when I'm passing in hints. ???
     //Figure this out later
-    template<typename QueryType>
+    template<typename QueryType, typename QueryFunctor = decltype(defaultQueryFunctor)>
     GraphVertex<IndexType, DistType> QueryHotPath(GraphVertex<IndexType, DistType> initVertex,
-                                                   const QueryType& queryData) const {
+                                                  const QueryType& queryData,
+                                                  const IndexType queryIndex,
+                                                  const QueryFunctor& queryFunctor) const {
         NodeTracker nodesVisited(dataBlock.size());
         int sizeDif = initVertex.size() - numCandidates;
         //if sizeDif is negative, fill to numCandidates
@@ -223,7 +249,7 @@ struct QueryContext{
             }
         }
         for (auto& queryStart: initVertex){
-            queryStart.second = this->distanceFunctor(queryData, dataBlock[queryStart.first]);
+            queryStart.second = queryFunctor(queryStart.first, queryIndex, queryData);
             nodesVisited[queryStart.first] = true;
         }
         std::make_heap(initVertex.begin(), initVertex.end(), NeighborDistanceComparison<IndexType, DistType>);
@@ -242,7 +268,7 @@ struct QueryContext{
                 for (const auto& joinTarget: currentNeighbor){
                     if (nodesVisited[joinTarget.first] == true) continue;
                     nodesVisited[joinTarget.first] = true;
-                    DistType distance = this->distanceFunctor(queryData, dataBlock[joinTarget.first]);
+                    DistType distance = queryFunctor(joinTarget.first, queryIndex, queryData);
                     if (distance < newState[0].second){
                         newState.PushNeighbor({joinTarget.first, distance});
                         breakVar = false;
@@ -260,7 +286,7 @@ struct QueryContext{
 
         for (size_t i = 0; i<rhs.dataBlock.size(); i += 1){
             DataEntry queryData = rhs.dataBlock[i];
-            retGraph.push_back(QueryHotPath(queryHint, queryData));
+            retGraph.push_back(QueryHotPath(queryHint, queryData, i, defaultQueryFunctor));
         }
         return retGraph;
     }
