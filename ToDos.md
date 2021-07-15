@@ -37,6 +37,10 @@
 - Search leafGraphs don't need distances.
   - Form undirected search graphs
 
+- Second pass on breaking up BlockSitching and NearestNodeDistances. Mainly a concern at the parallelism stage. Do I need to transform from a contiguous section of memory?
+
+- paramterize/pass as arguement the COM distance functor for metagraph
+
 - Rewrite TreeLeaf
 - Most of my run time is in distance calcs. While optimizing the calculation will be important, I need to squeeze as much as I can out of every call.
   - I'm only storing results from calculations on one side for every query. Figure out how to save calculations for both sides.

@@ -33,8 +33,8 @@ namespace nnd{
 template<TriviallyCopyable IndexType, typename FloatType>
 struct GraphVertex{
 
-    using iterator = std::vector<std::pair<IndexType, FloatType>>::iterator;
-    using const_iterator = std::vector<std::pair<IndexType, FloatType>>::const_iterator;
+    using iterator = typename std::vector<std::pair<IndexType, FloatType>>::iterator;
+    using const_iterator = typename std::vector<std::pair<IndexType, FloatType>>::const_iterator;
     std::vector<std::pair<IndexType, FloatType>> neighbors;
     //std::vector<size_t> reverseNeighbor;
 
@@ -245,8 +245,8 @@ struct CacheLineVertex{
 template<TriviallyCopyable IndexType, typename FloatType>
 struct Graph{
 
-    using iterator = std::vector<GraphVertex<IndexType, FloatType>>::iterator;
-    using const_iterator = std::vector<GraphVertex<IndexType, FloatType>>::const_iterator;
+    using iterator = typename std::vector<GraphVertex<IndexType, FloatType>>::iterator;
+    using const_iterator = typename std::vector<GraphVertex<IndexType, FloatType>>::const_iterator;
 
     std::vector<GraphVertex<IndexType, FloatType>> verticies;
 
@@ -314,8 +314,8 @@ struct Graph{
 template<TriviallyCopyable IndexType>
 struct UndirectedGraph{
 
-    using iterator = std::vector<std::vector<IndexType>>::iterator;
-    using const_iterator = std::vector<std::vector<IndexType>>::const_iterator;
+    using iterator = typename std::vector<std::vector<IndexType>>::iterator;
+    using const_iterator = typename std::vector<std::vector<IndexType>>::const_iterator;
 
     std::vector<std::vector<IndexType>> verticies;
 
@@ -442,7 +442,7 @@ struct ComparisonQueue{
     std::vector<IndexType> queue;
     size_t queueMaxLength;
     size_t queueWeight;
-    std::vector<IndexType>::iterator ringIterator;
+    typename std::vector<IndexType>::iterator ringIterator;
     StlRngFunctor<std::mt19937_64, std::uniform_real_distribution, float> rngFunctor;
 
     ComparisonQueue():

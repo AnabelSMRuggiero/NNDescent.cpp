@@ -15,6 +15,7 @@ https://github.com/AnabelSMRuggiero/NNDescent.cpp
 #include <valarray>
 #include <ranges>
 #include <span>
+#include <concepts>
 
 #include "../Utilities/Data.hpp"
 #include "GraphStructures.hpp"
@@ -30,16 +31,16 @@ struct MetaPoint{
 
 
 
-template<std::ranges::random_access_range DataEntry, typename FloatType>
-MetaPoint<FloatType> CalculateCOM(const DataBlock<DataEntry>& dataBlock){
+template<std::ranges::random_access_range DataEntry, typename COMExtent>
+MetaPoint<COMExtent> CalculateCOM(const DataBlock<DataEntry>& dataBlock){
 
-    MetaPoint<FloatType> retPoint;
+    MetaPoint<COMExtent> retPoint;
     retPoint.weight = std::ranges::size(dataBlock.blockData);
-    retPoint.centerOfMass = std::valarray<FloatType>(std::ranges::size(dataBlock.blockData[0]));
+    retPoint.centerOfMass = std::valarray<COMExtent>(std::ranges::size(dataBlock.blockData[0]));
     
     for (size_t i = 0; i<dataBlock.blockData.size(); i += 1){
         for(size_t j = 0; j<dataBlock.blockData[i].size(); j += 1){
-            retPoint.centerOfMass[j] += static_cast<FloatType>(dataBlock.blockData[i][j]);
+            retPoint.centerOfMass[j] += static_cast<COMExtent>(dataBlock.blockData[i][j]);
         }
     }
 
@@ -76,17 +77,17 @@ void BruteForceGraph(Graph<size_t, FloatType>& uninitGraph, size_t numNeighbors,
     }
 }
 
-template<typename IndexType, typename FloatType>
+template<typename IndexType, typename COMExtent>
 struct MetaGraph{
-    std::vector<MetaPoint<FloatType>> points;
-    Graph<IndexType, FloatType> verticies;
+    std::vector<MetaPoint<COMExtent>> points;
+    Graph<IndexType, COMExtent> verticies;
 
     template<typename DataEntry>
     MetaGraph(const std::vector<DataBlock<DataEntry>>& dataBlocks, size_t numNeighbors): points(0), verticies(dataBlocks.size(), numNeighbors){
         for (const auto& dataBlock: dataBlocks){
-            points.push_back(CalculateCOM<DataEntry, FloatType>(dataBlock));
+            points.push_back(CalculateCOM<DataEntry, COMExtent>(dataBlock));
         }
-        BruteForceGraph<std::valarray<FloatType>, FloatType>(verticies, numNeighbors, points, EuclideanNorm<FloatType, FloatType, FloatType>);
+        BruteForceGraph<std::valarray<COMExtent>, COMExtent>(verticies, numNeighbors, points, EuclideanNorm<COMExtent, COMExtent, COMExtent>);
     }
 };
 
@@ -138,6 +139,17 @@ auto GenerateDataBlockingFunc(const DataSet<DataEntry>& dataSource,
 }
 */
 
+template<std::integral BlockNumberType>//, std::integral DataIndexType>
+struct IndexMaps{
+
+    std::unordered_map<size_t, BlockNumberType> splitToBlockNum;
+    std::unordered_map<BlockIndecies, size_t> blockIndexToSource;
+    std::vector<BlockIndecies> sourceToBlockIndex;
+    std::vector<size_t> sourceToSplitIndex;
+
+};
+
+
 template<typename DataEntry>
 struct DataMapper{
 
@@ -157,9 +169,9 @@ struct DataMapper{
         splitToBlockNum[splittingIndex] = blockCounter;
         for (size_t i = 0; i<indicies.size(); i += 1){
             size_t index = indicies[i];
-            sourceToBlockIndex[index] = BlockIndecies(blockCounter, i);
+            sourceToBlockIndex[index] = BlockIndecies{blockCounter, i};
             sourceToSplitIndex[index] = splittingIndex;
-            blockIndexToSource[BlockIndecies(blockCounter, i)] = index;
+            blockIndexToSource[BlockIndecies{blockCounter, i}] = index;
         }
         dataBlocks.push_back(DataBlock(dataSource, indicies, blockCounter++));
     };

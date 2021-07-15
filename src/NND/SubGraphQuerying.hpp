@@ -17,6 +17,7 @@ https://github.com/AnabelSMRuggiero/NNDescent.cpp
 #include <limits>
 #include <cassert>
 #include <cstdint>
+#include <utility>
 
 #include "../Utilities/Data.hpp"
 #include "../Utilities/DataDeserialization.hpp"
@@ -47,7 +48,7 @@ struct NodeTracker{
 
     NodeTracker(size_t graphSize): flags(graphSize, false){};
 
-    constexpr reference operator[](size_type i){
+    reference operator[](size_type i){
         return flags[i];
     }
 
@@ -55,7 +56,7 @@ struct NodeTracker{
         return flags[i];
     }
 
-    constexpr reference operator[](BlockIndecies i){
+    reference operator[](BlockIndecies i){
         //Assuming block index lines up here;
         return flags[i.dataIndex];
     }
@@ -157,9 +158,9 @@ struct DefaultQueryFunctor{
     const DataBlock<DataEntry>& dataBlock;
     SpaceMetric<DataEntry, DataEntry, DistType> distanceFunctor;
 
-    //DefaultQueryFunctor(SpaceMetric<DataEntry, DataEntry, DistType> distanceFunctor, const DataBlock<DataEntry>& dataBlock):
-    //    distanceFunctor(distanceFunctor), dataBlock(dataBlock){
-    //};
+    DefaultQueryFunctor(const DataBlock<DataEntry>& dataBlock, SpaceMetric<DataEntry, DataEntry, DistType> distanceFunctor):
+        distanceFunctor(distanceFunctor), dataBlock(dataBlock){
+    };
     
     DistType operator()(DataIndexType LHSIndex, DataIndexType RHSIndex, const DataEntry& queryData) const{
         return this->distanceFunctor(dataBlock[LHSIndex], queryData);
@@ -214,8 +215,29 @@ struct QueryContext{
     }
 
     std::pair<Graph<IndexType, DistType>, Graph<IndexType, DistType>> operator||(const QueryContext& rhs) const{
-        //Get my updates by querying my data against RHS    Get RHS updates by querying RHS data against mine
-        return {rhs.QuerySubGraph(*this),                   this->QuerySubGraph(rhs)};
+        
+        std::unordered_map<std::pair<IndexType, IndexType>, DistType, IntegralPairHasher<IndexType>> distanceCache;
+        
+        auto cachingDistanceFunctor = [&](IndexType LHSIndex, IndexType RHSIndex, const DataEntry& queryData) -> DistType{
+            DistType distance = rhs.defaultQueryFunctor(LHSIndex, RHSIndex, queryData);
+            distanceCache[std::pair{LHSIndex, RHSIndex}] = distance;
+            return distance;
+        };
+
+        std::pair<Graph<IndexType, DistType>, Graph<IndexType, DistType>> retPair;
+        //Get my updates by querying my data against RHS 
+        retPair.first = rhs.QuerySubGraph(*this, cachingDistanceFunctor);
+
+        auto cachedDistanceFunctor = [&](IndexType LHSIndex, IndexType RHSIndex, const DataEntry& queryData) -> DistType{
+            auto result = distanceCache.find(std::pair{RHSIndex, LHSIndex});
+            if(result != distanceCache.end()) return result->second;
+            else return this->defaultQueryFunctor(LHSIndex, RHSIndex, queryData);
+        };
+
+        //Get RHS updates by querying RHS data against mine
+        retPair.second = this->QuerySubGraph(rhs, cachedDistanceFunctor);
+
+        return retPair;
     }
     //
 
@@ -280,13 +302,14 @@ struct QueryContext{
         return initVertex;
     }
 
-    Graph<IndexType, DistType> QuerySubGraph(const QueryContext& rhs) const{
+    template<typename QueryFunctor>
+    Graph<IndexType, DistType> QuerySubGraph(const QueryContext& rhs, QueryFunctor queryFunctor) const{
 
         Graph<IndexType, DistType> retGraph;
 
         for (size_t i = 0; i<rhs.dataBlock.size(); i += 1){
             DataEntry queryData = rhs.dataBlock[i];
-            retGraph.push_back(QueryHotPath(queryHint, queryData, i, defaultQueryFunctor));
+            retGraph.push_back(QueryHotPath(queryHint, queryData, i, queryFunctor));
         }
         return retGraph;
     }
