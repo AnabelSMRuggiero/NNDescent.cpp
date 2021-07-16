@@ -116,6 +116,7 @@ template<std::integral BlockNumberType, std::integral DataIndexType, typename Da
 std::vector<BlockUpdateContext<BlockNumberType, DataIndexType, DataEntry, DistType>> InitializeBlockContexts(const std::vector<DataBlock<DataEntry>>& dataBlocks,
                                                                                                              const std::vector<Graph<DataIndexType, DistType>>& blockGraphs,
                                                                                                              const MetaGraph<BlockNumberType, DistType>& metaGraph,
+                                                                                                             const int queryDepth,
                                                                                                              SpaceMetric<DataEntry, DataEntry, DistType> distanceFunctor){
 
     std::vector<BlockUpdateContext<size_t, size_t, std::valarray<DistType>, DistType>> blockUpdateContexts;
@@ -129,7 +130,7 @@ std::vector<BlockUpdateContext<BlockNumberType, DataIndexType, DataEntry, DistTy
 
         blockUpdateContexts.emplace_back(SubProblemData{blockGraphs[i], dataBlocks[i]},
                                          QueryContextInitArgs<size_t, std::valarray<float>, float>(queryHint, distanceFunctor),
-                                         metaGraph.verticies.size());
+                                         metaGraph.verticies.size(), queryDepth);
 
         blockUpdateContexts.back().currentGraph = ToBlockIndecies(blockGraphs[i], i);
         blockUpdateContexts.back().blockJoinTracker[i] = true;
@@ -192,7 +193,7 @@ void StitchBlocks(const Graph<BlockNumberType, DistType>& nearestNodeDistances,
 
     std::unordered_set<ComparisonKey<size_t>> initBlockJoinQueue;
     for(size_t i = 0; const auto& vertex: nearestNodeDistances){
-        for(size_t j = 0; j<3; j+=1){
+        for(size_t j = 0; j<nearestNodeDistances[0].size(); j+=1){
             initBlockJoinQueue.insert({i, vertex[j].first});
         }
         i++;
@@ -252,8 +253,9 @@ int main(){
 
 
     const size_t numBlockGraphNeighbors = 10;
-    const size_t numCOMNeighbors = 10;
-    const size_t maxNearestNodes = 3;
+    const size_t numCOMNeighbors = 30;
+    const size_t maxNearestNodes = 10;
+    const int queryDepth = 3;
 
     //std::string trainDataFilePath("./TestData/train-images.idx3-ubyte");
 
@@ -293,7 +295,7 @@ int main(){
     //std::chrono::time_point<std::chrono::steady_clock> runEnd = std::chrono::steady_clock::now();
     //std::cout << std::chrono::duration_cast<std::chrono::seconds>(runEnd - runStart).count() << "s Pointwise Join Calcs " << std::endl;
 
-    std::cout << "I/O done: I know it's pretty scuffed at the moment." << std::endl;
+    std::cout << "I/O done." << std::endl;
 
 
     std::chrono::time_point<std::chrono::steady_clock> runStart = std::chrono::steady_clock::now();
@@ -318,7 +320,7 @@ int main(){
 
     MetaGraph<size_t, float> metaGraph(dataBlocks, numCOMNeighbors);
 
-    std::vector<BlockUpdateContext<size_t, size_t, std::valarray<float>, float>> blockUpdateContexts = InitializeBlockContexts(dataBlocks, blockGraphs, metaGraph, EuclideanNorm<float, float, float>);
+    std::vector<BlockUpdateContext<size_t, size_t, std::valarray<float>, float>> blockUpdateContexts = InitializeBlockContexts(dataBlocks, blockGraphs, metaGraph, queryDepth, EuclideanNorm<float, float, float>);
        
     Graph<size_t, float> nearestNodeDistances = NearestNodeDistances(blockUpdateContexts, metaGraph, maxNearestNodes);
     StitchBlocks(nearestNodeDistances, blockUpdateContexts);
@@ -346,7 +348,7 @@ int main(){
     }
 
     std::chrono::time_point<std::chrono::steady_clock> runEnd = std::chrono::steady_clock::now();
-    std::cout << std::chrono::duration_cast<std::chrono::seconds>(runEnd - runStart).count() << "s total for index building " << std::endl;
+    std::cout << std::chrono::duration_cast<std::chrono::duration<float>>(runEnd - runStart).count() << "s total for index building " << std::endl;
 
 
     std::chrono::time_point<std::chrono::steady_clock> runStart2 = std::chrono::steady_clock::now();
@@ -451,7 +453,7 @@ int main(){
         //iteration += 1;
     }
     std::chrono::time_point<std::chrono::steady_clock> runEnd2 = std::chrono::steady_clock::now();
-    std::cout << std::chrono::duration_cast<std::chrono::seconds>(runEnd2 - runStart2).count() << "s test set search " << std::endl;
+    std::cout << std::chrono::duration_cast<std::chrono::duration<float>>(runEnd2 - runStart2).count() << "s test set search " << std::endl;
 
     std::vector<std::vector<size_t>> results(mnistFashionTest.samples.size());
     for (size_t i = 0; auto& testBlock: nearestNeighbors){
@@ -466,17 +468,27 @@ int main(){
         i++;
     }
     size_t numNeighborsCorrect(0);
+    std::vector<size_t> correctNeighborsPerIndex(results.size());
     for(size_t i = 0; const auto& result: results){
         for(size_t j = 0; const auto& neighbor: result){
             auto findItr = std::find(std::begin(mnistFashionTestNeighbors.samples[i]), std::begin(mnistFashionTestNeighbors.samples[i]) + 10, neighbor);
             if (findItr != (std::begin(mnistFashionTestNeighbors.samples[i]) + 10)){
                 numNeighborsCorrect++;
+                correctNeighborsPerIndex[i]++;
             }
             j++;
         }
         i++;
     }
-    
+
+    std::vector<size_t> correctNeighborsPerBlock(testMapper.dataBlocks.size());
+    for (size_t i = 0; i< correctNeighborsPerIndex.size(); i+=1){
+        correctNeighborsPerBlock[testMapper.sourceToBlockIndex[i].blockNumber] += correctNeighborsPerIndex[i];
+    }
+    std::vector<float> correctPerBlockFloat(testMapper.dataBlocks.size());
+    for (size_t i =0; i<correctNeighborsPerBlock.size(); i+=1){
+        correctPerBlockFloat[i] = float(correctNeighborsPerBlock[i]*10)/float(testMapper.dataBlocks[i].size());
+    }
     double recall = double(numNeighborsCorrect)/ double(10*mnistFashionTestNeighbors.samples.size());
     std::cout << "Recall: " << (recall * 100) << "%" << std::endl;
     //WeightedGraphEdges graphEdges = NeighborsOutOfBlock(mnistFashionTestNeighbors, trainMapper.sourceToBlockIndex, testClassifications);

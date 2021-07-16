@@ -154,10 +154,10 @@ struct BlockUpdateContext {
     Graph<BlockIndecies, DistType> currentGraph;
 
 
-    BlockUpdateContext(const TemplatedSubProblem subProbResults, const TemplatedContextInitArgs contextArgs, const BlockNumberType numberOfBlocksToJoin):
+    BlockUpdateContext(const TemplatedSubProblem subProbResults, const TemplatedContextInitArgs contextArgs, const BlockNumberType numberOfBlocksToJoin, const int queryDepth):
         leafGraph(subProbResults.subGraph),
         dataBlock(subProbResults.dataBlock),
-        queryContext(subProbResults.subGraph, subProbResults.dataBlock, contextArgs.queryHint, contextArgs.distanceFunctor, contextArgs.queryHint.size()),
+        queryContext(subProbResults.subGraph, subProbResults.dataBlock, contextArgs.queryHint, contextArgs.distanceFunctor, contextArgs.queryHint.size(), queryDepth),
         currentGraph(subProbResults.dataBlock.size(), contextArgs.queryHint.size()),
         joinsToDo(),
         blockJoinTracker(numberOfBlocksToJoin){

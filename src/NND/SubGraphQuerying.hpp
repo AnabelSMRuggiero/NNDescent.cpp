@@ -169,10 +169,11 @@ struct DefaultQueryFunctor{
 
 template<TriviallyCopyable BlockNumberType, TriviallyCopyable IndexType, typename DataEntry, typename DistType>
 struct QueryContext{
-    const Graph<IndexType, DistType>& subGraph;
+    const UndirectedGraph<IndexType> subGraph;
     const DataBlock<DataEntry>& dataBlock;
     const GraphVertex<IndexType, DistType> queryHint;
     const int numCandidates;
+    const int querySearchDepth;
     const DefaultQueryFunctor<IndexType, DataEntry, DistType> defaultQueryFunctor;
     //std::unordered_map<BlockNumberType, Graph<IndexType, DistType>> neighborCandidates;
     SpaceMetric<DataEntry, DataEntry, DistType> distanceFunctor;
@@ -181,11 +182,13 @@ struct QueryContext{
                  const DataBlock<DataEntry>& dataBlock,
                  const GraphVertex<IndexType, DistType> queryHint,
                  SpaceMetric<DataEntry, DataEntry, DistType> distanceFunctor,
-                 const int numCandidates):
+                 const int numCandidates,
+                 const int querySearchDepth):
                     subGraph(subGraph),
                     dataBlock(dataBlock),
                     queryHint(std::move(queryHint)),
                     numCandidates(numCandidates),
+                    querySearchDepth(querySearchDepth),
                     distanceFunctor(distanceFunctor),
                     defaultQueryFunctor(dataBlock, distanceFunctor){
             
@@ -280,24 +283,27 @@ struct QueryContext{
             std::pop_heap(initVertex.begin(), initVertex.end(), NeighborDistanceComparison<IndexType, DistType>);
             initVertex.pop_back();
         }
+        GraphVertex<IndexType, DistType> compareTargets;
+        compareTargets.resize(querySearchDepth);
 
-        GraphVertex<IndexType, DistType> newState(initVertex);
+        //GraphVertex<IndexType, DistType> newState(initVertex);
         bool breakVar = false;
         while (!breakVar){
+            std::partial_sort_copy(initVertex.begin(), initVertex.end(), compareTargets.begin(), compareTargets.end(), NeighborDistanceComparison<IndexType, DistType>);
             breakVar = true;
-            for (const auto& neighbor: initVertex){
-                const GraphVertex<IndexType, DistType>& currentNeighbor = subGraph[neighbor.first];
+            for (const auto& neighbor: compareTargets){
+                const std::vector<IndexType>& currentNeighbor = subGraph[neighbor.first];
                 for (const auto& joinTarget: currentNeighbor){
-                    if (nodesVisited[joinTarget.first] == true) continue;
-                    nodesVisited[joinTarget.first] = true;
-                    DistType distance = queryFunctor(joinTarget.first, queryIndex, queryData);
-                    if (distance < newState[0].second){
-                        newState.PushNeighbor({joinTarget.first, distance});
+                    if (nodesVisited[joinTarget] == true) continue;
+                    nodesVisited[joinTarget] = true;
+                    DistType distance = queryFunctor(joinTarget, queryIndex, queryData);
+                    if (distance < initVertex[0].second){
+                        initVertex.PushNeighbor({joinTarget, distance});
                         breakVar = false;
                     }
                 }
             }
-            initVertex = newState;
+            //initVertex = newState;
         }
         return initVertex;
     }
@@ -341,42 +347,42 @@ struct QueryContext{
             std::pair<size_t, size_t> tmpPair = bestPair;
             for (const auto& neighborA: this->subGraph[bestPair.first]){
                 //if (!nodesVisitedA[neighborA.first]){
-                DistType distance = distanceFunctor(this->dataBlock[neighborA.first], rhs.dataBlock[tmpPair.second]);
+                DistType distance = distanceFunctor(this->dataBlock[neighborA], rhs.dataBlock[tmpPair.second]);
                 if (distance < bestDistance){
                     bestDistance = distance;
-                    tmpPair.first = neighborA.first;
+                    tmpPair.first = neighborA;
                     breakVar = false;
                 }
                     //nodesVisitedA[neighborA.first] = true;
                 //}  
                 
-                for (const auto& neighborOfNeighborA: this->subGraph[neighborA.first]){
+                for (const auto& neighborOfNeighborA: this->subGraph[neighborA]){
                     //if (nodesVisitedA[neighborOfNeighborA.first]) continue;
                     //nodesVisitedA[neighborOfNeighborA.first] = true;
-                    DistType distance = this->distanceFunctor(this->dataBlock[neighborOfNeighborA.first], rhs.dataBlock[tmpPair.second]);
+                    DistType distance = this->distanceFunctor(this->dataBlock[neighborOfNeighborA], rhs.dataBlock[tmpPair.second]);
                     if (distance < bestDistance){
                         bestDistance = distance;
-                        tmpPair.first = neighborOfNeighborA.first;
+                        tmpPair.first = neighborOfNeighborA;
                         breakVar = false;
                     }
                 }
             }
             for (const auto& neighborB: rhs.subGraph[bestPair.second]){
                 //if (!nodesVisitedB[neighborB.first]){
-                    DistType distance = this->distanceFunctor(this->dataBlock[tmpPair.first], rhs.dataBlock[neighborB.first]);
+                    DistType distance = this->distanceFunctor(this->dataBlock[tmpPair.first], rhs.dataBlock[neighborB]);
                 if (distance < bestDistance){
                     bestDistance = distance;
-                    tmpPair.second = neighborB.first;
+                    tmpPair.second = neighborB;
                     breakVar = false;
                 }
                 //  nodesVisitedB[neighborB.first] = true;
                 //}
-                for (const auto& neighborOfNeighborB: rhs.subGraph[neighborB.first]){
+                for (const auto& neighborOfNeighborB: rhs.subGraph[neighborB]){
                     //nodesVisitedB[neighborOfNeighborB.first] = true;
-                    DistType distance = this->distanceFunctor(this->dataBlock[tmpPair.first], rhs.dataBlock[neighborOfNeighborB.first]);
+                    DistType distance = this->distanceFunctor(this->dataBlock[tmpPair.first], rhs.dataBlock[neighborOfNeighborB]);
                     if (distance < bestDistance){
                         bestDistance = distance;
-                        tmpPair.second = neighborOfNeighborB.first;
+                        tmpPair.second = neighborOfNeighborB;
                         breakVar = false;
                     }
                 }

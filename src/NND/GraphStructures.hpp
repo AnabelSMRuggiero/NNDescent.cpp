@@ -331,8 +331,8 @@ struct UndirectedGraph{
 
         for (size_t i = 0; const auto& vertex: directedGraph){
             for (const auto& neighbor: vertex){
-                verticies[i].pushBack(neighbor.first);
-                verticies[neighbor.first].push_back(i);
+                if(std::ranges::find(verticies[i], neighbor.first) == verticies[i].end()) verticies[i].push_back(neighbor.first);
+                if(std::ranges::find(verticies[neighbor.first], i) == verticies[neighbor.first].end()) verticies[neighbor.first].push_back(i);
             }
             i++;
         }
