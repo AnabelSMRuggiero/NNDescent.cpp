@@ -333,7 +333,7 @@ int main(){
 
     const size_t numBlockGraphNeighbors = 10;
     const size_t numCOMNeighbors = 30;
-    const size_t maxNearestNodes = 5;
+    const size_t maxNearestNodes = 3;
     const int queryDepth = 2;
 
     //std::string trainDataFilePath("./TestData/train-images.idx3-ubyte");
