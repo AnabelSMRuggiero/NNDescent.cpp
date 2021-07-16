@@ -259,7 +259,7 @@ int UpdateBlocks(BlockUpdateContext<BlockNumberType, DataIndexType, DataEntry, D
         NewJoinQueues<size_t, size_t, float>(blockRHSUpdates, blockRHS.blockJoinTracker, blockLHS.currentGraph, blockRHS.newJoins);
 
         for (auto& result: blockRHSUpdates){
-            graphUpdates += ConsumeVertex(blockRHS.currentGraph[result.first], result.second, blockRHS.dataBlock.blockNumber);
+            graphUpdates += ConsumeVertex(blockRHS.currentGraph[result.first], result.second, blockLHS.dataBlock.blockNumber);
         }
         for (auto& result: blockLHSUpdates){
             graphUpdates += ConsumeVertex(blockLHS.currentGraph[result.first], result.second, blockRHS.dataBlock.blockNumber);

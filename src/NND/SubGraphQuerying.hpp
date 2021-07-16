@@ -319,7 +319,21 @@ struct QueryContext{
         }
         return retGraph;
     }
+    /*
+    template<typename QueryFunctor>
+    Graph<IndexType, DistType> StitchSubGraph(const QueryContext& rhs, QueryFunctor queryFunctor, std::pair<IndexType, IndexType> stitchHint) const{
 
+        Graph<IndexType, DistType> retGraph(rhs.dataBlock.size(), 0);
+        retGraph[stitchHint.first] = QueryHotPath({stitchHint.second, std::numeric_limits<DistType>()}, rhs.dataBlock[stitchHint.first], stitchHint.first, queryFunctor);
+        
+        for (size_t i = 0; i<rhs.dataBlock.size(); i += 1){
+            DataEntry queryData = rhs.dataBlock[i];
+            retGraph.push_back(QueryHotPath(queryHint, queryData, i, queryFunctor));
+        }
+        
+        return retGraph;
+    }
+    */
     std::tuple<IndexType, IndexType, DistType> NearestNodes(const QueryContext& rhs) const{
 
         assert(this->distanceFunctor == rhs.distanceFunctor);

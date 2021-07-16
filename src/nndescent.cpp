@@ -139,11 +139,13 @@ std::vector<BlockUpdateContext<BlockNumberType, DataIndexType, DataEntry, DistTy
     return blockUpdateContexts;
 }
 
+template<std::integral BlockNumberType, std::integral DataIndexType, typename DistType>
+using InitialJoinHints = std::unordered_map<ComparisonKey<BlockNumberType>, std::tuple<DataIndexType, DataIndexType, DistType>>;
 
 template<std::integral BlockNumberType, std::integral DataIndexType, typename DataEntry, typename DistType>
-Graph<BlockNumberType, DistType> NearestNodeDistances(const std::vector<BlockUpdateContext<BlockNumberType, DataIndexType, DataEntry, DistType>>& blockUpdateContexts,
-                                                      const MetaGraph<BlockNumberType, DistType>& metaGraph,
-                                                      const size_t maxNearestNodeNeighbors){
+std::pair<Graph<BlockNumberType, DistType>, InitialJoinHints<BlockNumberType, DataIndexType, DistType>> NearestNodeDistances(const std::vector<BlockUpdateContext<BlockNumberType, DataIndexType, DataEntry, DistType>>& blockUpdateContexts,
+                                                        const MetaGraph<BlockNumberType, DistType>& metaGraph,
+                                                        const size_t maxNearestNodeNeighbors){
 
     std::unordered_set<ComparisonKey<BlockNumberType>> nearestNodeDistQueue;
 
@@ -167,28 +169,36 @@ Graph<BlockNumberType, DistType> NearestNodeDistances(const std::vector<BlockUpd
 
     std::transform(std::execution::unseq, distancesToCompute.begin(), distancesToCompute.end(), nnDistanceResults.begin(), nnDistanceFunctor);
 
+    std::unordered_map<ComparisonKey<BlockNumberType>, std::tuple<DataIndexType, DataIndexType, DistType>> blockJoinHints;
+
+    for (size_t i = 0; i<distancesToCompute.size(); i += 1){
+        blockJoinHints[distancesToCompute[i]] = nnDistanceResults[i];
+    }
 
     Graph<BlockNumberType, DistType> nearestNodeDistances(metaGraph.verticies.size(), maxNearestNodeNeighbors);
     for(size_t i = 0; const auto& result: nnDistanceResults){
         
-        nearestNodeDistances[distancesToCompute[i].first].push_back({distancesToCompute[i].second, std::get<2>(result)});
-        nearestNodeDistances[distancesToCompute[i].second].push_back({distancesToCompute[i].first, std::get<2>(result)});
+        nearestNodeDistances[distancesToCompute[i].first].push_back({distancesToCompute[i].second,
+                                                                     std::get<2>(result)});
+        nearestNodeDistances[distancesToCompute[i].second].push_back({distancesToCompute[i].first,
+                                                                      std::get<2>(result)});
         //nearestNeighbors.push_back({pair.first, std::get<2>(pair.second)});
         i++;
     }
 
     auto sortFunctor = [=] (GraphVertex<BlockNumberType, DistType>& vertex){
-        std::sort(std::execution::unseq, vertex.begin(), vertex.end(), NeighborDistanceComparison<size_t, float>);
+        std::sort(std::execution::unseq, vertex.begin(), vertex.end(), NeighborDistanceComparison<BlockNumberType, DistType>);
         vertex.resize(maxNearestNodeNeighbors);
     };
     std::for_each(std::execution::unseq, nearestNodeDistances.begin(), nearestNodeDistances.end(), sortFunctor);
 
-    return nearestNodeDistances;
+    return {std::move(nearestNodeDistances), std::move(blockJoinHints)};
 }
 
 
 template<std::integral BlockNumberType, std::integral DataIndexType, typename DataEntry, typename DistType>
 void StitchBlocks(const Graph<BlockNumberType, DistType>& nearestNodeDistances,
+                  const InitialJoinHints<BlockNumberType, DataIndexType, DistType>& stitchHints,
                   std::vector<BlockUpdateContext<BlockNumberType, DataIndexType, DataEntry, DistType>>& blockUpdateContexts){
 
     std::unordered_set<ComparisonKey<size_t>> initBlockJoinQueue;
@@ -227,6 +237,75 @@ void StitchBlocks(const Graph<BlockNumberType, DistType>& nearestNodeDistances,
         }
     }
 
+    /*
+
+    std::vector<std::pair<JoinResults<DataIndexType, DistType>, JoinResults<DataIndexType, DistType>>> initUpdates(initBlockJoins.size());
+
+    auto initBlockJoin = [&](const ComparisonKey<size_t> blockNumbers) -> std::pair<JoinResults<DataIndexType, DistType>, JoinResults<DataIndexType, DistType>>{
+        
+        auto [blockNums, stitchHint] = (stitchHints.find(blockNumbers));
+        if (blockNums.first != blockNumbers.first) stitchHint = {stitchHint.second, stitchHint.first};
+        auto blockLHS = blockUpdateContexts[blockNumbers.first];
+        auto blockRHS = blockUpdateContexts[blockNumbers.second];
+        JoinHints<DataIndexType> LHShint;
+        LHShint[stitchHint.first] = {stitchHint.second};
+        JoinHints<DataIndexType> RHShint;
+        RHShint[stitchHint.second] = {stitchHint.first};
+
+        auto cachingDistanceFunctor = [&](DataIndexType LHSIndex, DataIndexType RHSIndex, const DataEntry& queryData) -> DistType{
+            DistType distance = blockRHS.queryContext.defaultQueryFunctor(LHSIndex, RHSIndex, queryData);
+            distanceCache[std::pair{LHSIndex, RHSIndex}] = distance;
+            return distance;
+        };
+        
+        std::pair<JoinResults<DataIndexType, DistType>, JoinResults<DataIndexType, DistType>> retPair;
+        retPair.first = BlockwiseJoin(LHShint,
+                                      blockLHS.currentGraph,
+                                      blockLHS.leafGraph,
+                                      blockLHS.dataBlock,
+                                      blockRHS.queryContext,
+                                      cachingDistanceFunctor);
+
+        auto cachedDistanceFunctor = [&](DataIndexType LHSIndex, DataIndexType RHSIndex, const DataEntry& queryData) -> DistType{
+            auto result = distanceCache.find(std::pair{RHSIndex, LHSIndex});
+            if(result != distanceCache.end()) return result->second;
+            else return blockLHS.queryContext.defaultQueryFunctor(LHSIndex, RHSIndex, queryData);
+        };
+
+        retPair.second = BlockwiseJoin(RHShint,
+                                      blockRHS.currentGraph,
+                                      blockRHS.leafGraph,
+                                      blockRHS.dataBlock,
+                                      blockLHS.queryContext,
+                                      cachingDistanceFunctor);
+    };
+
+    std::transform(std::execution::seq, initBlockJoins.begin(), initBlockJoins.end(), initUpdates.begin(), initBlockJoin);
+    int initGraphUpdates(0);
+    for (size_t i = 0; i<initUpdates.size(); i += 1){
+        ComparisonKey<size_t> blocks = initBlockJoins[i];
+        std::pair<Graph<size_t, float>, Graph<size_t, float>>& updates = initUpdates[i];
+        for (auto& result: updates.first){
+            graphUpdates += ConsumeVertex(blockUpdateContexts[blocks.first].currentGraph[result.first], result.second, blocks.second);
+        }
+        for (auto& result: updates.second){
+            graphUpdates += ConsumeVertex(blockUpdateContexts[blocks.second].currentGraph[result.first], result.second, blocks.first);
+        }
+
+
+        //for (auto& result: blockLHSUpdates){
+        //    graphUpdates += ConsumeVertex(blockLHS.currentGraph[result.first], result.second, blockRHS.dataBlock.blockNumber);
+        //}
+
+
+        for (size_t j = 0; j<blockUpdateContexts[blocks.second].currentGraph.size(); j+=1){
+            initGraphUpdates += ConsumeVertex(blockUpdateContexts[blocks.second].currentGraph[j], updates.second[j], blocks.first);
+        }
+    }
+
+    */
+    
+
     
     //Initial filling of comparison targets.
     std::vector<ComparisonMap<size_t, size_t>> queueMaps;
@@ -254,8 +333,8 @@ int main(){
 
     const size_t numBlockGraphNeighbors = 10;
     const size_t numCOMNeighbors = 30;
-    const size_t maxNearestNodes = 10;
-    const int queryDepth = 3;
+    const size_t maxNearestNodes = 5;
+    const int queryDepth = 2;
 
     //std::string trainDataFilePath("./TestData/train-images.idx3-ubyte");
 
@@ -321,9 +400,9 @@ int main(){
     MetaGraph<size_t, float> metaGraph(dataBlocks, numCOMNeighbors);
 
     std::vector<BlockUpdateContext<size_t, size_t, std::valarray<float>, float>> blockUpdateContexts = InitializeBlockContexts(dataBlocks, blockGraphs, metaGraph, queryDepth, EuclideanNorm<float, float, float>);
-       
-    Graph<size_t, float> nearestNodeDistances = NearestNodeDistances(blockUpdateContexts, metaGraph, maxNearestNodes);
-    StitchBlocks(nearestNodeDistances, blockUpdateContexts);
+    
+    auto [nearestNodeDistances, stitchHints] = NearestNodeDistances(blockUpdateContexts, metaGraph, maxNearestNodes);
+    StitchBlocks(nearestNodeDistances, stitchHints, blockUpdateContexts);
     
 
     GraphVertex<BlockIndecies, float> nullVertex;
