@@ -139,7 +139,7 @@ struct RandomProjectionForest{
     std::vector<TreeLeaf> treeLeaves;
 
     // Training Constructor
-    RandomProjectionForest(size_t numberOfSamples, StlRngFunctor<> rngFunctor, TrainingSplittingScheme& getSplitComponents, SplittingHeurisitcs heurisitics = SplittingHeurisitcs()) : 
+    RandomProjectionForest(size_t numberOfSamples, StlRngFunctor<> rngFunctor, TrainingSplittingScheme& getSplitComponents, const SplittingHeurisitcs heurisitics = SplittingHeurisitcs()) : 
         numberOfSplits(heurisitics.splits), treeLeaves(0){
 
         //splittingVectors.reserve((1<<numberOfSplits) - 1);

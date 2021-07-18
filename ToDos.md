@@ -6,15 +6,21 @@
     - Front end some sort of generalized PCA?
     - I could just be boring and front end SVD (which doesn't really work for non-euclidian easily, but would be needed for generalized PCA init)
 
-- Try turning space metrics into functors, and have the type as a template parameter
+- ~~Try turning space metrics into functors, and have the type as a template parameter~~
   - Compilers tend to be very good at inlining functor calls.
+  - I tried, no difference in speed, and function pointers allow more (basically) cost free dynamic polymorphism
 
 - I just realized, some distance metrics might wanna return an integral type (binary distances like hamming)
 - Template BlockIndicies
 
 - Fix my I/O. My I/O is bad. (I spend so much time in the stream operator).
+  - I/O works okay when compiled on linux with Clang (??)
+  - Pretty sure the way I do it might be UB
 
 - An actual, good, pair hashing func that's not from a library.
+
+- Rethink template arguements. The declarations are starting to get a bit long.
+  - Instead of keeping them in terms of the fundamental types, I can instead declare the templates in terms of the composed types.
 
 #RPTrees
 - Move forest building outside of constructor.
@@ -23,7 +29,6 @@
 
 
 #NNDescent
-- Add in some more robust benchmarking
 - This will be forever out from now, but test builing data array inside of the control structure itself to see if it reduces cache misses.
 - Try spinning up branchless block bruteforcing.
 - Template MetaGraph stuff
@@ -31,17 +36,13 @@
 - Rethink verticies. There should be some way to set up making operations on them more efficient.
   - Also set it up so NearestPair calculations can update neighbor lists.
   - Prototyped CacheLineVertex
-- Wrap searching function prototypes into a search context
-  - In progress
-- Should I move results caching outside of the query context? I kinda think having the results cached internally and not using the operator returns is an anti-patern.
-- Search leafGraphs don't need distances.
-  - Form undirected search graphs
 
 - Second pass on breaking up BlockSitching and NearestNodeDistances. Mainly a concern at the parallelism stage. Do I need to transform from a contiguous section of memory?
 
 - paramterize/pass as arguement the COM distance functor for metagraph
 
 - Rewrite TreeLeaf
+
 - Most of my run time is in distance calcs. While optimizing the calculation will be important, I need to squeeze as much as I can out of every call.
   - I'm only storing results from calculations on one side for every query. Figure out how to save calculations for both sides.
 

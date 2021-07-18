@@ -149,13 +149,44 @@ struct IndexMaps{
 
 };
 
-
-template<typename DataEntry>
+template<typename DataEntry, typename DataStructure, typename BoundConstructor>
 struct DataMapper{
 
     const DataSet<DataEntry>& dataSource;
     size_t blockCounter;
-    std::vector<DataBlock<DataEntry>> dataBlocks;
+    std::vector<DataStructure> dataBlocks;
+    std::unordered_map<size_t, size_t> splitToBlockNum;
+    std::unordered_map<BlockIndecies, size_t> blockIndexToSource;
+    std::vector<BlockIndecies> sourceToBlockIndex;
+    std::vector<size_t> sourceToSplitIndex;
+    BoundConstructor construct;
+
+    DataMapper(const DataSet<DataEntry>& source, BoundConstructor constructor):
+        dataSource(source),
+        sourceToBlockIndex(dataSource.numberOfSamples),
+        sourceToSplitIndex(dataSource.numberOfSamples),
+        blockCounter(0),
+        construct(constructor) {};
+
+    void operator()(size_t splittingIndex, std::span<const size_t> indicies){
+        //[[unlikely]]if (indicies.size() == 0) return;
+        splitToBlockNum[splittingIndex] = blockCounter;
+        for (size_t i = 0; i<indicies.size(); i += 1){
+            size_t index = indicies[i];
+            sourceToBlockIndex[index] = BlockIndecies{blockCounter, i};
+            sourceToSplitIndex[index] = splittingIndex;
+            blockIndexToSource[BlockIndecies{blockCounter, i}] = index;
+        }
+        dataBlocks.push_back(construct(dataSource, indicies, blockCounter++));
+    };
+};
+/*
+template<typename DataEntry, typename DataStructure>
+struct DataMapper<DataEntry, DataStructure>{
+
+    const DataSet<DataEntry>& dataSource;
+    size_t blockCounter;
+    std::vector<DataStructure> dataBlocks;
     std::unordered_map<size_t, size_t> splitToBlockNum;
     std::unordered_map<BlockIndecies, size_t> blockIndexToSource;
     std::vector<BlockIndecies> sourceToBlockIndex;
@@ -173,12 +204,13 @@ struct DataMapper{
             sourceToSplitIndex[index] = splittingIndex;
             blockIndexToSource[BlockIndecies{blockCounter, i}] = index;
         }
-        dataBlocks.push_back(DataBlock(dataSource, indicies, blockCounter++));
+        dataBlocks.push_back(DataStructure(dataSource, indicies, blockCounter++));
     };
-
-
-
 };
+*/
+
+
+
 
 using UnweightedGraphEdges = std::unordered_map<size_t, std::unordered_map<size_t, size_t>>;
 using WeightedGraphEdges = std::unordered_map<size_t, std::vector<std::pair<size_t, double>>>;

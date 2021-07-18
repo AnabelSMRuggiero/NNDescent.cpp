@@ -48,6 +48,18 @@ struct DataSet{
             };
     }
 
+    DataEntry& operator[](size_t i){
+        return samples[i];
+    }
+
+    const DataEntry& operator[](size_t i) const{
+        return samples[i];
+    }
+
+    size_t size() const{
+        return samples.size();
+    }
+
 };
 
 //Conceptual layout

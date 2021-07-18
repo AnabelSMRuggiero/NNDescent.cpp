@@ -69,9 +69,16 @@ struct std::hash<ComparisonKey<IndexType>>{
 
 };
 
+//(const DataSet<DataEntry>& dataSource, std::span<const size_t> dataPoints, size_t blockNumber)
+
 template<std::integral BlockNumberType,  typename DataEntry>
 std::pair<IndexMaps<BlockNumberType>, std::vector<DataBlock<DataEntry>>> PartitionData(const RandomProjectionForest& treeToMap, const DataSet<DataEntry>& sourceData){
-    DataMapper<DataEntry> dataMapper(sourceData);
+    //There might be a more elegant way to do this with templates. I tried.
+    auto boundContructor = [](const DataSet<DataEntry>& dataSource, std::span<const size_t> dataPoints, size_t blockNumber){ 
+        return DataBlock<DataEntry>(dataSource, dataPoints, blockNumber);
+    };
+    
+    DataMapper<DataEntry, DataBlock<DataEntry>, decltype(boundContructor)> dataMapper(sourceData, boundContructor);
     CrawlTerminalLeaves(treeToMap, dataMapper);
     
     std::vector<DataBlock<DataEntry>> retBlocks = std::move(dataMapper.dataBlocks);
@@ -323,6 +330,62 @@ void StitchBlocks(const Graph<BlockNumberType, DistType>& nearestNodeDistances,
     }
 }
 
+template<typename BlockNumberType, typename DataIndexType, typename DataEntry, typename DistType>
+struct SearchContext{
+
+    GraphVertex<BlockIndecies, DistType> currentNeighbors;
+    NodeTracker blocksJoined;
+    const DataEntry& data;
+    
+    SearchContext(const size_t numNeighbors, const size_t numBlocks, const DataEntry& dataEntry):
+        currentNeighbors(numNeighbors), blocksJoined(numBlocks), data(dataEntry){};
+
+};
+
+
+
+//template<typename BlockNumberType, typename DataIndexType, typename DataEntry, typename DistType>
+template<typename BlockNumberType, typename DataIndexType, typename DataEntry, typename DistType, typename QueryFunctor>
+GraphVertex<DataIndexType, DistType> BlockwiseSearch(SearchContext<BlockNumberType, DataIndexType, DataEntry, DistType>& searchingPoint,
+                   const QueryContext<BlockNumberType, DataIndexType, DataEntry, DistType>& targetBlock,
+                   const DataIndexType hint,
+                   QueryFunctor queryFunctor){
+    
+    
+    
+    GraphVertex<DataIndexType, DistType> queryHint;
+    
+    queryHint.push_back({hint, std::numeric_limits<DistType>::max()});
+
+    //searchingPoint.joinHints.erase(targetBlock.dataBlock.blockNumber);
+    
+
+    //std::vector<std::pair<DataIndexType, GraphVertex<DataIndexType, DistType>>> retResults;
+    
+    GraphVertex<DataIndexType, DistType> joinResults = targetBlock.QueryHotPath(queryHint, searchingPoint.data, 0, queryFunctor);
+    searchingPoint.blocksJoined[targetBlock.dataBlock.blockNumber] = true;
+    size_t resultsAdded = ConsumeVertex(searchingPoint.currentNeighbors, joinResults, targetBlock.dataBlock.blockNumber);
+    
+    joinResults.resize(resultsAdded);
+    
+    
+    return joinResults;
+}
+
+
+template<typename BlockNumberType, typename DataIndexType, typename DataEntry, typename DistType>
+void QueueSearches(const BlockUpdateContext<BlockNumberType, DataIndexType, DataEntry, DistType>& graphFragment,
+                   SearchContext<BlockNumberType, DataIndexType, DataEntry, DistType>& searchingPoint,
+                   const BlockIndecies searchToQueue,
+                   GraphVertex<DataIndexType, DistType>& joinResults,
+                   std::vector<std::unordered_map<BlockIndecies, BlockNumberType>>& searchQueues){
+    for (const auto& result: joinResults){
+        for (const auto& resultNeighbor: graphFragment.currentGraph[result.first]){
+            if (!searchingPoint.blocksJoined[resultNeighbor.first.blockNumber]) searchQueues[resultNeighbor.first.blockNumber][searchToQueue] = resultNeighbor.first.dataIndex;
+        }
+    }
+}
+
 
 
 
@@ -335,6 +398,18 @@ int main(){
     const size_t numCOMNeighbors = 30;
     const size_t maxNearestNodes = 3;
     const int queryDepth = 2;
+
+    const SplittingHeurisitcs splitParams= {16, 140, 60, 180};
+
+    /*
+    struct SplittingHeurisitcs{
+    int splits = 16;
+    int splitThreshold = 80;
+    int childThreshold = 32;
+    int maxTreeSize = 130;
+    };
+
+    */
 
     //std::string trainDataFilePath("./TestData/train-images.idx3-ubyte");
 
@@ -357,20 +432,7 @@ int main(){
     std::string testNeighborsFilePath("./TestData/MNIST-Fashion-Neighbors.bin");
     DataSet<std::valarray<float>> mnistFashionTest(testDataFilePath, 28*28, 10'000, &ExtractNumericArray<float,dataEndianness>);
     DataSet<std::valarray<int32_t>> mnistFashionTestNeighbors(testNeighborsFilePath, 100, 10'000, &ExtractNumericArray<int32_t,dataEndianness>);
-    /*
-    volatile float resultA, resultB, resultC;
-    for (size_t i =0; i<10'000; i +=1){
-        resultA = Dot<float, float>(mnistFashionTrain.samples[0], mnistFashionTrain.samples[1]);
-    }
-
-    for (size_t i =0; i<1'000'000; i +=1){
-        resultB = EuclideanNorm<float, float>(mnistFashionTrain.samples[0], mnistFashionTrain.samples[1]);
-    }
-
-    for (size_t i =0; i<1'000'000; i +=1){
-        resultC = TestEuclideanNorm<float, float>(mnistFashionTrain.samples[0], mnistFashionTrain.samples[1]);
-    }
-    */
+    
     //std::chrono::time_point<std::chrono::steady_clock> runEnd = std::chrono::steady_clock::now();
     //std::cout << std::chrono::duration_cast<std::chrono::seconds>(runEnd - runStart).count() << "s Pointwise Join Calcs " << std::endl;
 
@@ -386,7 +448,7 @@ int main(){
     EuclidianTrain<float, float> splittingScheme(mnistFashionTrain);
     TrainingSplittingScheme splitterFunc(splittingScheme);
     
-    RandomProjectionForest rpTreesTrain(size_t(mnistFashionTrain.numberOfSamples), rngFunctor, splitterFunc);
+    RandomProjectionForest rpTreesTrain(size_t(mnistFashionTrain.numberOfSamples), rngFunctor, splitterFunc, splitParams);
 
 
     //std::vector<size_t> trainClassifications(mnistFashionTrain.numberOfSamples);
@@ -453,10 +515,82 @@ int main(){
         }
     };
     */
-    
-    DataMapper<std::valarray<float>> testMapper(mnistFashionTest);
+
+
+    const size_t numberSearchNeighbors = 15;
+    size_t numberSearchBlocks = dataBlocks.size();
+
+    auto searcherConstructor = [=](const DataSet<std::valarray<float>>& dataSource, std::span<const size_t> indicies, size_t blockCounter)->
+                                  std::vector<SearchContext<size_t, size_t, std::valarray<float>, float>>{
+        std::vector<SearchContext<size_t, size_t, std::valarray<float>, float>> retVec;
+        retVec.reserve(indicies.size());
+        for(size_t index: indicies){
+            retVec.emplace_back(numberSearchNeighbors, numberSearchBlocks, dataSource[index]);
+        }
+        return retVec;
+    };
+
+
+    DataMapper<std::valarray<float>, std::vector<SearchContext<size_t, size_t, std::valarray<float>, float>>, decltype(searcherConstructor)> testMapper(mnistFashionTest, searcherConstructor);
     CrawlTerminalLeaves(rpTreesTest, testMapper);
+
+    auto searchContexts = std::move(testMapper.dataBlocks);
+
+    IndexMaps<size_t> testMappings = {
+        std::move(testMapper.splitToBlockNum),
+        std::move(testMapper.blockIndexToSource),
+        std::move(testMapper.sourceToBlockIndex),
+        std::move(testMapper.sourceToSplitIndex)
+    };
     
+    std::vector<std::unordered_map<BlockIndecies, size_t>> searchHints(dataBlocks.size());
+
+    for (size_t i = 0; auto& testBlock: searchContexts){
+        const GraphVertex<size_t, float>& hint = blockUpdateContexts[i].queryContext.queryHint;
+        const auto& queryFunctor = blockUpdateContexts[i].queryContext.defaultQueryFunctor;
+        for (size_t j = 0; auto& context: testBlock){
+            context.blocksJoined[i] = true;
+            GraphVertex<size_t, float> initNeighbors = blockUpdateContexts[i].queryContext.QueryHotPath(hint, context.data, 0, queryFunctor);
+            for (const auto& result: initNeighbors){
+                context.currentNeighbors.push_back({{i, result.first}, result.second});
+                for (const auto& resultNeighbor: blockUpdateContexts[i].currentGraph[result.first]){
+                    if (resultNeighbor.first.blockNumber != i) searchHints[resultNeighbor.first.blockNumber][{i,j}] = resultNeighbor.first.dataIndex;
+                }
+            }
+            j++;
+        }
+        i++;
+    }
+    size_t searchUpdates = 1;
+    while(searchUpdates){
+        searchUpdates = 0;
+        for (size_t i = 0; auto& hintMap: searchHints){
+            for (const auto& hint: hintMap){
+                
+                GraphVertex<size_t, float> newNodes = BlockwiseSearch(searchContexts[hint.first.blockNumber][hint.first.dataIndex],
+                                                                                blockUpdateContexts[i].queryContext,
+                                                                                hint.second,
+                                                                                blockUpdateContexts[i].queryContext.defaultQueryFunctor);
+                
+                searchUpdates += newNodes.size();
+
+                QueueSearches(blockUpdateContexts[i],
+                                searchContexts[hint.first.blockNumber][hint.first.dataIndex],
+                                hint.first,
+                                newNodes,
+                                searchHints);
+
+                
+            }
+            hintMap = std::unordered_map<BlockIndecies, size_t>();
+            i++;
+        }
+    }
+    std::chrono::time_point<std::chrono::steady_clock> runEnd2 = std::chrono::steady_clock::now();
+    std::cout << std::chrono::duration_cast<std::chrono::duration<float>>(runEnd2 - runStart2).count() << "s test set search " << std::endl;
+
+
+    /*
     std::vector<Graph<size_t, float>> reflexiveGraphs(0);
     reflexiveGraphs.reserve(testMapper.dataBlocks.size());
     std::vector<Graph<BlockIndecies,float>> nearestNeighbors;
@@ -476,7 +610,6 @@ int main(){
 
     for (size_t i=0; const auto& dataBlock : testMapper.dataBlocks){
         Graph<size_t, float> blockGraph = BruteForceBlock<size_t, std::valarray<float>, float>(10, dataBlock, EuclideanNorm<float, float, float>);
-        reflexiveGraphs.push_back(std::move(blockGraph));
         nearestNeighbors.push_back(Graph<BlockIndecies, float>(dataBlock.size(), 10));
         for (size_t j = 0; auto& vertex: nearestNeighbors[i]){
             for(size_t k = 0; k<15; k+=1){
@@ -503,7 +636,7 @@ int main(){
                 testJoinTrackers[i][joinList.first] = true;
             }
             for (auto& joinList: joinsToDo){
-                blockUpdates[i][joinList.first] = BlockwiseJoin(joinList.second, nearestNeighbors[i], reflexiveGraphs[i], testMapper.dataBlocks[i], blockUpdateContexts[joinList.first].queryContext, blockUpdateContexts[joinList.first].queryContext.defaultQueryFunctor);
+                blockUpdates[i][joinList.first] = BlockwiseSearch(joinList.second, nearestNeighbors[i], testMapper.dataBlocks[i], blockUpdateContexts[joinList.first].queryContext, blockUpdateContexts[joinList.first].queryContext.defaultQueryFunctor);
                 NewJoinQueues<size_t, size_t, float>(blockUpdates[i][joinList.first], testJoinTrackers[i], blockUpdateContexts[joinList.first].currentGraph, newJoinHints);
             }
             testJoinHints[i] = std::move(newJoinHints);  
@@ -531,13 +664,13 @@ int main(){
         //std::cout << graphUpdates << " updates in iteration " << iteration << std::endl;
         //iteration += 1;
     }
-    std::chrono::time_point<std::chrono::steady_clock> runEnd2 = std::chrono::steady_clock::now();
-    std::cout << std::chrono::duration_cast<std::chrono::duration<float>>(runEnd2 - runStart2).count() << "s test set search " << std::endl;
+    */
 
     std::vector<std::vector<size_t>> results(mnistFashionTest.samples.size());
-    for (size_t i = 0; auto& testBlock: nearestNeighbors){
-        for (size_t j = 0; auto& result: testBlock){
-            size_t testIndex = testMapper.blockIndexToSource[{i,j}];
+    for (size_t i = 0; auto& testBlock: searchContexts){
+        for (size_t j = 0; auto& context: testBlock){
+            GraphVertex<BlockIndecies, float>& result = context.currentNeighbors;
+            size_t testIndex = testMappings.blockIndexToSource[{i,j}];
             std::sort_heap(result.begin(), result.end(), NeighborDistanceComparison<BlockIndecies, float>);
             for (const auto& neighbor: result){
                 results[testIndex].push_back(indexMappings.blockIndexToSource[neighbor.first]);
@@ -560,16 +693,17 @@ int main(){
         i++;
     }
 
-    std::vector<size_t> correctNeighborsPerBlock(testMapper.dataBlocks.size());
+    std::vector<size_t> correctNeighborsPerBlock(searchContexts.size());
     for (size_t i = 0; i< correctNeighborsPerIndex.size(); i+=1){
-        correctNeighborsPerBlock[testMapper.sourceToBlockIndex[i].blockNumber] += correctNeighborsPerIndex[i];
+        correctNeighborsPerBlock[testMappings.sourceToBlockIndex[i].blockNumber] += correctNeighborsPerIndex[i];
     }
-    std::vector<float> correctPerBlockFloat(testMapper.dataBlocks.size());
+    std::vector<float> correctPerBlockFloat(searchContexts.size());
     for (size_t i =0; i<correctNeighborsPerBlock.size(); i+=1){
-        correctPerBlockFloat[i] = float(correctNeighborsPerBlock[i]*10)/float(testMapper.dataBlocks[i].size());
+        correctPerBlockFloat[i] = float(correctNeighborsPerBlock[i]*10)/float(searchContexts[i].size());
     }
     double recall = double(numNeighborsCorrect)/ double(10*mnistFashionTestNeighbors.samples.size());
     std::cout << "Recall: " << (recall * 100) << "%" << std::endl;
+    
     //WeightedGraphEdges graphEdges = NeighborsOutOfBlock(mnistFashionTestNeighbors, trainMapper.sourceToBlockIndex, testClassifications);
 
     //for (size_t i = 0; i < trainMapper.sourceToBlockIndex.size(); i += 1){

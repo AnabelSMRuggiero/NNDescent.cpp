@@ -13,3 +13,7 @@
 *.sln
 *.vcxproj*
 /PyNNDescent-Comparison
+default.profraw
+nnd.profdata
+perf.data
+perf.data.old
