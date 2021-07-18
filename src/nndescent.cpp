@@ -24,7 +24,8 @@ https://github.com/AnabelSMRuggiero/NNDescent.cpp
 #include <ranges>
 #include <memory>
 #include <execution>
-
+#include <string_view>
+#include <cstdlib>
 
 #include "Utilities/Data.hpp"
 #include "NND/SpaceMetrics.hpp"
@@ -223,7 +224,7 @@ void StitchBlocks(const Graph<BlockNumberType, DistType>& nearestNodeDistances,
         blockUpdateContexts[pair.second].blockJoinTracker[pair.first] = true;
         initBlockJoins.push_back(pair);
     }
-
+    /*
     std::vector<std::pair<Graph<size_t, float>, Graph<size_t, float>>> initUpdates(initBlockJoins.size());
 
     auto initBlockJoin = [&](const ComparisonKey<size_t> blockNumbers) -> std::pair<Graph<size_t, float>, Graph<size_t, float>>{
@@ -243,21 +244,22 @@ void StitchBlocks(const Graph<BlockNumberType, DistType>& nearestNodeDistances,
             initGraphUpdates += ConsumeVertex(blockUpdateContexts[blocks.second].currentGraph[j], updates.second[j], blocks.first);
         }
     }
-
-    /*
+    */
+    
 
     std::vector<std::pair<JoinResults<DataIndexType, DistType>, JoinResults<DataIndexType, DistType>>> initUpdates(initBlockJoins.size());
+    std::unordered_map<std::pair<DataIndexType, DataIndexType>, DistType, IntegralPairHasher<DataIndexType>> distanceCache;
 
     auto initBlockJoin = [&](const ComparisonKey<size_t> blockNumbers) -> std::pair<JoinResults<DataIndexType, DistType>, JoinResults<DataIndexType, DistType>>{
         
-        auto [blockNums, stitchHint] = (stitchHints.find(blockNumbers));
-        if (blockNums.first != blockNumbers.first) stitchHint = {stitchHint.second, stitchHint.first};
+        auto [blockNums, stitchHint] = *(stitchHints.find(blockNumbers));
+        if (blockNums.first != blockNumbers.first) stitchHint = {std::get<1>(stitchHint), std::get<0>(stitchHint), std::get<2>(stitchHint)};
         auto blockLHS = blockUpdateContexts[blockNumbers.first];
         auto blockRHS = blockUpdateContexts[blockNumbers.second];
         JoinHints<DataIndexType> LHShint;
-        LHShint[stitchHint.first] = {stitchHint.second};
+        LHShint[std::get<0>(stitchHint)] = {std::get<1>(stitchHint)};
         JoinHints<DataIndexType> RHShint;
-        RHShint[stitchHint.second] = {stitchHint.first};
+        RHShint[std::get<1>(stitchHint)] = {std::get<0>(stitchHint)};
 
         auto cachingDistanceFunctor = [&](DataIndexType LHSIndex, DataIndexType RHSIndex, const DataEntry& queryData) -> DistType{
             DistType distance = blockRHS.queryContext.defaultQueryFunctor(LHSIndex, RHSIndex, queryData);
@@ -284,22 +286,24 @@ void StitchBlocks(const Graph<BlockNumberType, DistType>& nearestNodeDistances,
                                       blockRHS.leafGraph,
                                       blockRHS.dataBlock,
                                       blockLHS.queryContext,
-                                      cachingDistanceFunctor);
+                                      cachedDistanceFunctor);
+
+        return retPair;
     };
 
     std::transform(std::execution::seq, initBlockJoins.begin(), initBlockJoins.end(), initUpdates.begin(), initBlockJoin);
     int initGraphUpdates(0);
     for (size_t i = 0; i<initUpdates.size(); i += 1){
         ComparisonKey<size_t> blocks = initBlockJoins[i];
-        std::pair<Graph<size_t, float>, Graph<size_t, float>>& updates = initUpdates[i];
+        std::pair<JoinResults<DataIndexType, DistType>, JoinResults<DataIndexType, DistType>>& updates = initUpdates[i];
         for (auto& result: updates.first){
-            graphUpdates += ConsumeVertex(blockUpdateContexts[blocks.first].currentGraph[result.first], result.second, blocks.second);
+            initGraphUpdates += ConsumeVertex(blockUpdateContexts[blocks.first].currentGraph[result.first], result.second, blocks.second);
         }
         for (auto& result: updates.second){
-            graphUpdates += ConsumeVertex(blockUpdateContexts[blocks.second].currentGraph[result.first], result.second, blocks.first);
+            initGraphUpdates += ConsumeVertex(blockUpdateContexts[blocks.second].currentGraph[result.first], result.second, blocks.first);
         }
 
-
+        /*
         //for (auto& result: blockLHSUpdates){
         //    graphUpdates += ConsumeVertex(blockLHS.currentGraph[result.first], result.second, blockRHS.dataBlock.blockNumber);
         //}
@@ -308,9 +312,10 @@ void StitchBlocks(const Graph<BlockNumberType, DistType>& nearestNodeDistances,
         for (size_t j = 0; j<blockUpdateContexts[blocks.second].currentGraph.size(); j+=1){
             initGraphUpdates += ConsumeVertex(blockUpdateContexts[blocks.second].currentGraph[j], updates.second[j], blocks.first);
         }
+        */
     }
 
-    */
+    
     
 
     
@@ -386,20 +391,93 @@ void QueueSearches(const BlockUpdateContext<BlockNumberType, DataIndexType, Data
     }
 }
 
+enum class HyperParameter{
+    blockGraphNeighbors,
+    COMNeighbors,
+    nearestNodeNeighbors,
+    queryDepth,
+    targetSplitSize,
+    minSplitSize,
+    maxSplitSize
+};
+
+
+using std::operator""s;
+static const std::unordered_map<std::string, HyperParameter> optionNumber = {
+    {"-blockGraphNeighbors"s,   HyperParameter::blockGraphNeighbors},
+    {"-COMNeighbors"s,          HyperParameter::COMNeighbors},
+    {"-nearestNodeNeighbors"s,  HyperParameter::nearestNodeNeighbors},
+    {"-queryDepth"s,            HyperParameter::queryDepth},
+    {"-targetSplitSize"s,       HyperParameter::targetSplitSize},
+    {"-minSplitSize"s,          HyperParameter::minSplitSize},
+    {"-maxSplitSize"s,          HyperParameter::maxSplitSize}
+};
 
 
 
-int main(){
+int main(int argc, char *argv[]){
 
     static const std::endian dataEndianness = std::endian::big;
 
+    size_t numBlockGraphNeighbors = 10;
+    size_t numCOMNeighbors = 30;
+    size_t maxNearestNodes = 3;
+    size_t queryDepth = 2;
 
-    const size_t numBlockGraphNeighbors = 10;
-    const size_t numCOMNeighbors = 30;
-    const size_t maxNearestNodes = 3;
-    const int queryDepth = 2;
+    SplittingHeurisitcs splitParams= {16, 140, 60, 180};
 
-    const SplittingHeurisitcs splitParams= {16, 140, 60, 180};
+    std::vector<std::string> options;
+    options.reserve(argc-1);
+    for (size_t i = 1; i < argc; i+=1){
+        options.emplace_back(argv[i]);
+    }
+
+    for (const auto option: options){
+        size_t nameEnd = option.find('=');
+        if (nameEnd == std::string::npos){
+            std::cout << "Could not split option from value; no '=' in: " << option << std::endl;
+            return EXIT_FAILURE;
+        }
+        HyperParameter optionEnum;
+        try {
+            optionEnum = optionNumber.at(option.substr(0,nameEnd));
+        } catch (...){
+            std::cout << "Unrecognized option: " << option.substr(0,nameEnd) << std::endl;
+            return EXIT_FAILURE;
+        }
+
+        switch (optionEnum){
+            
+            case HyperParameter::blockGraphNeighbors:
+                numBlockGraphNeighbors = stoul(std::string(option.substr(nameEnd+1)));
+                break;
+
+            case HyperParameter::COMNeighbors:
+                numCOMNeighbors = stoul(std::string(option.substr(nameEnd+1)));
+                break;
+
+            case HyperParameter::nearestNodeNeighbors:
+                maxNearestNodes = stoul(std::string(option.substr(nameEnd+1)));
+                break;
+
+            case HyperParameter::queryDepth:
+                queryDepth = stoul(std::string(option.substr(nameEnd+1)));
+                break;
+
+            case HyperParameter::targetSplitSize:
+                splitParams.splitThreshold = stoul(std::string(option.substr(nameEnd+1)));
+                break;
+
+            case HyperParameter::minSplitSize:
+                splitParams.childThreshold = stoul(std::string(option.substr(nameEnd+1)));
+                break;
+
+            case HyperParameter::maxSplitSize:
+                splitParams.maxTreeSize = stoul(std::string(option.substr(nameEnd+1)));
+                break;
+
+        }
+    }
 
     /*
     struct SplittingHeurisitcs{
