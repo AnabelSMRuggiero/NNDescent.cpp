@@ -50,11 +50,11 @@ DataType ExtractData(std::ifstream &dataStream){
 template<typename DataEntry>
 using DataExtractor = DataEntry (*)(std::ifstream&, size_t);
 
-template<typename NumericType, std::endian DataEndianness>
-std::valarray<NumericType> ExtractNumericArray(std::ifstream& dataStream, size_t entryLength){
-    std::valarray<NumericType> sample(entryLength);
+template<typename Container, std::endian DataEndianness>
+Container ExtractNumericArray(std::ifstream& dataStream, size_t entryLength){
+    Container sample(entryLength);
     for(size_t i = 0; i <entryLength; i+=1){
-        sample[i] = ExtractData<NumericType, DataEndianness>(dataStream);
+        sample[i] = ExtractData<typename Container::value_type, DataEndianness>(dataStream);
     }
     return sample;
 };

@@ -43,7 +43,7 @@ struct DataSet{
             dataStream.open(dataLocation, std::ios_base::binary);        
             samples.reserve(numberOfSamples);
             for (size_t i = 0; i < numberOfSamples; i+=1){
-                samples.emplace_back(extractionFunction(dataStream, entryLength));
+                samples.push_back(extractionFunction(dataStream, entryLength));
                 //dataStream.read(reinterpret_cast<char *>(&(samples[i][0])), vectorLength);
             };
     }

@@ -30,7 +30,7 @@ https://github.com/AnabelSMRuggiero/NNDescent.cpp
 #include "Utilities/Data.hpp"
 #include "NND/SpaceMetrics.hpp"
 #include "NND/GraphStructures.hpp"
-#include "NND/Algorithm.hpp"
+//#include "NND/Algorithm.hpp"
 #include "NND/MetaGraph.hpp"
 #include "NND/SubGraphQuerying.hpp"
 #include "NND/BlockwiseAlgorithm.hpp"

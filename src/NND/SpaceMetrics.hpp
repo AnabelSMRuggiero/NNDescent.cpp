@@ -39,8 +39,8 @@ RetType EuclideanNorm(const std::valarray<DataTypeA>& pointA, const std::valarra
     return std::sqrt(accum);
 };
 */
-template<typename DataTypeA, typename DataTypeB, typename RetType=double>
-RetType EuclideanNorm(const std::valarray<DataTypeA>& pointA, const std::valarray<DataTypeB>& pointB){
+template<template<typename, auto...> typename Container, typename DataTypeA, typename DataTypeB, typename RetType=double>
+RetType EuclideanNorm(const Container<DataTypeA>& pointA, const Container<DataTypeB>& pointB){
     auto transformFunc = [](DataTypeA operandA, DataTypeB operandB){
         RetType diff = static_cast<RetType>(operandA) - static_cast<RetType>(operandB);
         return diff*diff;

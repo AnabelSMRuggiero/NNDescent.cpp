@@ -19,7 +19,7 @@ Embedded meta graph connecting each block to the two blocks with the most neighb
 - Have only the C++ Standard Library as a dependancy
 - Produce a generic and efficient implementation
 
-This project uses the C++20 standard.
+This project uses the C++20 standard. I do plan on including some manually vectorized functions using compiler intrinsics located in the immintrin.h header that will be used by default with a mechanism to easily opt-out of them.
 
 # The Billion-Scale Approximate Nearest Neighbor Search Challenge 
 
