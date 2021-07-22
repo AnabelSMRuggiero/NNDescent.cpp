@@ -92,10 +92,10 @@ std::tuple<size_t, size_t, FloatType> BruteNearestNodes(SubProblemData<IndexType
 }
 
 template<TriviallyCopyable DataIndexType, typename DataEntry, std::floating_point COMExtentType, typename DistType>
-GraphVertex<DataIndexType, DistType> QueryCOMNeighbors(const std::valarray<DistType>& centerOfMass,
+GraphVertex<DataIndexType, DistType> QueryCOMNeighbors(const AlignedArray<DistType>& centerOfMass,
                                                      const SubProblemData<DataIndexType, DataEntry, DistType> subProb, 
                                                      const int numCandidates,
-                                                     SpaceMetric<std::valarray<COMExtentType>, DataEntry, COMExtentType> distanceFunctor){
+                                                     SpaceMetric<AlignedArray<COMExtentType>, DataEntry, COMExtentType> distanceFunctor){
 
     GraphVertex<DataIndexType, DistType> COMneighbors(numCandidates);
     
@@ -140,10 +140,10 @@ struct QueryPoint{
 };
 
 template<typename DataIndexType, typename DataEntry, typename DistType, typename COMExtentType>
-GraphVertex<DataIndexType, DistType> QueryHintFromCOM(const std::valarray<COMExtentType>& centerOfMass,
+GraphVertex<DataIndexType, DistType> QueryHintFromCOM(const AlignedArray<COMExtentType>& centerOfMass,
                                                        const SubProblemData<DataIndexType, DataEntry, DistType> subProb,
                                                        const std::uint32_t numCandidates,
-                                                       SpaceMetric<std::valarray<COMExtentType>, DataEntry, DistType> comDistanceFunctor){
+                                                       SpaceMetric<AlignedArray<COMExtentType>, DataEntry, DistType> comDistanceFunctor){
     GraphVertex<DataIndexType, COMExtentType> comNeighbors = QueryCOMNeighbors<DataIndexType, DataEntry, COMExtentType, DistType>(centerOfMass, subProb, numCandidates, comDistanceFunctor);
     GraphVertex<DataIndexType, DistType> retHint;
     for (auto& hint: comNeighbors){

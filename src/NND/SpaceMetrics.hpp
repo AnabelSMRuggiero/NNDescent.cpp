@@ -39,9 +39,11 @@ RetType EuclideanNorm(const std::valarray<DataTypeA>& pointA, const std::valarra
     return std::sqrt(accum);
 };
 */
-template<template<typename, auto...> typename Container, typename DataTypeA, typename DataTypeB, typename RetType=double>
-RetType EuclideanNorm(const Container<DataTypeA>& pointA, const Container<DataTypeB>& pointB){
-    auto transformFunc = [](DataTypeA operandA, DataTypeB operandB){
+template<typename VectorA, typename VectorB, typename RetType=double>
+RetType EuclideanNorm(const VectorA& pointA, const VectorB& pointB){
+    using ExtentA = typename VectorA::value_type;
+    using ExtentB = typename VectorB::value_type;
+    auto transformFunc = [](ExtentA operandA, ExtentB operandB){
         RetType diff = static_cast<RetType>(operandA) - static_cast<RetType>(operandB);
         return diff*diff;
     };
@@ -70,9 +72,11 @@ RetType EuclideanNorm(const std::valarray<DataTypeA>& pointA, const std::valarra
 };
 */
 
-template<typename DataTypeA, typename DataTypeB, typename RetType=double>
-RetType Dot(const std::valarray<DataTypeA>& pointA, const std::valarray<DataTypeB>& pointB){
-    auto transformFunc = [](DataTypeA operandA, DataTypeB operandB){
+template<typename VectorA, typename VectorB, typename RetType=double>
+RetType Dot(const VectorA& pointA, const VectorB& pointB){
+    using ExtentA = typename VectorA::value_type;
+    using ExtentB = typename VectorB::value_type;
+    auto transformFunc = [](ExtentA operandA, ExtentB operandB){
         return static_cast<RetType>(operandA) * static_cast<RetType>(operandB);
     };
 

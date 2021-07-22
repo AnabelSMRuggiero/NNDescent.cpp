@@ -12,69 +12,15 @@
 
 #include <immintrin.h>
 
+#include "Utilities/Type.hpp"
+
 #include "NND/SpaceMetrics.hpp"
 #include "Utilities/Data.hpp"
 #include "Utilities/DataDeserialization.hpp"
-/*
-
-template<typename DataTypeA, typename DataTypeB, typename RetType=double>
-RetType EuclideanNorm(const std::valarray<DataTypeA>& pointA, const std::valarray<DataTypeB>& pointB){
-    auto transformFunc = [](DataTypeA operandA, DataTypeB operandB){
-        RetType diff = static_cast<RetType>(operandA) - static_cast<RetType>(operandB);
-        return diff*diff;
-    };
-    RetType accum = std::transform_reduce(std::execution::unseq,
-                                    std::begin(pointA),
-                                    std::end(pointA),
-                                    std::begin(pointB),
-                                    RetType(0),
-                                    std::plus<RetType>(),
-                                    transformFunc);
-    return std::sqrt(accum);
-};
 
 
-*/
-/*
-template<typename DataTypeA, typename DataTypeB, typename RetType=double>
-std::vector<RetType> BatchEuclideanNorm(const std::vector<std::span<const DataTypeA>>& pointsTo, const std::valarray<DataTypeB>& pointB){
-    std::vector<RetType> results(pointsTo.size());
+using namespace nnd;
 
-    auto transformFunc = [&](DataTypeA operandA, size_t index){
-        std::vector<RetType> transformedElements(pointsTo.size());
-        auto elementWiseTransform = [&](std::span<const DataTypeA> targetArray){
-            RetType diff = targetArray[index] - operandA;
-            return diff*diff;
-        };
-        std::transform(std::execution::unseq, pointsTo.begin(), pointsTo.end(), transformedElements.begin(), elementWiseTransform);
-        //RetType diff = static_cast<RetType>(operandA) - static_cast<RetType>(operandB);
-        return transformedElements;
-    };
-
-    auto accumulator = [] (std::vector<RetType> operandA, std::vector<RetType> operandB){
-        for (size_t i = 0; i<operandA.size(); i+=1){
-          operandA[i] += operandB[i];
-        }
-        return operandA;
-    };
-    std::vector<RetType> accum;
-    for (size_t i = 0; i<pointB.size(); i+=1){
-        std::vector<RetType> tmp = transformFunc(pointB[i], i);
-        accum = accumulator(accum, tmp);
-    }
-    
-    //std::vector<RetType> accum = std::transform_reduce(
-    //                                std::begin(pointB),
-    //                                std::end(pointB),
-    //                                std::views::iota(0).begin(),
-    //                                results,
-    //                                accumulator,
-    //                                transformFunc);
-    
-    return accum;
-
-}
-*/
 
 
 std::vector<float> BatchEuclideanNorm(const std::vector<std::span<const float>>& pointsTo, const std::span<const float>& pointB){
@@ -164,60 +110,7 @@ static void clobber(){
     asm volatile("" : : : "memory");
 }
 
-template<typename ValueType, size_t alignment=32>
-struct AlignedArray{
-    using value_type = ValueType;
-    private:
-    std::unique_ptr<ValueType[]> data;
-    size_t capacity;
 
-    public:
-
-    AlignedArray() = default;
-
-    AlignedArray(size_t size): data(new (std::align_val_t(alignment)) float[size]), capacity(size) {};
-
-    size_t size() const { return capacity; }
-
-    ValueType* begin() { return std::assume_aligned<alignment>(data.get()); }
-
-    ValueType* end() { return data.get() + capacity; }
-
-    ValueType& operator[](size_t index) { return data[index]; }
-
-    const ValueType* begin() const { return data.get(); }
-
-    const ValueType* end() const { return data.get() + capacity; }
-
-    const ValueType& operator[](size_t index) const{ return data[index]; }
-
-};
-
-template<typename ElementType, size_t alignment=32>
-struct AlignedSpan{
-
-    using ValueType = std::remove_cv_t<ElementType>;
-    private:
-    ElementType* data;
-    size_t extent;
-
-    public:
-
-    template<typename ConvertableToElement>
-    AlignedSpan(AlignedArray<ConvertableToElement, alignment>& dataToView): data(dataToView.begin()), extent(dataToView.size()){};
-
-    template<typename ConvertableToElement>
-    AlignedSpan(const AlignedSpan<ConvertableToElement>& spanToCopy): data(spanToCopy.data), extent(spanToCopy.extent){};
-
-    ElementType* begin() const { return std::assume_aligned<alignment>(data); }
-
-    ElementType* end() const { return data + extent; }
-
-    ElementType& operator[](size_t index) const { return data[index]; };
-
-    size_t size() const { return extent; };
-
-};
 
 template<size_t prefetchPeriod = 8>
 std::vector<float> BatchEuclideanNorm(const std::vector<AlignedSpan<const float>>& pointsTo, const AlignedSpan<const float>& pointB){

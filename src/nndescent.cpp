@@ -27,13 +27,17 @@ https://github.com/AnabelSMRuggiero/NNDescent.cpp
 #include <string_view>
 #include <cstdlib>
 
+#include "Utilities/Type.hpp"
 #include "Utilities/Data.hpp"
+
 #include "NND/SpaceMetrics.hpp"
 #include "NND/GraphStructures.hpp"
 //#include "NND/Algorithm.hpp"
 #include "NND/MetaGraph.hpp"
 #include "NND/SubGraphQuerying.hpp"
 #include "NND/BlockwiseAlgorithm.hpp"
+
+#include "NND/Search.hpp"
 
 #include "RPTrees/SplittingScheme.hpp"
 #include "RPTrees/Forest.hpp"
@@ -90,7 +94,7 @@ std::pair<IndexMaps<BlockNumberType>, std::vector<DataBlock<DataEntry>>> Partiti
         std::move(dataMapper.sourceToSplitIndex)
     };
 
-    return {retMaps, retBlocks};
+    return {retMaps, std::move(retBlocks)};
 }
 
 template<std::integral DataIndexType, typename DataEntry, typename DistType>
@@ -119,25 +123,42 @@ Graph<BlockIndecies, DistType> ToBlockIndecies(const Graph<DataIndexType, DistTy
     return newGraph;
 }
 
+template <std::integral BlockNumberType, std::integral DataIndexType, typename DataEntry, typename DistType, typename COMExtent>
+Graph<DataIndexType, DistType> GenerateQueryHints(const std::vector<DataBlock<DataEntry>>& dataBlocks,
+                                                                    const std::vector<Graph<DataIndexType, DistType>>& blockGraphs,
+                                                                    const MetaGraph<BlockNumberType, DistType>& metaGraph,
+                                                                    const size_t numNeighbors,
+                                                                    SpaceMetric<DataEntry, DataEntry, DistType> distanceFunctor){
+    
+    Graph<DataIndexType, DistType> retGraph;
+    for(size_t i = 0; i<metaGraph.points.size(); i+=1){
+        retGraph.push_back(QueryHintFromCOM<DataIndexType, DataEntry, DistType, COMExtent>(metaGraph.points[i].centerOfMass, 
+                                                                                           {blockGraphs[i], dataBlocks[i]}, 
+                                                                                           numNeighbors, 
+                                                                                           distanceFunctor));
+    }
 
-template<std::integral BlockNumberType, std::integral DataIndexType, typename DataEntry, typename DistType>
+    return retGraph;
+
+}
+
+
+template<std::integral BlockNumberType, std::integral DataIndexType, typename DataEntry, typename DistType, typename COMExtent>
 std::vector<BlockUpdateContext<BlockNumberType, DataIndexType, DataEntry, DistType>> InitializeBlockContexts(const std::vector<DataBlock<DataEntry>>& dataBlocks,
                                                                                                              const std::vector<Graph<DataIndexType, DistType>>& blockGraphs,
-                                                                                                             const MetaGraph<BlockNumberType, DistType>& metaGraph,
+                                                                                                             const MetaGraph<BlockNumberType, COMExtent>& metaGraph,
+                                                                                                             Graph<DataIndexType, DistType>& queryHints,
                                                                                                              const int queryDepth,
                                                                                                              SpaceMetric<DataEntry, DataEntry, DistType> distanceFunctor){
-
-    std::vector<BlockUpdateContext<size_t, size_t, std::valarray<DistType>, DistType>> blockUpdateContexts;
+                                                                        
+    std::vector<BlockUpdateContext<BlockNumberType, DataIndexType, DataEntry, DistType>> blockUpdateContexts;
     blockUpdateContexts.reserve(dataBlocks.size());
-
+    //template<typename DataIndexType, typename DataEntry, typename DistType, typename COMExtentType>
     for (size_t i = 0; i<dataBlocks.size(); i+=1){
-        GraphVertex<size_t, DistType> queryHint = QueryHintFromCOM<size_t, std::valarray<float>, float, float>(metaGraph.points[i].centerOfMass, 
-                                                                                                            {blockGraphs[i], dataBlocks[i]}, 
-                                                                                                            10, 
-                                                                                                            distanceFunctor);
+
 
         blockUpdateContexts.emplace_back(SubProblemData{blockGraphs[i], dataBlocks[i]},
-                                         QueryContextInitArgs<size_t, std::valarray<float>, float>(queryHint, distanceFunctor),
+                                         QueryContextInitArgs<DataIndexType, DataEntry, DistType>(queryHints[i], distanceFunctor),
                                          metaGraph.verticies.size(), queryDepth);
 
         blockUpdateContexts.back().currentGraph = ToBlockIndecies(blockGraphs[i], i);
@@ -224,27 +245,6 @@ void StitchBlocks(const Graph<BlockNumberType, DistType>& nearestNodeDistances,
         blockUpdateContexts[pair.second].blockJoinTracker[pair.first] = true;
         initBlockJoins.push_back(pair);
     }
-    /*
-    std::vector<std::pair<Graph<size_t, float>, Graph<size_t, float>>> initUpdates(initBlockJoins.size());
-
-    auto initBlockJoin = [&](const ComparisonKey<size_t> blockNumbers) -> std::pair<Graph<size_t, float>, Graph<size_t, float>>{
-        return blockUpdateContexts[blockNumbers.first].queryContext || blockUpdateContexts[blockNumbers.second].queryContext;
-    };
-
-    std::transform(std::execution::seq, initBlockJoins.begin(), initBlockJoins.end(), initUpdates.begin(), initBlockJoin);
-    int initGraphUpdates(0);
-    for (size_t i = 0; i<initUpdates.size(); i += 1){
-        ComparisonKey<size_t> blocks = initBlockJoins[i];
-        std::pair<Graph<size_t, float>, Graph<size_t, float>>& updates = initUpdates[i];
-        for (size_t j = 0; j<blockUpdateContexts[blocks.first].currentGraph.size(); j+=1){
-            initGraphUpdates += ConsumeVertex(blockUpdateContexts[blocks.first].currentGraph[j], updates.first[j], blocks.second);
-        }
-
-        for (size_t j = 0; j<blockUpdateContexts[blocks.second].currentGraph.size(); j+=1){
-            initGraphUpdates += ConsumeVertex(blockUpdateContexts[blocks.second].currentGraph[j], updates.second[j], blocks.first);
-        }
-    }
-    */
     
 
     std::vector<std::pair<JoinResults<DataIndexType, DistType>, JoinResults<DataIndexType, DistType>>> initUpdates(initBlockJoins.size());
@@ -331,65 +331,11 @@ void StitchBlocks(const Graph<BlockNumberType, DistType>& nearestNodeDistances,
     for(size_t i = 0; i<queueMaps.size(); i+=1){
         ComparisonMap<size_t, size_t>& comparisonMap = queueMaps[i];
         
-        blockUpdateContexts[i].joinsToDo = InitializeJoinMap<size_t, size_t, std::valarray<float>, float>(blockUpdateContexts, comparisonMap, blockUpdateContexts[i].blockJoinTracker);
+        blockUpdateContexts[i].joinsToDo = InitializeJoinMap<BlockNumberType, DataIndexType, DataEntry, DistType>(blockUpdateContexts, comparisonMap, blockUpdateContexts[i].blockJoinTracker);
     }
 }
 
-template<typename BlockNumberType, typename DataIndexType, typename DataEntry, typename DistType>
-struct SearchContext{
 
-    GraphVertex<BlockIndecies, DistType> currentNeighbors;
-    NodeTracker blocksJoined;
-    const DataEntry& data;
-    
-    SearchContext(const size_t numNeighbors, const size_t numBlocks, const DataEntry& dataEntry):
-        currentNeighbors(numNeighbors), blocksJoined(numBlocks), data(dataEntry){};
-
-};
-
-
-
-//template<typename BlockNumberType, typename DataIndexType, typename DataEntry, typename DistType>
-template<typename BlockNumberType, typename DataIndexType, typename DataEntry, typename DistType, typename QueryFunctor>
-GraphVertex<DataIndexType, DistType> BlockwiseSearch(SearchContext<BlockNumberType, DataIndexType, DataEntry, DistType>& searchingPoint,
-                   const QueryContext<BlockNumberType, DataIndexType, DataEntry, DistType>& targetBlock,
-                   const DataIndexType hint,
-                   QueryFunctor queryFunctor){
-    
-    
-    
-    GraphVertex<DataIndexType, DistType> queryHint;
-    
-    queryHint.push_back({hint, std::numeric_limits<DistType>::max()});
-
-    //searchingPoint.joinHints.erase(targetBlock.dataBlock.blockNumber);
-    
-
-    //std::vector<std::pair<DataIndexType, GraphVertex<DataIndexType, DistType>>> retResults;
-    
-    GraphVertex<DataIndexType, DistType> joinResults = targetBlock.QueryHotPath(queryHint, searchingPoint.data, 0, queryFunctor);
-    searchingPoint.blocksJoined[targetBlock.dataBlock.blockNumber] = true;
-    size_t resultsAdded = ConsumeVertex(searchingPoint.currentNeighbors, joinResults, targetBlock.dataBlock.blockNumber);
-    
-    joinResults.resize(resultsAdded);
-    
-    
-    return joinResults;
-}
-
-
-template<typename BlockNumberType, typename DataIndexType, typename DataEntry, typename DistType>
-void QueueSearches(const BlockUpdateContext<BlockNumberType, DataIndexType, DataEntry, DistType>& graphFragment,
-                   SearchContext<BlockNumberType, DataIndexType, DataEntry, DistType>& searchingPoint,
-                   const BlockIndecies searchToQueue,
-                   GraphVertex<DataIndexType, DistType>& joinResults,
-                   std::vector<std::unordered_map<BlockIndecies, BlockNumberType>>& searchQueues){
-    for (const auto& result: joinResults){
-        for (const auto& resultNeighbor: graphFragment.currentGraph[result.first]){
-            if (!searchingPoint.blocksJoined[resultNeighbor.first.blockNumber]) searchQueues[resultNeighbor.first.blockNumber][searchToQueue] = resultNeighbor.first.dataIndex;
-        }
-    }
-}
 
 enum class HyperParameter{
     blockGraphNeighbors,
@@ -501,15 +447,15 @@ int main(int argc, char *argv[]){
     //DataSet<std::valarray<uint8_t>> uint8FashionData(uint8FashionPath, 28*28, 60'000, &ExtractNumericArray<uint8_t,dataEndianness>);
 
     std::string trainDataFilePath("./TestData/MNIST-Fashion-Train.bin");
-    DataSet<std::valarray<float>> mnistFashionTrain(trainDataFilePath, 28*28, 60'000, &ExtractNumericArray<float,dataEndianness>);
+    DataSet<AlignedArray<float>> mnistFashionTrain(trainDataFilePath, 28*28, 60'000, &ExtractNumericArray<AlignedArray<float>,dataEndianness>);
 
     //std::string reserializedTrainFilePath("./TestData/MNIST-Fashion-Train-Uint8.bin");
     //SerializeDataSet<std::valarray<float>, uint8_t, dataEndianness>(mnistFashionTrain, reserializedTrainFilePath);
 
     std::string testDataFilePath("./TestData/MNIST-Fashion-Data.bin");
     std::string testNeighborsFilePath("./TestData/MNIST-Fashion-Neighbors.bin");
-    DataSet<std::valarray<float>> mnistFashionTest(testDataFilePath, 28*28, 10'000, &ExtractNumericArray<float,dataEndianness>);
-    DataSet<std::valarray<int32_t>> mnistFashionTestNeighbors(testNeighborsFilePath, 100, 10'000, &ExtractNumericArray<int32_t,dataEndianness>);
+    DataSet<AlignedArray<float>> mnistFashionTest(testDataFilePath, 28*28, 10'000, &ExtractNumericArray<AlignedArray<float>,dataEndianness>);
+    DataSet<AlignedArray<uint32_t>> mnistFashionTestNeighbors(testNeighborsFilePath, 100, 10'000, &ExtractNumericArray<AlignedArray<uint32_t>,dataEndianness>);
     
     //std::chrono::time_point<std::chrono::steady_clock> runEnd = std::chrono::steady_clock::now();
     //std::cout << std::chrono::duration_cast<std::chrono::seconds>(runEnd - runStart).count() << "s Pointwise Join Calcs " << std::endl;
@@ -523,7 +469,7 @@ int main(int argc, char *argv[]){
     std::uniform_int_distribution<size_t> rngDist(size_t(0), mnistFashionTrain.numberOfSamples - 1);
     StlRngFunctor<std::mt19937_64, std::uniform_int_distribution, size_t> rngFunctor(std::move(rngEngine), std::move(rngDist));
 
-    EuclidianTrain<float, float> splittingScheme(mnistFashionTrain);
+    EuclidianTrain<AlignedArray<float>, AlignedArray<float>> splittingScheme(mnistFashionTrain);
     TrainingSplittingScheme splitterFunc(splittingScheme);
     
     RandomProjectionForest rpTreesTrain(size_t(mnistFashionTrain.numberOfSamples), rngFunctor, splitterFunc, splitParams);
@@ -533,13 +479,15 @@ int main(int argc, char *argv[]){
     
 
 
-    auto [indexMappings, dataBlocks] = PartitionData<size_t, std::valarray<float>>(rpTreesTrain, mnistFashionTrain);
+    auto [indexMappings, dataBlocks] = PartitionData<size_t, AlignedArray<float>>(rpTreesTrain, mnistFashionTrain);
     
-    std::vector<Graph<size_t, float>> blockGraphs = InitializeBlockGraphs<size_t, std::valarray<float>, float>(dataBlocks, numBlockGraphNeighbors, EuclideanNorm<float, float, float>);
+    std::vector<Graph<size_t, float>> blockGraphs = InitializeBlockGraphs<size_t, AlignedArray<float>, float>(dataBlocks, numBlockGraphNeighbors, EuclideanNorm<AlignedArray<float>, AlignedArray<float>, float>);
 
     MetaGraph<size_t, float> metaGraph(dataBlocks, numCOMNeighbors);
 
-    std::vector<BlockUpdateContext<size_t, size_t, std::valarray<float>, float>> blockUpdateContexts = InitializeBlockContexts(dataBlocks, blockGraphs, metaGraph, queryDepth, EuclideanNorm<float, float, float>);
+    Graph<size_t, float> queryHints = GenerateQueryHints<size_t, size_t, AlignedArray<float>, float, float>(dataBlocks, blockGraphs, metaGraph, numBlockGraphNeighbors, EuclideanNorm<AlignedArray<float>, AlignedArray<float>, float>);
+
+    std::vector<BlockUpdateContext<size_t, size_t, AlignedArray<float>, float>> blockUpdateContexts = InitializeBlockContexts(dataBlocks, blockGraphs, metaGraph, queryHints, queryDepth, EuclideanNorm<AlignedArray<float>, AlignedArray<float>, float>);
     
     auto [nearestNodeDistances, stitchHints] = NearestNodeDistances(blockUpdateContexts, metaGraph, maxNearestNodes);
     StitchBlocks(nearestNodeDistances, stitchHints, blockUpdateContexts);
@@ -572,7 +520,7 @@ int main(int argc, char *argv[]){
 
     std::chrono::time_point<std::chrono::steady_clock> runStart2 = std::chrono::steady_clock::now();
 
-    EuclidianTransform<float, float> transformingScheme(mnistFashionTest, splitterFunc.target<EuclidianTrain<float, float>>()->splittingVectors);
+    EuclidianTransform<AlignedArray<float>, AlignedArray<float>> transformingScheme(mnistFashionTest, splitterFunc.target<decltype(splittingScheme)>()->splittingVectors);
     
     std::unordered_set<size_t> splittingIndicies;
     for (auto& leaf: rpTreesTrain.treeLeaves){
@@ -598,9 +546,9 @@ int main(int argc, char *argv[]){
     const size_t numberSearchNeighbors = 15;
     size_t numberSearchBlocks = dataBlocks.size();
 
-    auto searcherConstructor = [=](const DataSet<std::valarray<float>>& dataSource, std::span<const size_t> indicies, size_t blockCounter)->
-                                  std::vector<SearchContext<size_t, size_t, std::valarray<float>, float>>{
-        std::vector<SearchContext<size_t, size_t, std::valarray<float>, float>> retVec;
+    auto searcherConstructor = [=](const DataSet<AlignedArray<float>>& dataSource, std::span<const size_t> indicies, size_t blockCounter)->
+                                  std::vector<SearchContext<size_t, size_t, AlignedArray<float>, float>>{
+        std::vector<SearchContext<size_t, size_t, AlignedArray<float>, float>> retVec;
         retVec.reserve(indicies.size());
         for(size_t index: indicies){
             retVec.emplace_back(numberSearchNeighbors, numberSearchBlocks, dataSource[index]);
@@ -609,7 +557,7 @@ int main(int argc, char *argv[]){
     };
 
 
-    DataMapper<std::valarray<float>, std::vector<SearchContext<size_t, size_t, std::valarray<float>, float>>, decltype(searcherConstructor)> testMapper(mnistFashionTest, searcherConstructor);
+    DataMapper<AlignedArray<float>, std::vector<SearchContext<size_t, size_t, AlignedArray<float>, float>>, decltype(searcherConstructor)> testMapper(mnistFashionTest, searcherConstructor);
     CrawlTerminalLeaves(rpTreesTest, testMapper);
 
     auto searchContexts = std::move(testMapper.dataBlocks);

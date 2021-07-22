@@ -16,18 +16,19 @@ https://github.com/AnabelSMRuggiero/NNDescent.cpp
 
 namespace nnd{
 
-template<typename DataType, typename FloatType>
-std::valarray<FloatType> EuclidianSplittingPlaneNormal(const std::valarray<DataType>& pointA, const std::valarray<DataType>& pointB){
-    std::valarray<FloatType> splittingLine(pointA.size());
+template<typename DataEntry, typename DistType>
+AlignedArray<DistType> EuclidianSplittingPlaneNormal(const DataEntry& pointA, const DataEntry& pointB){
+    AlignedArray<DistType> splittingLine(pointA.size());
     for (size_t i = 0; i < pointA.size(); i += 1){
-        splittingLine[i] = FloatType(pointA[i]) - FloatType(pointB[i]);
+        splittingLine[i] = DistType(pointA[i]) - DistType(pointB[i]);
     }
-    FloatType splittingLineMag(0);
-    for (FloatType i : splittingLine){
+    DistType splittingLineMag(0);
+    for (DistType i : splittingLine){
         splittingLineMag += i*i;
     }
     splittingLineMag = std::sqrt(splittingLineMag);
-    splittingLine /= splittingLineMag;
+
+    for(auto& extent: splittingLine) extent /= splittingLineMag;
 
     return splittingLine;
 }
@@ -50,30 +51,31 @@ using TrainingSplittingScheme = std::function<std::function<bool(size_t)> (size_
 using TransformingSplittingScheme = std::function<std::function<bool(size_t)> (size_t)>;
 
 //The serial case
-template<typename DataType, typename FloatType>
+template<typename DataEntry, typename SplittingVector>
 struct EuclidianTrain{
 
-    const std::vector<std::valarray<DataType>>& dataSource;
-    std::unordered_map<size_t, std::pair<std::valarray<FloatType>, FloatType>> splittingVectors;
-    FloatType projectionOffset;
+    using DistType = typename SplittingVector::value_type;
+    const DataSet<DataEntry>& dataSource;
+    std::unordered_map<size_t, std::pair<SplittingVector, DistType>> splittingVectors;
+    DistType projectionOffset;
 
-    EuclidianTrain(const DataSet<std::valarray<DataType>>& data) : dataSource(data.samples), splittingVectors(){};
+    EuclidianTrain(const DataSet<DataEntry>& data) : dataSource(data), splittingVectors(){};
 
     std::function<bool(size_t)> operator()(size_t splitIndex, std::pair<size_t, size_t> splittingPoints){
         
-        std::valarray<FloatType> splittingVector;
+        SplittingVector splittingVector;
 
         // For right now at least, in the serial case I want to be able to get a new splitting vector
         //if (splittingVectors.find(splitIndex) == splittingVectors.end()){
-        splittingVector = EuclidianSplittingPlaneNormal<DataType, FloatType>(dataSource[splittingPoints.first], dataSource[splittingPoints.second]);
+        splittingVector = EuclidianSplittingPlaneNormal<DataEntry, DistType>(dataSource[splittingPoints.first], dataSource[splittingPoints.second]);
 
 
-        FloatType projectionOffset = 0;
+        DistType projectionOffset = 0;
         for (size_t i = 0; i<dataSource[splittingPoints.first].size(); i+=1){
-            projectionOffset -= splittingVector[i] * FloatType(dataSource[splittingPoints.first][i] + dataSource[splittingPoints.second][i])/2.0;
+            projectionOffset -= splittingVector[i] * DistType(dataSource[splittingPoints.first][i] + dataSource[splittingPoints.second][i])/2.0;
         };
 
-        splittingVectors[splitIndex] = std::pair<std::valarray<FloatType>, FloatType>(splittingVector, projectionOffset);
+        splittingVectors[splitIndex] = std::pair<SplittingVector, DistType>(std::move(splittingVector), projectionOffset);
 
         //};
               
@@ -101,18 +103,18 @@ struct EuclidianTrain{
 };
 
 
-template<typename DataType, typename FloatType>
+template<typename DataEntry, typename SplittingVector>
 struct EuclidianTransform{
 
-    const std::vector<std::valarray<DataType>>& dataSource;
+    const DataSet<DataEntry>& dataSource;
     // Long term I need to make sure this is owned elsewhere
-    std::unordered_map<size_t, std::pair<std::valarray<FloatType>, FloatType>>& splittingVectors;
-    FloatType projectionOffset;
+    std::unordered_map<size_t, std::pair<SplittingVector, typename SplittingVector::value_type>>& splittingVectors;
+    typename SplittingVector::value_type projectionOffset;
 
-    EuclidianTransform(const DataSet<std::valarray<DataType>>& data,
-                       std::unordered_map<size_t, std::pair<std::valarray<FloatType>, FloatType>>& splits):
+    EuclidianTransform(const DataSet<DataEntry>& data,
+                       std::unordered_map<size_t, std::pair<SplittingVector, typename SplittingVector::value_type>>& splits):
                        splittingVectors(splits),
-                       dataSource(data.samples){};
+                       dataSource(data){};
 
     std::function<bool(size_t)> operator()(size_t splitIndex){
         
@@ -121,21 +123,13 @@ struct EuclidianTransform{
                                    &splitter = splittingVectors[splitIndex].first,
                                    offset = splittingVectors[splitIndex].second]
                                    (size_t comparisonIndex) -> bool{
-                // This is some janky type conversion shenanigans here. I need to either
-                // remove the assertion of arbitrary (but single) data type and turn everything into a float/double
-                // or define these ops in terms of something other than valarrays.
-                // I just wanna get prototyping rptrees done.
-                // TODO: KILL THIS IMPLEMENTATION (jfc, this is NOT GOOD)
-                std::valarray<FloatType> temporaryArr(data[comparisonIndex].size());
-                for(size_t i = 0; i < temporaryArr.size(); i += 1){
-                    temporaryArr[i] = FloatType(data[comparisonIndex][i]);
-                }
 
-                FloatType distanceFromPlane = (Dot(temporaryArr, splitter) + offset);
+                /*
+                FloatType distanceFromPlane = (Dot(data[comparisonIndex], splitter) + offset);
                 //std::cout << distanceFromPlane << std::endl;
                 bool result = 0.0 < distanceFromPlane;
-
-                return result;
+                */
+                return 0.0 < (Dot(data[comparisonIndex], splitter) + offset);
 
         };
         return std::function<bool(size_t)>(comparisonFunction);

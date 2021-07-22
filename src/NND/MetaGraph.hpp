@@ -23,10 +23,10 @@ https://github.com/AnabelSMRuggiero/NNDescent.cpp
 namespace nnd{
 
 // Todo might need to use something other than valarray if I need to handle truly arbitrary data types.
-template<typename FloatType>
+template<typename DistType>
 struct MetaPoint{
     int weight;
-    std::valarray<FloatType> centerOfMass;
+    AlignedArray<DistType> centerOfMass;
 };
 
 
@@ -36,7 +36,7 @@ MetaPoint<COMExtent> CalculateCOM(const DataBlock<DataEntry>& dataBlock){
 
     MetaPoint<COMExtent> retPoint;
     retPoint.weight = std::ranges::size(dataBlock.blockData);
-    retPoint.centerOfMass = std::valarray<COMExtent>(std::ranges::size(dataBlock.blockData[0]));
+    retPoint.centerOfMass = AlignedArray<COMExtent>(std::ranges::size(dataBlock.blockData[0]));
     
     for (size_t i = 0; i<dataBlock.blockData.size(); i += 1){
         for(size_t j = 0; j<dataBlock.blockData[i].size(); j += 1){
@@ -45,7 +45,7 @@ MetaPoint<COMExtent> CalculateCOM(const DataBlock<DataEntry>& dataBlock){
     }
 
     //divide the COM by the weight to put it in the center of the cluster
-    retPoint.centerOfMass /= retPoint.weight;
+    for(auto& extent: retPoint.centerOfMass) extent /= retPoint.weight;
 
     return retPoint;
 }
@@ -87,7 +87,7 @@ struct MetaGraph{
         for (const auto& dataBlock: dataBlocks){
             points.push_back(CalculateCOM<DataEntry, COMExtent>(dataBlock));
         }
-        BruteForceGraph<std::valarray<COMExtent>, COMExtent>(verticies, numNeighbors, points, EuclideanNorm<COMExtent, COMExtent, COMExtent>);
+        BruteForceGraph<AlignedArray<COMExtent>, COMExtent>(verticies, numNeighbors, points, EuclideanNorm<AlignedArray<COMExtent>, AlignedArray<COMExtent>, COMExtent>);
     }
 };
 
