@@ -30,9 +30,9 @@ https://github.com/AnabelSMRuggiero/NNDescent.cpp
 #include "Utilities/Type.hpp"
 #include "Utilities/Data.hpp"
 
-#include "NND/SpaceMetrics.hpp"
+#include "Utilities/Metrics/SpaceMetrics.hpp"
 #include "NND/GraphStructures.hpp"
-//#include "NND/Algorithm.hpp"
+
 #include "NND/MetaGraph.hpp"
 #include "NND/SubGraphQuerying.hpp"
 #include "NND/BlockwiseAlgorithm.hpp"
@@ -97,13 +97,13 @@ std::pair<IndexMaps<BlockNumberType>, std::vector<DataBlock<DataEntry>>> Partiti
     return {retMaps, std::move(retBlocks)};
 }
 
-template<std::integral DataIndexType, typename DataEntry, typename DistType>
-std::vector<Graph<DataIndexType, DistType>> InitializeBlockGraphs(const std::vector<DataBlock<DataEntry>>& dataBlocks, const size_t numNeighbors, SpaceMetric<DataEntry, DataEntry, DistType> distanceFunctor){
+template<std::integral DataIndexType, typename DataEntry, typename DataView, typename DistType>
+std::vector<Graph<DataIndexType, DistType>> InitializeBlockGraphs(const std::vector<DataBlock<DataEntry>>& dataBlocks, const size_t numNeighbors, SpaceMetric<DataView, DataView, DistType> distanceFunctor){
     
     std::vector<Graph<DataIndexType, DistType>> blockGraphs(0);
     blockGraphs.reserve(dataBlocks.size());
     for (const auto& dataBlock : dataBlocks){
-        blockGraphs.push_back(BruteForceBlock<DataIndexType, DataEntry, DistType>(numNeighbors, dataBlock, distanceFunctor));
+        blockGraphs.push_back(BruteForceBlock<DataIndexType, DataEntry, DataView, DistType>(numNeighbors, dataBlock, distanceFunctor));
     }
 
     return blockGraphs;
@@ -123,16 +123,16 @@ Graph<BlockIndecies, DistType> ToBlockIndecies(const Graph<DataIndexType, DistTy
     return newGraph;
 }
 
-template <std::integral BlockNumberType, std::integral DataIndexType, typename DataEntry, typename DistType, typename COMExtent>
+template <std::integral BlockNumberType, std::integral DataIndexType, typename DataEntry, typename DataView, typename DistType, typename COMExtent>
 Graph<DataIndexType, DistType> GenerateQueryHints(const std::vector<DataBlock<DataEntry>>& dataBlocks,
                                                                     const std::vector<Graph<DataIndexType, DistType>>& blockGraphs,
                                                                     const MetaGraph<BlockNumberType, DistType>& metaGraph,
                                                                     const size_t numNeighbors,
-                                                                    SpaceMetric<DataEntry, DataEntry, DistType> distanceFunctor){
+                                                                    SpaceMetric<AlignedSpan<const COMExtent>, DataView, DistType> distanceFunctor){
     
     Graph<DataIndexType, DistType> retGraph;
     for(size_t i = 0; i<metaGraph.points.size(); i+=1){
-        retGraph.push_back(QueryHintFromCOM<DataIndexType, DataEntry, DistType, COMExtent>(metaGraph.points[i].centerOfMass, 
+        retGraph.push_back(QueryHintFromCOM<DataIndexType, DataEntry, DataView, DistType, COMExtent>(metaGraph.points[i].centerOfMass, 
                                                                                            {blockGraphs[i], dataBlocks[i]}, 
                                                                                            numNeighbors, 
                                                                                            distanceFunctor));
@@ -143,22 +143,23 @@ Graph<DataIndexType, DistType> GenerateQueryHints(const std::vector<DataBlock<Da
 }
 
 
-template<std::integral BlockNumberType, std::integral DataIndexType, typename DataEntry, typename DistType, typename COMExtent>
-std::vector<BlockUpdateContext<BlockNumberType, DataIndexType, DataEntry, DistType>> InitializeBlockContexts(const std::vector<DataBlock<DataEntry>>& dataBlocks,
+template<std::integral BlockNumberType, std::integral DataIndexType, typename DataEntry, typename DataView, typename DistType, typename COMExtent>
+std::vector<BlockUpdateContext<BlockNumberType, DataIndexType, DataEntry, DataView, DistType>> InitializeBlockContexts(const std::vector<DataBlock<DataEntry>>& dataBlocks,
                                                                                                              const std::vector<Graph<DataIndexType, DistType>>& blockGraphs,
                                                                                                              const MetaGraph<BlockNumberType, COMExtent>& metaGraph,
                                                                                                              Graph<DataIndexType, DistType>& queryHints,
                                                                                                              const int queryDepth,
-                                                                                                             SpaceMetric<DataEntry, DataEntry, DistType> distanceFunctor){
+                                                                                                             SpaceMetric<DataView, DataView, DistType> distanceFunctor,
+                                                                                                             BatchMetric<DataView, DataView, std::vector<DistType>> batchingFunctor){
                                                                         
-    std::vector<BlockUpdateContext<BlockNumberType, DataIndexType, DataEntry, DistType>> blockUpdateContexts;
+    std::vector<BlockUpdateContext<BlockNumberType, DataIndexType, DataEntry, DataView, DistType>> blockUpdateContexts;
     blockUpdateContexts.reserve(dataBlocks.size());
     //template<typename DataIndexType, typename DataEntry, typename DistType, typename COMExtentType>
     for (size_t i = 0; i<dataBlocks.size(); i+=1){
 
 
         blockUpdateContexts.emplace_back(SubProblemData{blockGraphs[i], dataBlocks[i]},
-                                         QueryContextInitArgs<DataIndexType, DataEntry, DistType>(queryHints[i], distanceFunctor),
+                                         QueryContextInitArgs<DataIndexType, DataView, DistType>(queryHints[i], distanceFunctor, batchingFunctor),
                                          metaGraph.verticies.size(), queryDepth);
 
         blockUpdateContexts.back().currentGraph = ToBlockIndecies(blockGraphs[i], i);
@@ -171,8 +172,8 @@ std::vector<BlockUpdateContext<BlockNumberType, DataIndexType, DataEntry, DistTy
 template<std::integral BlockNumberType, std::integral DataIndexType, typename DistType>
 using InitialJoinHints = std::unordered_map<ComparisonKey<BlockNumberType>, std::tuple<DataIndexType, DataIndexType, DistType>>;
 
-template<std::integral BlockNumberType, std::integral DataIndexType, typename DataEntry, typename DistType>
-std::pair<Graph<BlockNumberType, DistType>, InitialJoinHints<BlockNumberType, DataIndexType, DistType>> NearestNodeDistances(const std::vector<BlockUpdateContext<BlockNumberType, DataIndexType, DataEntry, DistType>>& blockUpdateContexts,
+template<std::integral BlockNumberType, std::integral DataIndexType, typename DataEntry, typename DataView, typename DistType>
+std::pair<Graph<BlockNumberType, DistType>, InitialJoinHints<BlockNumberType, DataIndexType, DistType>> NearestNodeDistances(const std::vector<BlockUpdateContext<BlockNumberType, DataIndexType, DataEntry, DataView, DistType>>& blockUpdateContexts,
                                                         const MetaGraph<BlockNumberType, DistType>& metaGraph,
                                                         const size_t maxNearestNodeNeighbors){
 
@@ -225,10 +226,10 @@ std::pair<Graph<BlockNumberType, DistType>, InitialJoinHints<BlockNumberType, Da
 }
 
 
-template<std::integral BlockNumberType, std::integral DataIndexType, typename DataEntry, typename DistType>
+template<std::integral BlockNumberType, std::integral DataIndexType, typename DataEntry, typename DataView, typename DistType>
 void StitchBlocks(const Graph<BlockNumberType, DistType>& nearestNodeDistances,
                   const InitialJoinHints<BlockNumberType, DataIndexType, DistType>& stitchHints,
-                  std::vector<BlockUpdateContext<BlockNumberType, DataIndexType, DataEntry, DistType>>& blockUpdateContexts){
+                  std::vector<BlockUpdateContext<BlockNumberType, DataIndexType, DataEntry, DataView, DistType>>& blockUpdateContexts){
 
     std::unordered_set<ComparisonKey<size_t>> initBlockJoinQueue;
     for(size_t i = 0; const auto& vertex: nearestNodeDistances){
@@ -331,7 +332,7 @@ void StitchBlocks(const Graph<BlockNumberType, DistType>& nearestNodeDistances,
     for(size_t i = 0; i<queueMaps.size(); i+=1){
         ComparisonMap<size_t, size_t>& comparisonMap = queueMaps[i];
         
-        blockUpdateContexts[i].joinsToDo = InitializeJoinMap<BlockNumberType, DataIndexType, DataEntry, DistType>(blockUpdateContexts, comparisonMap, blockUpdateContexts[i].blockJoinTracker);
+        blockUpdateContexts[i].joinsToDo = InitializeJoinMap<BlockNumberType, DataIndexType, DataEntry, DataView, DistType>(blockUpdateContexts, comparisonMap, blockUpdateContexts[i].blockJoinTracker);
     }
 }
 
@@ -481,13 +482,19 @@ int main(int argc, char *argv[]){
 
     auto [indexMappings, dataBlocks] = PartitionData<size_t, AlignedArray<float>>(rpTreesTrain, mnistFashionTrain);
     
-    std::vector<Graph<size_t, float>> blockGraphs = InitializeBlockGraphs<size_t, AlignedArray<float>, float>(dataBlocks, numBlockGraphNeighbors, EuclideanNorm<AlignedArray<float>, AlignedArray<float>, float>);
+    std::vector<Graph<size_t, float>> blockGraphs = InitializeBlockGraphs<size_t, AlignedArray<float>, AlignedSpan<const float>, float>(dataBlocks, numBlockGraphNeighbors, EuclideanNorm<AlignedSpan<const float>, AlignedSpan<const float>, float>);
 
     MetaGraph<size_t, float> metaGraph(dataBlocks, numCOMNeighbors);
 
-    Graph<size_t, float> queryHints = GenerateQueryHints<size_t, size_t, AlignedArray<float>, float, float>(dataBlocks, blockGraphs, metaGraph, numBlockGraphNeighbors, EuclideanNorm<AlignedArray<float>, AlignedArray<float>, float>);
+    Graph<size_t, float> queryHints = GenerateQueryHints<size_t, size_t, AlignedArray<float>, AlignedSpan<const float>, float, float>(dataBlocks, blockGraphs, metaGraph, numBlockGraphNeighbors, EuclideanNorm<AlignedSpan<const float>, AlignedSpan<const float>, float>);
 
-    std::vector<BlockUpdateContext<size_t, size_t, AlignedArray<float>, float>> blockUpdateContexts = InitializeBlockContexts(dataBlocks, blockGraphs, metaGraph, queryHints, queryDepth, EuclideanNorm<AlignedArray<float>, AlignedArray<float>, float>);
+    std::vector<BlockUpdateContext<size_t, size_t, AlignedArray<float>, AlignedSpan<const float>, float>> blockUpdateContexts = InitializeBlockContexts(dataBlocks, 
+                                                                                                                                                        blockGraphs, 
+                                                                                                                                                        metaGraph,
+                                                                                                                                                        queryHints,
+                                                                                                                                                        queryDepth,
+                                                                                                                                                        EuclideanNorm<AlignedSpan<const float>, AlignedSpan<const float>, float>,
+                                                                                                                                                        EuclideanBatcher);
     
     auto [nearestNodeDistances, stitchHints] = NearestNodeDistances(blockUpdateContexts, metaGraph, maxNearestNodes);
     StitchBlocks(nearestNodeDistances, stitchHints, blockUpdateContexts);

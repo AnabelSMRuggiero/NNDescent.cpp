@@ -91,11 +91,11 @@ std::tuple<size_t, size_t, FloatType> BruteNearestNodes(SubProblemData<IndexType
     return {bestPair.first, bestPair.second, bestDistance};
 }
 
-template<TriviallyCopyable DataIndexType, typename DataEntry, std::floating_point COMExtentType, typename DistType>
-GraphVertex<DataIndexType, DistType> QueryCOMNeighbors(const AlignedArray<DistType>& centerOfMass,
+template<TriviallyCopyable DataIndexType, typename DataEntry, typename DataView, std::floating_point COMExtentType, typename DistType>
+GraphVertex<DataIndexType, DistType> QueryCOMNeighbors(const AlignedArray<COMExtentType>& centerOfMass,
                                                      const SubProblemData<DataIndexType, DataEntry, DistType> subProb, 
                                                      const int numCandidates,
-                                                     SpaceMetric<AlignedArray<COMExtentType>, DataEntry, COMExtentType> distanceFunctor){
+                                                     SpaceMetric<AlignedSpan<const COMExtentType>, DataView, COMExtentType> distanceFunctor){
 
     GraphVertex<DataIndexType, DistType> COMneighbors(numCandidates);
     
@@ -139,12 +139,12 @@ struct QueryPoint{
     QueryPoint(const GraphVertex<IndexType, DistType>& hint, const QueryType& data, const IndexType index): queryHint(hint), queryData(data), dataIndex(index){}
 };
 
-template<typename DataIndexType, typename DataEntry, typename DistType, typename COMExtentType>
+template<typename DataIndexType, typename DataEntry, typename DataView, typename DistType, typename COMExtentType>
 GraphVertex<DataIndexType, DistType> QueryHintFromCOM(const AlignedArray<COMExtentType>& centerOfMass,
                                                        const SubProblemData<DataIndexType, DataEntry, DistType> subProb,
                                                        const std::uint32_t numCandidates,
-                                                       SpaceMetric<AlignedArray<COMExtentType>, DataEntry, DistType> comDistanceFunctor){
-    GraphVertex<DataIndexType, COMExtentType> comNeighbors = QueryCOMNeighbors<DataIndexType, DataEntry, COMExtentType, DistType>(centerOfMass, subProb, numCandidates, comDistanceFunctor);
+                                                       SpaceMetric<AlignedSpan<const COMExtentType>, DataView, DistType> comDistanceFunctor){
+    GraphVertex<DataIndexType, COMExtentType> comNeighbors = QueryCOMNeighbors<DataIndexType, DataEntry, DataView, COMExtentType, DistType>(centerOfMass, subProb, numCandidates, comDistanceFunctor);
     GraphVertex<DataIndexType, DistType> retHint;
     for (auto& hint: comNeighbors){
         //This should be an emplace_back
@@ -153,35 +153,47 @@ GraphVertex<DataIndexType, DistType> QueryHintFromCOM(const AlignedArray<COMExte
     return retHint;
 }
 
-template<typename DataIndexType, typename DataEntry, typename DistType>
+template<typename DataIndexType, typename DataEntry, typename DataView, typename DistType>
 struct DefaultQueryFunctor{
     const DataBlock<DataEntry>& dataBlock;
-    SpaceMetric<DataEntry, DataEntry, DistType> distanceFunctor;
+    SpaceMetric<DataView, DataView, DistType> distanceFunctor;
+    BatchMetric<DataView, DataView, std::vector<DistType>> batchingMetric;
 
-    DefaultQueryFunctor(const DataBlock<DataEntry>& dataBlock, SpaceMetric<DataEntry, DataEntry, DistType> distanceFunctor):
-        distanceFunctor(distanceFunctor), dataBlock(dataBlock){
+    DefaultQueryFunctor(const DataBlock<DataEntry>& dataBlock,
+                        SpaceMetric<DataView, DataView, DistType> distanceFunctor,
+                        BatchMetric<DataView, DataView, std::vector<DistType>> batchingMetric):
+                        dataBlock(dataBlock), distanceFunctor(distanceFunctor), batchingMetric(batchingMetric){
     };
     
     DistType operator()(DataIndexType LHSIndex, DataIndexType RHSIndex, const DataEntry& queryData) const{
-        return this->distanceFunctor(dataBlock[LHSIndex], queryData);
+        return this->distanceFunctor(DataView(dataBlock[LHSIndex]), DataView(queryData));
+    }
+
+    std::vector<DistType> operator()(const std::vector<DataIndexType>& LHSIndecies, DataIndexType RHSIndex, const DataView& queryData) const{
+        std::vector<DataView> lhsData;
+        for(const auto& index: LHSIndecies){
+            lhsData.push_back(dataBlock[index]);
+        }
+        return this->batchingMetric(lhsData, DataView(queryData));
     }
 };
 
-template<TriviallyCopyable BlockNumberType, TriviallyCopyable IndexType, typename DataEntry, typename DistType>
+template<TriviallyCopyable BlockNumberType, TriviallyCopyable IndexType, typename DataEntry, typename DataView, typename DistType>
 struct QueryContext{
     const UndirectedGraph<IndexType> subGraph;
     const DataBlock<DataEntry>& dataBlock;
     const GraphVertex<IndexType, DistType> queryHint;
     const int numCandidates;
     const int querySearchDepth;
-    const DefaultQueryFunctor<IndexType, DataEntry, DistType> defaultQueryFunctor;
+    const DefaultQueryFunctor<IndexType, DataEntry, DataView, DistType> defaultQueryFunctor;
     //std::unordered_map<BlockNumberType, Graph<IndexType, DistType>> neighborCandidates;
-    SpaceMetric<DataEntry, DataEntry, DistType> distanceFunctor;
+    SpaceMetric<DataView, DataView, DistType> distanceFunctor;
 
     QueryContext(const Graph<IndexType, DistType>& subGraph,
                  const DataBlock<DataEntry>& dataBlock,
                  const GraphVertex<IndexType, DistType> queryHint,
-                 SpaceMetric<DataEntry, DataEntry, DistType> distanceFunctor,
+                 SpaceMetric<DataView, DataView, DistType> distanceFunctor,
+                 BatchMetric<DataView, DataView, std::vector<DistType>> batchingFunctor,
                  const int numCandidates,
                  const int querySearchDepth):
                     subGraph(subGraph),
@@ -190,7 +202,7 @@ struct QueryContext{
                     numCandidates(numCandidates),
                     querySearchDepth(querySearchDepth),
                     distanceFunctor(distanceFunctor),
-                    defaultQueryFunctor(dataBlock, distanceFunctor){
+                    defaultQueryFunctor(dataBlock, distanceFunctor, batchingFunctor){
             
             //defaultQueryFunctor = DefaultQueryFunctor<IndexType, DataEntry, DistType>(distanceFunctor, dataBlock);
     };

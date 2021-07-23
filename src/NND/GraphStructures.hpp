@@ -23,7 +23,7 @@ https://github.com/AnabelSMRuggiero/NNDescent.cpp
 
 #include "UtilityFunctions.hpp"
 #include "../Utilities/Data.hpp"
-#include "SpaceMetrics.hpp"
+#include "../Utilities/Metrics/SpaceMetrics.hpp"
 #include "RNG.hpp"
 
 #include "Utilities/DataDeserialization.hpp"
@@ -398,8 +398,8 @@ struct UndirectedGraph{
 
 
 
-template<TriviallyCopyable DataIndexType, typename DataType, typename DistType>
-Graph<DataIndexType, DistType> BruteForceBlock(const size_t numNeighbors, const DataBlock<DataType>& dataBlock, SpaceMetric<DataType, DataType, DistType> distanceFunctor){
+template<TriviallyCopyable DataIndexType, typename DataType, typename DataView, typename DistType>
+Graph<DataIndexType, DistType> BruteForceBlock(const size_t numNeighbors, const DataBlock<DataType>& dataBlock, SpaceMetric<DataView, DataView, DistType> distanceFunctor){
     Graph<DataIndexType, DistType> retGraph(dataBlock.size(), numNeighbors);
     // I can make this branchless. Check to see if /O2 or /O3 can make this branchless (I really doubt it)
     for (size_t i = 0; i < dataBlock.size(); i += 1){
@@ -512,6 +512,34 @@ std::vector<ComparisonQueue<IndexType>> ConstructQueues(size_t numQueues, size_t
         retQueues.emplace_back(queueMax);
     }
     return retQueues;
+}
+
+//Mainly For Debugging to make sure I didn't screw up my graph state.
+template<typename FloatType>
+void VerifyGraphState(const Graph<size_t, FloatType>& currentGraph){
+    for (const auto& vertex : currentGraph){
+        for (const auto& neighbor : vertex.neighbors){
+            if (neighbor.first == vertex.dataIndex) throw("Vertex is own neighbor");
+            for (const auto& neighbor1 : vertex.neighbors){
+                if (&neighbor == &neighbor1) continue;
+                if (neighbor.first == neighbor.second) throw("Duplicate neighbor in heap");
+            }
+        }
+    }
+}
+
+template<typename FloatType>
+void VerifySubGraphState(const Graph<BlockIndecies, FloatType>& currentGraph, size_t blockNum){
+    for (size_t i = 0; i<currentGraph.size(); i+=1){
+        const GraphVertex<BlockIndecies, FloatType>& vertex = currentGraph[i];
+        for (const auto& neighbor : vertex.neighbors){
+            if (neighbor.first == BlockIndecies{blockNum, i}) throw("Vertex is own neighbor");
+            for (const auto& neighbor1 : vertex.neighbors){
+                if (&neighbor == &neighbor1) continue;
+                if (neighbor.first == neighbor1.first) throw("Duplicate neighbor in heap");
+            }
+        }
+    }
 }
 
 

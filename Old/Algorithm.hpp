@@ -12,6 +12,7 @@ https://github.com/AnabelSMRuggiero/NNDescent.cpp
 #define NND_ALGORITHM_HPP
 #include <algorithm>
 #include "GraphStructures.hpp"
+#include "Utilities/Type.hpp"
 
 namespace nnd{
 

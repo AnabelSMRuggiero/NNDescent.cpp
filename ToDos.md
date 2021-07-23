@@ -23,6 +23,7 @@
   - Instead of keeping them in terms of the fundamental types, I can instead declare the templates in terms of the composed types.
 
 - Template out the manually vectorized functions. I should be able to make them generic enough that I don't need too many specializations.
+  - AVX512 can use more registers
 
 #RPTrees
 - Move forest building outside of constructor.

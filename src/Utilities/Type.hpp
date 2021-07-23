@@ -59,7 +59,7 @@ struct AlignedArray{
 template<typename ElementType, size_t alignment=32>
 struct AlignedSpan{
 
-    using ValueType = std::remove_cv_t<ElementType>;
+    using value_type = std::remove_cv_t<ElementType>;
     private:
     ElementType* data;
     size_t extent;
@@ -67,7 +67,7 @@ struct AlignedSpan{
     public:
 
     template<typename ConvertableToElement>
-    AlignedSpan(AlignedArray<ConvertableToElement, alignment>& dataToView): data(dataToView.begin()), extent(dataToView.size()){};
+    AlignedSpan(const AlignedArray<ConvertableToElement, alignment>& dataToView): data(dataToView.begin()), extent(dataToView.size()){};
 
     template<typename ConvertableToElement>
     AlignedSpan(const AlignedSpan<ConvertableToElement>& spanToCopy): data(spanToCopy.data), extent(spanToCopy.extent){};
@@ -81,6 +81,14 @@ struct AlignedSpan{
     size_t size() const { return extent; };
 
 };
+
+
+template<typename DataTypeA, typename DataTypeB, typename RetType=double>
+using SpaceMetric = RetType (*)(const DataTypeA&, const DataTypeB&);
+
+
+template<typename DataTypeA, typename DataTypeB, typename RetType=std::vector<double>>
+using BatchMetric = RetType (*)(const std::vector<DataTypeA>&, const DataTypeB&);
 
 /*
 I need to rethink this if this is the direction I'll go to refactor templates

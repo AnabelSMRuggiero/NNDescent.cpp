@@ -52,12 +52,12 @@ template<typename DataIndexType, typename DistType>
 using JoinResults = std::vector<std::pair<DataIndexType, GraphVertex<DataIndexType, DistType>>>;
 
 //template<typename BlockNumberType, typename DataIndexType, typename DataEntry, typename DistType>
-template<typename BlockNumberType, typename DataIndexType, typename DataEntry, typename DistType, typename QueryFunctor>
+template<typename BlockNumberType, typename DataIndexType, typename DataEntry, typename DataView, typename DistType, typename QueryFunctor>
 JoinResults<DataIndexType, DistType> BlockwiseJoin(const JoinHints<DataIndexType>& startJoins,
                    const Graph<BlockIndecies, DistType>& currentGraphState,
                    const Graph<DataIndexType, DistType>& searchSubgraph,
                    const DataBlock<DataEntry>& blockData,
-                   const QueryContext<BlockNumberType, DataIndexType, DataEntry, DistType>& targetBlock,
+                   const QueryContext<BlockNumberType, DataIndexType, DataEntry, DataView, DistType>& targetBlock,
                    QueryFunctor queryFunctor){
     
     std::vector<std::pair<DataIndexType, GraphVertex<DataIndexType, DistType>>> joinHints;
@@ -132,24 +132,26 @@ template<typename DataIndexType, typename DataEntry, typename DistType>
 struct QueryContextInitArgs{
     GraphVertex<DataIndexType, DistType>& queryHint;
     SpaceMetric<DataEntry, DataEntry, DistType> distanceFunctor;
+    BatchMetric<DataEntry, DataEntry, std::vector<DistType>> batchingFunctor;
 
-    QueryContextInitArgs(GraphVertex<DataIndexType, DistType>& queryHint, SpaceMetric<DataEntry, DataEntry, DistType> distanceFunctor):
+    QueryContextInitArgs(GraphVertex<DataIndexType, DistType>& queryHint, SpaceMetric<DataEntry, DataEntry, DistType> distanceFunctor, BatchMetric<DataEntry, DataEntry, std::vector<DistType>> batchingFunctor):
         queryHint(queryHint),
-        distanceFunctor(distanceFunctor) {};
+        distanceFunctor(distanceFunctor), 
+        batchingFunctor(batchingFunctor){};
 };
 
-template<typename BlockNumberType, typename DataIndexType, typename DataEntry, typename DistType>
+template<typename BlockNumberType, typename DataIndexType, typename DataEntry, typename DataView, typename DistType>
 struct BlockUpdateContext {
 
     
     using TemplatedSubProblem = SubProblemData<DataIndexType, DataEntry, DistType>;
-    using TemplatedContextInitArgs = QueryContextInitArgs<DataIndexType, DataEntry, DistType>;
+    using TemplatedContextInitArgs = QueryContextInitArgs<DataIndexType, DataView, DistType>;
 
     NodeTracker blockJoinTracker;
     const DataBlock<DataEntry>& dataBlock;
     JoinMap<BlockNumberType, DataIndexType> joinsToDo;
     JoinMap<BlockNumberType, DataIndexType> newJoins;
-    QueryContext<BlockNumberType, DataIndexType, DataEntry, DistType> queryContext;
+    QueryContext<BlockNumberType, DataIndexType, DataEntry, DataView, DistType> queryContext;
     const Graph<DataIndexType, DistType>& leafGraph;
     Graph<BlockIndecies, DistType> currentGraph;
 
@@ -157,7 +159,7 @@ struct BlockUpdateContext {
     BlockUpdateContext(const TemplatedSubProblem subProbResults, const TemplatedContextInitArgs contextArgs, const BlockNumberType numberOfBlocksToJoin, const int queryDepth):
         leafGraph(subProbResults.subGraph),
         dataBlock(subProbResults.dataBlock),
-        queryContext(subProbResults.subGraph, subProbResults.dataBlock, contextArgs.queryHint, contextArgs.distanceFunctor, contextArgs.queryHint.size(), queryDepth),
+        queryContext(subProbResults.subGraph, subProbResults.dataBlock, contextArgs.queryHint, contextArgs.distanceFunctor, contextArgs.batchingFunctor, contextArgs.queryHint.size(), queryDepth),
         currentGraph(subProbResults.dataBlock.size(), contextArgs.queryHint.size()),
         joinsToDo(),
         blockJoinTracker(numberOfBlocksToJoin){
@@ -175,8 +177,8 @@ struct BlockUpdateContext {
     }
 };
 
-template<typename BlockNumberType, typename DataIndexType, typename DataEntry, typename DistType>
-JoinMap<BlockNumberType, DataIndexType> InitializeJoinMap(const std::vector<BlockUpdateContext<BlockNumberType, DataIndexType, DataEntry, DistType>>& blockUpdateContexts,
+template<typename BlockNumberType, typename DataIndexType, typename DataEntry, typename DataView, typename DistType>
+JoinMap<BlockNumberType, DataIndexType> InitializeJoinMap(const std::vector<BlockUpdateContext<BlockNumberType, DataIndexType, DataEntry, DataView, DistType>>& blockUpdateContexts,
                                                           const ComparisonMap<BlockNumberType, DataIndexType>& comparisonMap,
                                                           const NodeTracker& nodesJoined){
     JoinMap<BlockNumberType, DataIndexType> joinMap;
@@ -194,9 +196,9 @@ JoinMap<BlockNumberType, DataIndexType> InitializeJoinMap(const std::vector<Bloc
 }
 
 
-template<typename BlockNumberType, typename DataIndexType, typename DataEntry, typename DistType>
-int UpdateBlocks(BlockUpdateContext<BlockNumberType, DataIndexType, DataEntry, DistType>& blockLHS,
-                 BlockUpdateContext<BlockNumberType, DataIndexType, DataEntry, DistType>& blockRHS){
+template<typename BlockNumberType, typename DataIndexType, typename DataEntry, typename DataView, typename DistType>
+int UpdateBlocks(BlockUpdateContext<BlockNumberType, DataIndexType, DataEntry, DataView, DistType>& blockLHS,
+                 BlockUpdateContext<BlockNumberType, DataIndexType, DataEntry, DataView, DistType>& blockRHS){
 /*(JoinHints<DataIndexType>&& joinsToDo,
                   NodeTracker& blockJoinTracker,
                   Graph<BlockIndecies, DistType>& updatedBlockGraph, 

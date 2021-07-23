@@ -20,7 +20,7 @@ https://github.com/AnabelSMRuggiero/NNDescent.cpp
 #include <type_traits>
 #include <span>
 
-#include "NND/SpaceMetrics.hpp"
+
 #include "Utilities/DataSerialization.hpp"
 
 namespace nnd{
@@ -28,7 +28,7 @@ namespace nnd{
 
 template<typename DataEntry>
 struct DataSet{
-
+    
     //std::valarray<unsigned char> rawData;
 
     std::vector<DataEntry> samples;

@@ -13,6 +13,7 @@ https://github.com/AnabelSMRuggiero/NNDescent.cpp
 
 #include <valarray>
 #include <functional>
+#include "Utilities/Metrics/SpaceMetrics.hpp"
 
 namespace nnd{
 

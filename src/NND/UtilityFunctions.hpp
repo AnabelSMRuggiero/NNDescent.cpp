@@ -40,6 +40,7 @@ struct NeighborSearchFunctor{
 
 
 
+
 }
 
 #endif //NND_UTILITYFUNCTIONS_H
