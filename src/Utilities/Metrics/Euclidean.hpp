@@ -74,8 +74,9 @@ std::vector<float> BatchEuclideanNorm(const std::vector<AlignedSpan<const float>
                     toComponents[j] = _mm256_sub_ps(toComponents[j], fromComponent1);
                     accumulators[j] = _mm256_fmadd_ps(toComponents[j], toComponents[j], accumulators[j]);
                     //Load for next iteration
-                    toComponents[j] = _mm256_load_ps(&(pointsTo[j][index+8]));
+                    //toComponents[j] = _mm256_load_ps(&(pointsTo[j][index+8]));
                 }
+                for(size_t j = 0; j<numPointsTo; j+=1) toComponents[j] = _mm256_load_ps(&(pointsTo[j][index+8]));
                 fromComponent1 = fromComponent2;
                 
                 index+=8;
@@ -87,8 +88,9 @@ std::vector<float> BatchEuclideanNorm(const std::vector<AlignedSpan<const float>
                 toComponents[j] = _mm256_sub_ps(toComponents[j], fromComponent1);
                 accumulators[j] = _mm256_fmadd_ps(toComponents[j], toComponents[j], accumulators[j]);
                 //Load for next iteration
-                toComponents[j] = _mm256_load_ps(&(pointsTo[j][index+8]));
+                //toComponents[j] = _mm256_load_ps(&(pointsTo[j][index+8]));
             }
+            for(size_t j = 0; j<numPointsTo; j+=1) toComponents[j] = _mm256_load_ps(&(pointsTo[j][index+8]));
             fromComponent1 = fromComponent2;
         }
         //Already have fromComponent1 loaded for the last iter
@@ -132,24 +134,24 @@ std::vector<float> BatchEuclideanNorm(const std::vector<AlignedSpan<const float>
     static_assert(numPointsTo<=7 && numPointsTo>=2);
     //size_t prefetchPeriod = 16;
     //assert(pointsTo.size() == 7);
-    std::array<__m256, 7> accumulators;
+    std::array<__m256, numPointsTo> accumulators;
     for (__m256& accumulator: accumulators){
         accumulator = _mm256_setzero_ps();
     }
 
-    std::array<__m256, 7> toComponents;
+    std::array<__m256, numPointsTo> toComponents;
 
     __m256 fromComponent1, fromComponent2;
 
     size_t index = 0;
 
-    std::vector<float> result(7);
+    std::vector<float> result(numPointsTo);
     
 
     [[likely]] if(pointB.size()>=8){
         //Pre load first set of elements
         fromComponent1 = _mm256_load_ps(&(pointB[0]));
-        for (size_t i = 0; i < 7; i+=1){
+        for (size_t i = 0; i < numPointsTo; i+=1){
             toComponents[i] = _mm256_load_ps(&(pointsTo[i][0]));
         }
         
@@ -158,18 +160,20 @@ std::vector<float> BatchEuclideanNorm(const std::vector<AlignedSpan<const float>
         //Core computation loop
         for(;index+15<pointB.size(); index+=8){
             fromComponent2 = _mm256_load_ps(&(pointB[index+8]));
-            for(size_t j = 0; j<7; j+=1){
+            for(size_t j = 0; j<numPointsTo; j+=1){
                 toComponents[j] = _mm256_sub_ps(toComponents[j], fromComponent1);
                 accumulators[j] = _mm256_fmadd_ps(toComponents[j], toComponents[j], accumulators[j]);
                 //Load for next iteration
-                toComponents[j] = _mm256_load_ps(&(pointsTo[j][index+8]));
+                
             }
+            for(size_t j = 0; j<numPointsTo; j+=1) toComponents[j] = _mm256_load_ps(&(pointsTo[j][index+8]));
+
             fromComponent1 = fromComponent2;
         }
         
         
         //Already have fromComponent1 loaded for the last iter
-        for(size_t j = 0; j<7; j+=1){
+        for(size_t j = 0; j<numPointsTo; j+=1){
             toComponents[j] = _mm256_sub_ps(toComponents[j], fromComponent1);
             accumulators[j] = _mm256_fmadd_ps(toComponents[j], toComponents[j], accumulators[j]);
             //Load for next iteration
@@ -184,14 +188,14 @@ std::vector<float> BatchEuclideanNorm(const std::vector<AlignedSpan<const float>
             }
         }
 
-        for (size_t j = 0; j<7; j+=1){
+        for (size_t j = 0; j<numPointsTo; j+=1){
             result[j] = accumulators[j][0] + accumulators[j][4];
         }
 
     }
     //Take care of the excess. I should be able to remove this when I get alignment right
     for ( ; index<pointB.size(); index += 1){
-        for (size_t j = 0; j<7; j+=1){
+        for (size_t j = 0; j<numPointsTo; j+=1){
             float diff = pointsTo[j][index] - pointB[index];
             result[j] += diff*diff;
         }
@@ -240,10 +244,10 @@ std::vector<float> EuclideanBatcher(const std::vector<AlignedSpan<const float>>&
     size_t index = 0;
 
 
-    for( ; (index+6)< pointsTo.size(); index += 7){
+    for( ; (index+6)< pointsTo.size();){
         std::vector<AlignedSpan<const float>> partialBatch;
         partialBatch.reserve(7);
-        for (size_t i = 0; i<7; i += 1){
+        for (size_t i = 0; i<7; i += 1, index+=1){
             partialBatch.push_back(pointsTo[index]);
         }
         std::vector<float> partialResult = EuclideanBatcher(partialBatch, pointFrom);

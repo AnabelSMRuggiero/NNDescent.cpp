@@ -22,6 +22,7 @@ https://github.com/AnabelSMRuggiero/NNDescent.cpp
 
 
 #include "Utilities/DataSerialization.hpp"
+#include "Type.hpp"
 
 namespace nnd{
 
@@ -158,14 +159,7 @@ void SerializeDataSet(const DataSet<DataEntry>& dataSet, const std::string fileP
 
 }
 
-template<std::integral IndexType>
-struct IntegralPairHasher{
 
-    size_t operator()(const std::pair<IndexType, IndexType>& pair) const noexcept{
-        return std::hash<IndexType>()(size_t(pair.first)*634018663193ul ^ std::hash<IndexType>()(pair.second)*354019652443ul);
-    }
-
-};
 
 }
 

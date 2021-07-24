@@ -16,8 +16,23 @@ https://github.com/AnabelSMRuggiero/NNDescent.cpp
 #include <memory>
 #include <ranges>
 #include <algorithm>
+#include <functional>
+#include <unordered_map>
+#include <utility>
 
 namespace nnd{
+
+template<std::integral IndexType>
+struct IntegralPairHasher{
+
+    size_t operator()(const std::pair<IndexType, IndexType>& pair) const noexcept{
+        return std::hash<IndexType>()(size_t(pair.first)*634018663193ul ^ std::hash<IndexType>()(pair.second)*354019652443ul);
+    }
+
+};
+
+template<std::integral DataIndexType, typename DistType>
+using DistanceCache = std::unordered_map<std::pair<DataIndexType, DataIndexType>, DistType, IntegralPairHasher<DataIndexType>>;
 
 template<typename ValueType, size_t alignment=32>
 struct AlignedArray{

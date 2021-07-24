@@ -18,6 +18,7 @@ https://github.com/AnabelSMRuggiero/NNDescent.cpp
 #include <cassert>
 #include <cstdint>
 #include <utility>
+#include <optional>
 
 #include "../Utilities/Data.hpp"
 #include "../Utilities/DataDeserialization.hpp"
@@ -176,7 +177,50 @@ struct DefaultQueryFunctor{
         }
         return this->batchingMetric(lhsData, DataView(queryData));
     }
+
+    auto CachingFunctor(DistanceCache<DataIndexType, DistType>& cache) const {
+        cache.reserve(dataBlock.size()*dataBlock.size());
+        auto cachingFunctor = [&](std::vector<DataIndexType> LHSIndecies, DataIndexType RHSIndex, const DataEntry& queryData) -> std::vector<DistType>{
+            std::vector<DistType> distances = (*this)(LHSIndecies, RHSIndex, queryData);
+            for (size_t i = 0; i<LHSIndecies.size(); i+=1){
+                cache[std::pair{LHSIndecies[i], RHSIndex}] = distances[i];
+            }
+            return distances;
+        };
+
+        return cachingFunctor;
+    }
+
+    auto CachedFunctor(DistanceCache<DataIndexType, DistType>& cache) const {
+        auto cachedFunctor = [&](std::vector<DataIndexType> LHSIndecies, DataIndexType RHSIndex, const DataEntry& queryData) -> std::vector<DistType>{
+            std::vector<DataIndexType> distToCompute;
+            std::vector<DistType> precomputedDists;
+            for(size_t i = 0; i<LHSIndecies.size(); i += 1){
+                auto result = cache.find(std::pair{RHSIndex, LHSIndecies[i]});
+                if(result == cache.end()) distToCompute.push_back(LHSIndecies[i]);
+                else precomputedDists.push_back(result->second);
+            }
+            if (distToCompute.size() == 0) return precomputedDists;
+            std::vector<DistType> newDists = (*this)(distToCompute, RHSIndex, queryData);
+            std::vector<DistType> results;
+            size_t newIndex = 0;
+            for(size_t i=0; i<LHSIndecies.size(); i+=1){
+                if (LHSIndecies[i] != distToCompute[newIndex]) results.push_back(precomputedDists[i-newIndex]);
+                else{
+                    results.push_back(newDists[newIndex]);
+                    newIndex += 1;
+                }
+            }
+            return results;
+        };
+
+        return cachedFunctor;
+    }
 };
+
+namespace internal{
+    static const size_t maxBatch = 7;
+}
 
 template<TriviallyCopyable BlockNumberType, TriviallyCopyable IndexType, typename DataEntry, typename DataView, typename DistType>
 struct QueryContext{
@@ -206,22 +250,6 @@ struct QueryContext{
             
             //defaultQueryFunctor = DefaultQueryFunctor<IndexType, DataEntry, DistType>(distanceFunctor, dataBlock);
     };
-
-    /*
-    QueryContext(const Graph<IndexType, DistType>& subGraph,
-                 const DataBlock<DataEntry>& dataBlock,
-                 const std::valarray<COMExtent>& centerOfMass,
-                 const int numCandidates,
-                 SpaceMetric<DataEntry, DataEntry, DistType> distanceFunctor,
-                 SpaceMetric<std::valarray<COMExtent>, DataEntry, DistType> comDistanceFunctor):
-                    subGraph(subGraph), dataBlock(dataBlock), numCandidates(numCandidates), neighborCandidates(), distanceFunctor(distanceFunctor){
-        const SubProblemData thisSub{subGraph, dataBlock};
-        queryHint = QueryCOMNeighbors<IndexType, DataEntry, DistType>(centerOfMass, thisSub, numCandidates, comDistanceFunctor);
-        for (auto& hint: queryHint){
-            hint.second = std::numeric_limits<DistType>::max();
-        }
-    };
-    */
 
     //Nearest Node Distance
     //make checking this in parallel safe
@@ -267,8 +295,11 @@ struct QueryContext{
     GraphVertex<IndexType, DistType> QueryHotPath(GraphVertex<IndexType, DistType> initVertex,
                                                   const QueryType& queryData,
                                                   const IndexType queryIndex,
-                                                  const QueryFunctor& queryFunctor) const {
-        NodeTracker nodesVisited(dataBlock.size());
+                                                  const QueryFunctor& queryFunctor,
+                                                  std::optional<NodeTracker> previousVisits = std::nullopt) const {
+
+        NodeTracker nodesVisited = previousVisits.value_or( NodeTracker(dataBlock.size()) );
+
         int sizeDif = initVertex.size() - numCandidates;
         //if sizeDif is negative, fill to numCandidates
         if(sizeDif<0){
@@ -285,10 +316,21 @@ struct QueryContext{
                 initVertex.push_back(queryHint[i+indexOffset]);
             }
         }
+        std::vector<IndexType> initComputations;
+        for (auto& queryStart: initVertex){
+            initComputations.push_back(queryStart.first);
+            nodesVisited[queryStart.first] = true;
+        }
+        std::vector<DistType> initDistances = queryFunctor(initComputations, queryIndex, queryData);
+        for (size_t i = 0; i<initVertex.size(); i+=1){
+            initVertex[i].second = initDistances[i];
+        }
+        /*
         for (auto& queryStart: initVertex){
             queryStart.second = queryFunctor(queryStart.first, queryIndex, queryData);
             nodesVisited[queryStart.first] = true;
         }
+        */
         std::make_heap(initVertex.begin(), initVertex.end(), NeighborDistanceComparison<IndexType, DistType>);
         //if sizeDif is positive, reduce to numCandidates
         for (int i = 0; i < sizeDif; i+=1){
@@ -298,24 +340,49 @@ struct QueryContext{
         GraphVertex<IndexType, DistType> compareTargets;
         compareTargets.resize(querySearchDepth);
 
-        //GraphVertex<IndexType, DistType> newState(initVertex);
+        std::vector<IndexType> joinQueue;
+        const size_t maxBatch = internal::maxBatch;
+        joinQueue.reserve(maxBatch);
+
+        NodeTracker nodesCompared(dataBlock.size());
+
         bool breakVar = false;
         while (!breakVar){
             std::partial_sort_copy(initVertex.begin(), initVertex.end(), compareTargets.begin(), compareTargets.end(), NeighborDistanceComparison<IndexType, DistType>);
             breakVar = true;
+            size_t numCompared = 0;
             for (const auto& neighbor: compareTargets){
+                if (nodesCompared[neighbor.first]){
+                    numCompared += 1;
+                    continue;
+                }
                 const std::vector<IndexType>& currentNeighbor = subGraph[neighbor.first];
                 for (const auto& joinTarget: currentNeighbor){
                     if (nodesVisited[joinTarget] == true) continue;
                     nodesVisited[joinTarget] = true;
+                    joinQueue.push_back(joinTarget);
+                    if (joinQueue.size() == maxBatch) goto computeBatch; //double break
+                    /*
                     DistType distance = queryFunctor(joinTarget, queryIndex, queryData);
                     if (distance < initVertex[0].second){
                         initVertex.PushNeighbor({joinTarget, distance});
                         breakVar = false;
                     }
+                    */
+                }
+                nodesCompared[neighbor.first] = true;
+                numCompared += 1;
+            }
+            computeBatch:
+            std::vector<DistType> distances = queryFunctor(joinQueue, queryIndex, queryData);
+            for (size_t i = 0; i<distances.size(); i+=1){
+                if (distances[i] < initVertex[0].second){
+                    initVertex.PushNeighbor({joinQueue[i], distances[i]});
+                    breakVar = false;
                 }
             }
-            //initVertex = newState;
+            joinQueue.resize(0);
+            if (numCompared != querySearchDepth) breakVar = false;
         }
         return initVertex;
     }

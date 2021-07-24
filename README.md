@@ -1,6 +1,6 @@
 # Recursive Nearest Neighbor Descent (rNND)
 
-![Sample MNIST Fashion Results](MNIST-Fashion-7-17-21.png)
+![Sample MNIST Fashion Results](MNIST-Fashion-7-23-21.png)
 
 rNND is a (WIP) C++ implementation of the Nearest Neighbor Descent algorithm. The NND algorithm creates an approximation of an k-Nearest Neighbors graph for a large dataset. The goal of this project is to develop a version of NND that can be highly distributed by handling small portions of the developing graph at a time.
 The NND algorithm is presented in ["*Efficient k-nearest neighbor graph construction for generic similarity measures*" by Dong et. al.](https://doi.org/10.1145/1963405.1963487)

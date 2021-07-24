@@ -196,6 +196,7 @@ JoinMap<BlockNumberType, DataIndexType> InitializeJoinMap(const std::vector<Bloc
 }
 
 
+
 template<typename BlockNumberType, typename DataIndexType, typename DataEntry, typename DataView, typename DistType>
 int UpdateBlocks(BlockUpdateContext<BlockNumberType, DataIndexType, DataEntry, DataView, DistType>& blockLHS,
                  BlockUpdateContext<BlockNumberType, DataIndexType, DataEntry, DataView, DistType>& blockRHS){
@@ -220,17 +221,23 @@ int UpdateBlocks(BlockUpdateContext<BlockNumberType, DataIndexType, DataEntry, D
     if(doRHSJoin){
         blockLHS.blockJoinTracker[blockRHS.dataBlock.blockNumber] = true;
 
-        std::unordered_map<std::pair<DataIndexType, DataIndexType>, DistType, IntegralPairHasher<DataIndexType>> distanceCache;
+        DistanceCache<DataIndexType, DistType> distanceCache;
         /*
         DistType operator()(DataIndexType LHSIndex, DataIndexType RHSIndex, const DataEntry& queryData) const{
         return this->distanceFunctor(dataBlock[LHSIndex], queryData);
         }
         */
-        auto cachingDistanceFunctor = [&](DataIndexType LHSIndex, DataIndexType RHSIndex, const DataEntry& queryData) -> DistType{
-            DistType distance = blockRHS.queryContext.defaultQueryFunctor(LHSIndex, RHSIndex, queryData);
-            distanceCache[std::pair{LHSIndex, RHSIndex}] = distance;
-            return distance;
+        /*
+        auto cachingDistanceFunctor = [&](std::vector<DataIndexType> LHSIndecies, DataIndexType RHSIndex, const DataEntry& queryData) -> DistType{
+            std::vector<DistType> distances = blockRHS.queryContext.defaultQueryFunctor(LHSIndecies, RHSIndex, queryData);
+            for (size_t i = 0; i<LHSIndecies; i+=1){
+                distanceCache[std::pair{LHSIndecies[i], RHSIndex}] = distances[i];
+            }
+            return distances;
         };
+        */
+        auto cachingDistanceFunctor = blockRHS.queryContext.defaultQueryFunctor.CachingFunctor(distanceCache);
+        auto cachedDistanceFunctor = blockLHS.queryContext.defaultQueryFunctor.CachedFunctor(distanceCache);
         
 
         JoinResults<DataIndexType, DistType> blockLHSUpdates = BlockwiseJoin(blockLHS.joinsToDo[blockRHS.dataBlock.blockNumber],
@@ -241,13 +248,32 @@ int UpdateBlocks(BlockUpdateContext<BlockNumberType, DataIndexType, DataEntry, D
                                                                             cachingDistanceFunctor);
         NewJoinQueues<size_t, size_t, float>(blockLHSUpdates, blockLHS.blockJoinTracker, blockRHS.currentGraph, blockLHS.newJoins);
 
-        
-        auto cachedDistanceFunctor = [&](DataIndexType LHSIndex, DataIndexType RHSIndex, const DataEntry& queryData) -> DistType{
-            auto result = distanceCache.find(std::pair{RHSIndex, LHSIndex});
-            if(result != distanceCache.end()) return result->second;
-            else return blockLHS.queryContext.defaultQueryFunctor(LHSIndex, RHSIndex, queryData);
+        /*
+        auto cachedDistanceFunctor = [&](std::vector<DataIndexType> LHSIndecies, DataIndexType RHSIndex, const DataEntry& queryData) -> DistType{
+            std::vector<DataIndexType> distToCompute;
+            std::vector<DistType> precomputedDists;
+            for(size_t i = 0; i<LHSIndecies.size(); i += 1){
+                auto result = distanceCache.find(std::pair{RHSIndex, LHSIndecies[i]});
+                if(result != distanceCache.end()) distToCompute.push_back();
+                else precomputedDists.push_back(result->second);
+            }
+            std::vector<DistType> newDists = blockLHS.queryContext.defaultQueryFunctor(distToCompute, RHSIndex, queryData);
+            std::vector<DistType> results;
+            size_t newIndex = 0;
+            for(size_t i=0; i<LHSIndecies.size(); i+=1){
+                if (LHSIndecies[i] != distToCompute[newIndex]) results.push_back(precomputedDists[i-newIndex]);
+                else{
+                    results.push_back(newDists[newIndex]);
+                    newIndex += 1;
+                }
+            }
+            
+            //auto result = distanceCache.find(std::pair{RHSIndex, LHSIndex});
+            //if(result != distanceCache.end()) return result->second;
+            //else return blockLHS.queryContext.defaultQueryFunctor(LHSIndex, RHSIndex, queryData);
+            
         };
-    
+        */
 
         blockRHS.blockJoinTracker[blockLHS.dataBlock.blockNumber] = true;
 

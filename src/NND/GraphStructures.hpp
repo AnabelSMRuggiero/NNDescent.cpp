@@ -255,6 +255,15 @@ struct Graph{
     Graph(size_t numVerticies, size_t numNeighbors): 
         verticies(numVerticies, GraphVertex<IndexType, FloatType>(numNeighbors)){};
 
+    Graph(const Graph& otherGraph): verticies(otherGraph.size(), GraphVertex<IndexType, FloatType>(otherGraph[0].size())){
+        for (size_t i = 0; const auto& vertex: otherGraph){
+            for (const auto& neighbor: vertex){
+                verticies[i].push_back(neighbor);
+            }
+            i++;
+        }
+    }
+
     GraphVertex<IndexType, FloatType>& operator[](size_t i){
         return verticies[i];
     }
@@ -325,10 +334,27 @@ struct UndirectedGraph{
         verticies(numVerticies, std::vector<IndexType>(numNeighbors)){};
 
     template<typename DistType>
-    UndirectedGraph(const Graph<IndexType, DistType>& directedGraph): verticies(directedGraph.size()){
+    UndirectedGraph(Graph<IndexType, DistType> directedGraph): verticies(directedGraph.size()){
 
-        for (size_t i = 0; i<directedGraph.size(); i +=1) verticies[i].reserve(1.5*directedGraph[0].size());
+        for (size_t i = 0; auto& vertex: directedGraph){
+            vertex.neighbors.reserve(vertex.size()*2);
+            for (const auto& neighbor: vertex){
+                if(std::find_if(directedGraph[neighbor.first].begin(), directedGraph[neighbor.first].end(), NeighborSearchFunctor<IndexType, DistType>(i)) == directedGraph[neighbor.first].end()) 
+                    directedGraph[neighbor.first].push_back({i, neighbor.second});
+            }
+            i++;
+        }
+        
+        for (size_t i = 0; auto& vertex: directedGraph){
+            std::ranges::sort(vertex, NeighborDistanceComparison<IndexType, DistType>);
+            verticies[i].reserve(vertex.size());
+            for (const auto& neighbor:vertex){
+                verticies[i].push_back(neighbor.first);
+            }
 
+            i++;
+        }
+        /*
         for (size_t i = 0; const auto& vertex: directedGraph){
             for (const auto& neighbor: vertex){
                 if(std::ranges::find(verticies[i], neighbor.first) == verticies[i].end()) verticies[i].push_back(neighbor.first);
@@ -336,6 +362,7 @@ struct UndirectedGraph{
             }
             i++;
         }
+        */
     }
 
     std::vector<IndexType>& operator[](size_t i){

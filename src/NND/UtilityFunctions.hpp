@@ -25,14 +25,14 @@ bool const NeighborIdentityCheck(const std::pair<IndexType, FloatType>& neighbor
 };
 
 //Todo: template this so it can handle arbitrary float types
-template<TriviallyCopyable IndexType, typename FloatType>
+template<TriviallyCopyable IndexType, typename DistType>
 struct NeighborSearchFunctor{
     
     IndexType searchValue;
 
-    NeighborSearchFunctor() : searchValue(){};
+    NeighborSearchFunctor(IndexType searchValue) : searchValue(searchValue){};
 
-    bool operator()(std::pair<IndexType, FloatType> currentValue){
+    bool operator()(std::pair<IndexType, DistType> currentValue){
         return currentValue.first == searchValue;
     }
 

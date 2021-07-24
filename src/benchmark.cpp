@@ -152,7 +152,7 @@ int main(){
     }
     runEnd = std::chrono::steady_clock::now();
     std::cout << std::chrono::duration_cast<std::chrono::duration<float>>(runEnd - runStart).count() << "s total for 7 dist at a time (no prefetch)" << std::endl;
-    
+    /*
     rngEngine.seed(0);
     runStart = std::chrono::steady_clock::now();
     for(size_t i = 0; i<1'000'000; i+=1){
@@ -264,6 +264,6 @@ int main(){
     }
     runEnd = std::chrono::steady_clock::now();
     std::cout << std::chrono::duration_cast<std::chrono::duration<float>>(runEnd - runStart).count() << "s total for 7 dist at a time (prefetch=32)" << std::endl;
-  
+    */
     return 0;
 }

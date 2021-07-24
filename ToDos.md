@@ -6,11 +6,6 @@
     - Front end some sort of generalized PCA?
     - I could just be boring and front end SVD (which doesn't really work for non-euclidian easily, but would be needed for generalized PCA init)
 
-- ~~Try turning space metrics into functors, and have the type as a template parameter~~
-  - Compilers tend to be very good at inlining functor calls.
-  - I tried, no difference in speed, and function pointers allow more (basically) cost free dynamic polymorphism
-
-- I just realized, some distance metrics might wanna return an integral type (binary distances like hamming)
 - Template BlockIndicies
 
 - Fix my I/O. My I/O is bad. (I spend so much time in the stream operator).
@@ -24,12 +19,13 @@
 
 - Template out the manually vectorized functions. I should be able to make them generic enough that I don't need too many specializations.
   - AVX512 can use more registers
+  - Implement some way to set the maxBatching parameter more elegantly
 
 #RPTrees
 - Move forest building outside of constructor.
 - Add in tree merge functionality
 - Think of a better way to refine tree splitting than if statement into goto.
-
+- Rewrite TreeLeaf
 
 #NNDescent
 - This will be forever out from now, but test builing data array inside of the control structure itself to see if it reduces cache misses.
@@ -44,18 +40,15 @@
 
 - paramterize/pass as arguement the COM distance functor for metagraph
 
-- Rewrite TreeLeaf
-
 - Most of my run time is in distance calcs. While optimizing the calculation will be important, I need to squeeze as much as I can out of every call.
-  - I'm only storing results from calculations on one side for every query. Figure out how to save calculations for both sides.
 
-- Maybe replace the initial bruteforce joins with the current blockwise join prototype. Use the results of NearestNode searches to seed this.
-  - Could affect recall? Might mean I don't do searches that would likely come up dead anyways, but it might mean I miss out searches that are relevant.
-  - But if it is faster, it could mean I could do more initial joins to seed a more diverse pool of searches.
 
 - On QueryHotPath: I want copies when I use the queryHint member, but not really when I'm passing in hints.
 
 - UndirectedGraph BlockIndices template specialization.
+
+- I convert the initial directed block graphs into an directed graph using block indecies and an undirected graph without the neighbors. Don't think I use the initial graph after that.
+  - I can sink the memory into the undirected graph constructor.
 
 #Parallelization and Distributed Computing
 - Do a second pass on the MetaGraph procedures 

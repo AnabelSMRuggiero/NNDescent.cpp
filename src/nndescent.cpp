@@ -249,7 +249,7 @@ void StitchBlocks(const Graph<BlockNumberType, DistType>& nearestNodeDistances,
     
 
     std::vector<std::pair<JoinResults<DataIndexType, DistType>, JoinResults<DataIndexType, DistType>>> initUpdates(initBlockJoins.size());
-    std::unordered_map<std::pair<DataIndexType, DataIndexType>, DistType, IntegralPairHasher<DataIndexType>> distanceCache;
+    
 
     auto initBlockJoin = [&](const ComparisonKey<size_t> blockNumbers) -> std::pair<JoinResults<DataIndexType, DistType>, JoinResults<DataIndexType, DistType>>{
         
@@ -262,12 +262,16 @@ void StitchBlocks(const Graph<BlockNumberType, DistType>& nearestNodeDistances,
         JoinHints<DataIndexType> RHShint;
         RHShint[std::get<1>(stitchHint)] = {std::get<0>(stitchHint)};
 
+        DistanceCache<DataIndexType, DistType> distanceCache;
+        auto cachingDistanceFunctor = blockRHS.queryContext.defaultQueryFunctor.CachingFunctor(distanceCache);
+        auto cachedDistanceFunctor = blockLHS.queryContext.defaultQueryFunctor.CachedFunctor(distanceCache);
+        /*
         auto cachingDistanceFunctor = [&](DataIndexType LHSIndex, DataIndexType RHSIndex, const DataEntry& queryData) -> DistType{
             DistType distance = blockRHS.queryContext.defaultQueryFunctor(LHSIndex, RHSIndex, queryData);
             distanceCache[std::pair{LHSIndex, RHSIndex}] = distance;
             return distance;
         };
-        
+        */
         std::pair<JoinResults<DataIndexType, DistType>, JoinResults<DataIndexType, DistType>> retPair;
         retPair.first = BlockwiseJoin(LHShint,
                                       blockLHS.currentGraph,
@@ -276,12 +280,13 @@ void StitchBlocks(const Graph<BlockNumberType, DistType>& nearestNodeDistances,
                                       blockRHS.queryContext,
                                       cachingDistanceFunctor);
 
+        /*
         auto cachedDistanceFunctor = [&](DataIndexType LHSIndex, DataIndexType RHSIndex, const DataEntry& queryData) -> DistType{
             auto result = distanceCache.find(std::pair{RHSIndex, LHSIndex});
             if(result != distanceCache.end()) return result->second;
             else return blockLHS.queryContext.defaultQueryFunctor(LHSIndex, RHSIndex, queryData);
         };
-
+        */
         retPair.second = BlockwiseJoin(RHShint,
                                       blockRHS.currentGraph,
                                       blockRHS.leafGraph,
