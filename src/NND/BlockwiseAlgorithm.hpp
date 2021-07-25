@@ -221,7 +221,7 @@ int UpdateBlocks(BlockUpdateContext<BlockNumberType, DataIndexType, DataEntry, D
     if(doRHSJoin){
         blockLHS.blockJoinTracker[blockRHS.dataBlock.blockNumber] = true;
 
-        DistanceCache<DataIndexType, DistType> distanceCache;
+        DistanceCache<DistType> distanceCache;
         /*
         DistType operator()(DataIndexType LHSIndex, DataIndexType RHSIndex, const DataEntry& queryData) const{
         return this->distanceFunctor(dataBlock[LHSIndex], queryData);

@@ -29,6 +29,8 @@ namespace nnd{
 
 template<typename DataEntry>
 struct DataSet{
+    using ElementType = typename DataEntry::value_type;
+    using DataView = typename DefaultDataView<DataEntry>::ViewType;
     
     //std::valarray<unsigned char> rawData;
 
@@ -94,6 +96,8 @@ inline bool operator==(const BlockIndecies lhs, const BlockIndecies& rhs){
 //Presumably, each project would only need to instantiate for a single FloatType
 template<typename DataEntry>
 struct DataBlock{
+    using ElementType = typename DataEntry::value_type;
+    using DataView = typename DefaultDataView<DataEntry>::ViewType;
 
     size_t blockNumber;
     std::vector<DataEntry> blockData;

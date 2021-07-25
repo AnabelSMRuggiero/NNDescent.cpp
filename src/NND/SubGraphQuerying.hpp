@@ -178,7 +178,7 @@ struct DefaultQueryFunctor{
         return this->batchingMetric(lhsData, DataView(queryData));
     }
 
-    auto CachingFunctor(DistanceCache<DataIndexType, DistType>& cache) const {
+    auto CachingFunctor(DistanceCache<DistType>& cache) const {
         cache.reserve(dataBlock.size()*dataBlock.size());
         auto cachingFunctor = [&](std::vector<DataIndexType> LHSIndecies, DataIndexType RHSIndex, const DataEntry& queryData) -> std::vector<DistType>{
             std::vector<DistType> distances = (*this)(LHSIndecies, RHSIndex, queryData);
@@ -191,7 +191,7 @@ struct DefaultQueryFunctor{
         return cachingFunctor;
     }
 
-    auto CachedFunctor(DistanceCache<DataIndexType, DistType>& cache) const {
+    auto CachedFunctor(DistanceCache<DistType>& cache) const {
         auto cachedFunctor = [&](std::vector<DataIndexType> LHSIndecies, DataIndexType RHSIndex, const DataEntry& queryData) -> std::vector<DistType>{
             std::vector<DataIndexType> distToCompute;
             std::vector<DistType> precomputedDists;

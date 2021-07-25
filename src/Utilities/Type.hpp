@@ -19,8 +19,11 @@ https://github.com/AnabelSMRuggiero/NNDescent.cpp
 #include <functional>
 #include <unordered_map>
 #include <utility>
+#include <span>
 
 namespace nnd{
+
+
 
 template<std::integral IndexType>
 struct IntegralPairHasher{
@@ -31,8 +34,8 @@ struct IntegralPairHasher{
 
 };
 
-template<std::integral DataIndexType, typename DistType>
-using DistanceCache = std::unordered_map<std::pair<DataIndexType, DataIndexType>, DistType, IntegralPairHasher<DataIndexType>>;
+template<typename DistType>
+using DistanceCache = std::unordered_map<std::pair<size_t, size_t>, DistType, IntegralPairHasher<size_t>>;
 
 template<typename ValueType, size_t alignment=32>
 struct AlignedArray{
@@ -97,6 +100,12 @@ struct AlignedSpan{
 
 };
 
+
+template<std::ranges::contiguous_range Container>
+struct DefaultDataView{ using ViewType = std::span<const typename Container::value_type>; };
+
+template<typename ElementType>
+struct DefaultDataView<AlignedArray<ElementType>>{ using ViewType = AlignedSpan<const ElementType>; };
 
 template<typename DataTypeA, typename DataTypeB, typename RetType=double>
 using SpaceMetric = RetType (*)(const DataTypeA&, const DataTypeB&);

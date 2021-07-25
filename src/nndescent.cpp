@@ -26,13 +26,14 @@ https://github.com/AnabelSMRuggiero/NNDescent.cpp
 #include <execution>
 #include <string_view>
 #include <cstdlib>
+//#include <type_traits>
 
 #include "Utilities/Type.hpp"
 #include "Utilities/Data.hpp"
-
 #include "Utilities/Metrics/SpaceMetrics.hpp"
-#include "NND/GraphStructures.hpp"
+#include "Utilities/Metrics/FunctorErasure.hpp"
 
+#include "NND/GraphStructures.hpp"
 #include "NND/MetaGraph.hpp"
 #include "NND/SubGraphQuerying.hpp"
 #include "NND/BlockwiseAlgorithm.hpp"
@@ -262,16 +263,10 @@ void StitchBlocks(const Graph<BlockNumberType, DistType>& nearestNodeDistances,
         JoinHints<DataIndexType> RHShint;
         RHShint[std::get<1>(stitchHint)] = {std::get<0>(stitchHint)};
 
-        DistanceCache<DataIndexType, DistType> distanceCache;
+        DistanceCache<DistType> distanceCache;
         auto cachingDistanceFunctor = blockRHS.queryContext.defaultQueryFunctor.CachingFunctor(distanceCache);
         auto cachedDistanceFunctor = blockLHS.queryContext.defaultQueryFunctor.CachedFunctor(distanceCache);
-        /*
-        auto cachingDistanceFunctor = [&](DataIndexType LHSIndex, DataIndexType RHSIndex, const DataEntry& queryData) -> DistType{
-            DistType distance = blockRHS.queryContext.defaultQueryFunctor(LHSIndex, RHSIndex, queryData);
-            distanceCache[std::pair{LHSIndex, RHSIndex}] = distance;
-            return distance;
-        };
-        */
+        
         std::pair<JoinResults<DataIndexType, DistType>, JoinResults<DataIndexType, DistType>> retPair;
         retPair.first = BlockwiseJoin(LHShint,
                                       blockLHS.currentGraph,
@@ -280,13 +275,7 @@ void StitchBlocks(const Graph<BlockNumberType, DistType>& nearestNodeDistances,
                                       blockRHS.queryContext,
                                       cachingDistanceFunctor);
 
-        /*
-        auto cachedDistanceFunctor = [&](DataIndexType LHSIndex, DataIndexType RHSIndex, const DataEntry& queryData) -> DistType{
-            auto result = distanceCache.find(std::pair{RHSIndex, LHSIndex});
-            if(result != distanceCache.end()) return result->second;
-            else return blockLHS.queryContext.defaultQueryFunctor(LHSIndex, RHSIndex, queryData);
-        };
-        */
+
         retPair.second = BlockwiseJoin(RHShint,
                                       blockRHS.currentGraph,
                                       blockRHS.leafGraph,
@@ -309,16 +298,6 @@ void StitchBlocks(const Graph<BlockNumberType, DistType>& nearestNodeDistances,
             initGraphUpdates += ConsumeVertex(blockUpdateContexts[blocks.second].currentGraph[result.first], result.second, blocks.first);
         }
 
-        /*
-        //for (auto& result: blockLHSUpdates){
-        //    graphUpdates += ConsumeVertex(blockLHS.currentGraph[result.first], result.second, blockRHS.dataBlock.blockNumber);
-        //}
-
-
-        for (size_t j = 0; j<blockUpdateContexts[blocks.second].currentGraph.size(); j+=1){
-            initGraphUpdates += ConsumeVertex(blockUpdateContexts[blocks.second].currentGraph[j], updates.second[j], blocks.first);
-        }
-        */
     }
 
     
@@ -463,6 +442,10 @@ int main(int argc, char *argv[]){
     DataSet<AlignedArray<float>> mnistFashionTest(testDataFilePath, 28*28, 10'000, &ExtractNumericArray<AlignedArray<float>,dataEndianness>);
     DataSet<AlignedArray<uint32_t>> mnistFashionTestNeighbors(testNeighborsFilePath, 100, 10'000, &ExtractNumericArray<AlignedArray<uint32_t>,dataEndianness>);
     
+    MetricFunctor<AlignedArray<float>, EuclideanMetricPair, float> testFunctor;
+    DispatchFunctor<float> testDispatch(testFunctor);
+    testDispatch.SetBlocks(2,3);
+
     //std::chrono::time_point<std::chrono::steady_clock> runEnd = std::chrono::steady_clock::now();
     //std::cout << std::chrono::duration_cast<std::chrono::seconds>(runEnd - runStart).count() << "s Pointwise Join Calcs " << std::endl;
 
@@ -486,6 +469,8 @@ int main(int argc, char *argv[]){
 
 
     auto [indexMappings, dataBlocks] = PartitionData<size_t, AlignedArray<float>>(rpTreesTrain, mnistFashionTrain);
+
+    
     
     std::vector<Graph<size_t, float>> blockGraphs = InitializeBlockGraphs<size_t, AlignedArray<float>, AlignedSpan<const float>, float>(dataBlocks, numBlockGraphNeighbors, EuclideanNorm<AlignedSpan<const float>, AlignedSpan<const float>, float>);
 
