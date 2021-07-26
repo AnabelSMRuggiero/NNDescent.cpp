@@ -32,15 +32,14 @@ struct MetricFunctor{
     MetricPair metricPair;
     const DataBlock<DataEntry>* lhsBlock;
     const DataBlock<DataEntry>* rhsBlock;
-
-    size_t lhsBlockNum, rhsBlockNum;
+    const std::vector<DataBlock<DataEntry>>& blocks;
+    //size_t lhsBlockNum, rhsBlockNum;
     
-    MetricFunctor(): metricPair(MetricPair()) {};
+    MetricFunctor(const std::vector<DataBlock<DataEntry>>& blocks): metricPair(MetricPair()), blocks(blocks) {};
 
-    MetricFunctor(MetricPair metricPair):metricPair(metricPair), lhsBlock(nullptr), rhsBlock(nullptr) {};
+    MetricFunctor(MetricPair metricPair, const std::vector<DataBlock<DataEntry>>& blocks):metricPair(metricPair), blocks(blocks) {};
 
-    MetricFunctor(MetricPair metricPair, const DataBlock<DataEntry>* lhsBlock, const DataBlock<DataEntry>* rhsBlock):
-        metricPair(metricPair), lhsBlock(lhsBlock), rhsBlock(rhsBlock) {};
+    
 
 
     DistType operator()(size_t LHSIndex, size_t RHSIndex) const {
@@ -56,8 +55,8 @@ struct MetricFunctor{
     };
 
     void SetBlocks(size_t lhsBlockNum, size_t rhsBlockNum){
-        this->lhsBlockNum = lhsBlockNum;
-        this->rhsBlockNum = rhsBlockNum;
+        this->lhsBlock = &(blocks[lhsBlockNum]);
+        this->rhsBlock = &(blocks[rhsBlockNum]);
     }
 };
 
@@ -118,25 +117,6 @@ struct DispatchFunctor{
 };
 
 
-template<typename DistType>
-struct CachingFunctor{
-
-    DispatchFunctor<DistType> metricFunctor;
-    DistanceCache<DistType> cache;
-
-    CachingFunctor(DispatchFunctor<DistType> metricFunctor, size_t cacheSize): metricFunctor(metricFunctor), cache(){
-        cache.reserve(cacheSize);
-    }
-
-    DistType operator()(size_t LHSIndex, size_t RHSIndex){
-        return this->underlyingFunctor(LHSIndex, RHSIndex);
-    };
-
-    std::vector<DistType> operator()(const std::vector<size_t>& LHSIndecies, size_t RHSIndex){
-        return this->underlyingFunctor(LHSIndecies, RHSIndex);
-    };
-
-};
 
 }
 

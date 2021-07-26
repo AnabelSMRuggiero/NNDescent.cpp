@@ -79,13 +79,7 @@ struct BlockIndecies{
 };
 */
 
-struct BlockIndecies{
-    // The block a data point exists in
-    size_t blockNumber;
-    // The index within that block
-    size_t dataIndex;
 
-};
 
 
 inline bool operator==(const BlockIndecies lhs, const BlockIndecies& rhs){

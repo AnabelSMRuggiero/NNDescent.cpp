@@ -22,9 +22,13 @@ https://github.com/AnabelSMRuggiero/NNDescent.cpp
 #include <utility>
 
 #include "UtilityFunctions.hpp"
+
+#include "RNG.hpp"
+#include "Type.hpp"
+
+#include "../Utilities/Type.hpp"
 #include "../Utilities/Data.hpp"
 #include "../Utilities/Metrics/SpaceMetrics.hpp"
-#include "RNG.hpp"
 
 #include "Utilities/DataDeserialization.hpp"
 
@@ -46,11 +50,13 @@ struct GraphVertex{
 
     //GraphVertex(GraphVertex&& rval): neighbors(std::forward<std::vector<std::pair<IndexType, FloatType>>>(rval.neighbors)){};
     //Incorporate size checking in here?
-    void PushNeighbor(std::pair<IndexType, FloatType> newNeighbor){
+    bool PushNeighbor(std::pair<IndexType, FloatType> newNeighbor){
+        if (newNeighbor.second > neighbors[0].second) return false;
         neighbors.push_back(newNeighbor);
         std::push_heap(neighbors.begin(), neighbors.end(), NeighborDistanceComparison<IndexType, FloatType>);
         std::pop_heap(neighbors.begin(), neighbors.end(), NeighborDistanceComparison<IndexType, FloatType>);
         neighbors.pop_back();
+        return true;
     };
 
     void JoinPrep(){
@@ -425,34 +431,104 @@ struct UndirectedGraph{
 
 
 
-template<TriviallyCopyable DataIndexType, typename DataType, typename DataView, typename DistType>
-Graph<DataIndexType, DistType> BruteForceBlock(const size_t numNeighbors, const DataBlock<DataType>& dataBlock, SpaceMetric<DataView, DataView, DistType> distanceFunctor){
-    Graph<DataIndexType, DistType> retGraph(dataBlock.size(), numNeighbors);
+template<typename DataType, typename DataView, typename DistType>
+//numNeighbors, blockSize, distanceFunctor
+Graph<size_t, DistType> BruteForceBlock(const size_t numNeighbors, const size_t blockSize, DispatchFunctor<DistType>& distanceFunctor){
+    Graph<size_t, DistType> retGraph(blockSize, numNeighbors);
     // I can make this branchless. Check to see if /O2 or /O3 can make this branchless (I really doubt it)
-    for (size_t i = 0; i < dataBlock.size(); i += 1){
-        for (size_t j = i+1; j < dataBlock.size(); j += 1){
-            DistType distance = distanceFunctor(dataBlock[i], dataBlock[j]);
+    for (size_t i = 0; i < blockSize; i += 1){
+        for (size_t j = i+1; j < blockSize; j += 1){
+            DistType distance = distanceFunctor(i, j);
             if (retGraph[i].size() < numNeighbors){
-                retGraph[i].push_back(std::pair<DataIndexType, DistType>(static_cast<DataIndexType>(j), distance));
+                retGraph[i].push_back(std::pair<size_t, DistType>(static_cast<size_t>(j), distance));
                 if (retGraph[i].size() == numNeighbors){
                     retGraph[i].JoinPrep();
                 }
             } else if (distance < retGraph[i][0].second){
-                retGraph[i].PushNeighbor(std::pair<DataIndexType, DistType>(static_cast<DataIndexType>(j), distance));
+                retGraph[i].PushNeighbor(std::pair<size_t, DistType>(static_cast<size_t>(j), distance));
             }
             if (retGraph[j].size() < numNeighbors){
-                retGraph[j].push_back(std::pair<DataIndexType, DistType>(static_cast<DataIndexType>(i), distance));
+                retGraph[j].push_back(std::pair<size_t, DistType>(static_cast<size_t>(i), distance));
                 if (retGraph[j].size() == numNeighbors){
                     retGraph[j].JoinPrep();
                 }
             } else if (distance < retGraph[j].neighbors[0].second){
-                retGraph[j].PushNeighbor(std::pair<DataIndexType, DistType>(static_cast<DataIndexType>(i), distance));
+                retGraph[j].PushNeighbor(std::pair<size_t, DistType>(static_cast<size_t>(i), distance));
             }
         }
     }
 
     return retGraph;
 }
+
+
+template<typename DistType>
+struct CachingFunctor{
+
+    DispatchFunctor<DistType> metricFunctor;
+    //DistanceCache<DistType> cache;
+    Graph<size_t, DistType> reverseGraph;
+    std::vector<NodeTracker> nodesJoined;
+    size_t numNeighbors;
+    size_t maxBlockSize;
+
+    CachingFunctor(DispatchFunctor<DistType> metricFunctor, size_t maxBlockSize, size_t numNeighbors): metricFunctor(metricFunctor), reverseGraph(maxBlockSize, numNeighbors), maxBlockSize(maxBlockSize){
+        //cache.reserve(cacheSize);
+    }
+
+    DistType operator()(size_t targetIndex, size_t queryIndex){
+        DistType distance = this->underlyingFunctor(targetIndex, queryIndex);
+        cachedGraphSize = std::max(targetIndex, cachedGraphSize);
+
+        switch(reverseGraph[targetIndex].size()){
+            case numNeighbors:
+                reverseGraph[targetIndex].PushNeighbor({queryIndex, distance});
+                break;
+            case numNeighbors-1:
+                reverseGraph[targetIndex].push_back({queryIndex, distance});
+                reverseGraph[targetIndex].JoinPrep();
+                break;
+            default:
+                reverseGraph[targetIndex].push_back({queryIndex, distance});
+        }
+        nodesJoined[targetIndex][queryIndex] = true;
+
+        return distance;
+    };
+
+    std::vector<DistType> operator()(const std::vector<size_t>& targetIndecies, size_t queryIndex){
+        std::vector<DistType> distances = this->underlyingFunctor(targetIndecies, queryIndex);
+        for (size_t i = 0; i<targetIndecies.size(); i+=1){
+            switch(reverseGraph[targetIndecies[i]].size()){
+                case numNeighbors:
+                    reverseGraph[targetIndecies[i]].PushNeighbor({queryIndex, distances[i]});
+                    break;
+                case numNeighbors-1:
+                    reverseGraph[targetIndecies[i]].push_back({queryIndex, distances[i]});
+                    reverseGraph[targetIndecies[i]].JoinPrep();
+                    break;
+                default:
+                    reverseGraph[targetIndecies[i]].push_back({queryIndex, distances[i]});
+            }
+            nodesJoined[targetIndecies[i]][queryIndex] = true;
+        }
+        return distances;
+    };
+
+    void SetBlocks(size_t lhsBlockNum, size_t rhsBlockNum){
+        cachedGraphSize = 0;
+        for (auto& vertex: reverseGraph){
+            vertex.resize(0);
+        }
+        for (auto& tracker: nodesJoined){
+            tracker = NodeTracker(maxBlockSize);
+        }
+        this->underlyingFunctor->SetBlocks(lhsBlockNum, rhsBlockNum);
+    }
+
+    private:
+    size_t cachedGraphSize;
+};
 
 
 

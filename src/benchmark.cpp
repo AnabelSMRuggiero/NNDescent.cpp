@@ -130,8 +130,31 @@ int main(){
     std::uniform_int_distribution<size_t> rngDist(size_t(0), mnistFashionTrain.numberOfSamples - 1);
 
     std::chrono::time_point<std::chrono::steady_clock> runStart, runEnd;
-    
 
+    std::vector<size_t> targetPoints(8);
+    
+    std::vector<AlignedSpan<const float>> targetSpans;
+    for (auto& point: targetPoints){
+        point = rngDist(rngEngine);
+        targetSpans.push_back(AlignedSpan<const float>(mnistFashionTrain[point]));
+    }
+    escape(targetSpans.data());
+
+    runStart = std::chrono::steady_clock::now();
+    for(size_t i = 0; i<1'000'000; i+=1){
+        
+
+        size_t startPoint = rngDist(rngEngine);
+        escape(&startPoint);
+
+        std::vector<float> dists = BatchEuclideanNorm<7>(targetSpans, AlignedSpan<const float>(mnistFashionTrain[startPoint]));
+        escape(dists.data());
+    }
+    runEnd = std::chrono::steady_clock::now();
+    std::cout << std::chrono::duration_cast<std::chrono::duration<float>>(runEnd - runStart).count() << "s total for 8 dist at a time (no prefetch)" << std::endl;
+
+    
+    /*
     runStart = std::chrono::steady_clock::now();
     for(size_t i = 0; i<1'000'000; i+=1){
         std::vector<size_t> targetPoints(7);
@@ -152,7 +175,7 @@ int main(){
     }
     runEnd = std::chrono::steady_clock::now();
     std::cout << std::chrono::duration_cast<std::chrono::duration<float>>(runEnd - runStart).count() << "s total for 7 dist at a time (no prefetch)" << std::endl;
-    /*
+    
     rngEngine.seed(0);
     runStart = std::chrono::steady_clock::now();
     for(size_t i = 0; i<1'000'000; i+=1){

@@ -52,17 +52,16 @@ template<typename DataIndexType, typename DistType>
 using JoinResults = std::vector<std::pair<DataIndexType, GraphVertex<DataIndexType, DistType>>>;
 
 //template<typename BlockNumberType, typename DataIndexType, typename DataEntry, typename DistType>
-template<typename BlockNumberType, typename DataIndexType, typename DataEntry, typename DataView, typename DistType, typename QueryFunctor>
-JoinResults<DataIndexType, DistType> BlockwiseJoin(const JoinHints<DataIndexType>& startJoins,
+template<typename DistType, typename QueryFunctor>
+JoinResults<size_t, DistType> BlockwiseJoin(const JoinHints<size_t>& startJoins,
                    const Graph<BlockIndecies, DistType>& currentGraphState,
-                   const Graph<DataIndexType, DistType>& searchSubgraph,
-                   const DataBlock<DataEntry>& blockData,
-                   const QueryContext<BlockNumberType, DataIndexType, DataEntry, DataView, DistType>& targetBlock,
+                   const UndirectedGraph<size_t>& searchSubgraph,
+                   const QueryContext<DistType>& targetBlock,
                    QueryFunctor queryFunctor){
     
-    std::vector<std::pair<DataIndexType, GraphVertex<DataIndexType, DistType>>> joinHints;
+    std::vector<std::pair<size_t, GraphVertex<size_t, DistType>>> joinHints;
     for (const auto& hint: startJoins){
-        GraphVertex<DataIndexType, DistType> queryHint;
+        GraphVertex<size_t, DistType> queryHint;
         for (const auto index: hint.second){
             queryHint.push_back({index, std::numeric_limits<DistType>::max()});
         }
@@ -70,20 +69,20 @@ JoinResults<DataIndexType, DistType> BlockwiseJoin(const JoinHints<DataIndexType
     }
     NodeTracker nodesJoined(searchSubgraph.size());
     
-    std::vector<std::pair<DataIndexType, GraphVertex<DataIndexType, DistType>>> retResults;
+    std::vector<std::pair<size_t, GraphVertex<size_t, DistType>>> retResults;
     while(joinHints.size()){
-        std::vector<std::pair<DataIndexType, GraphVertex<DataIndexType, DistType>>> joinResults;
+        std::vector<std::pair<size_t, GraphVertex<size_t, DistType>>> joinResults;
         for (const auto& joinHint: joinHints){
-            //GraphVertex<DataIndexType, DistType> joinResult = targetBlock || QueryPoint{joinHint.second, blockData[joinHint.first]};
-            //const QueryPoint<DataIndexType, DataEntry, DistType> query(joinHint.second, blockData[joinHint.first], joinHint.first);
-            joinResults.push_back({joinHint.first, targetBlock.QueryHotPath(joinHint.second, blockData[joinHint.first], joinHint.first, queryFunctor)});
+            //GraphVertex<size_t, DistType> joinResult = targetBlock || QueryPoint{joinHint.second, blockData[joinHint.first]};
+            //const QueryPoint<size_t, DataEntry, DistType> query(joinHint.second, blockData[joinHint.first], joinHint.first);
+            joinResults.push_back({joinHint.first, targetBlock.QueryHotPath(joinHint.second, joinHint.first, queryFunctor)});
             nodesJoined[joinHint.first] = true;
         }
-        std::vector<std::pair<DataIndexType, GraphVertex<DataIndexType, DistType>>> newJoins;
+        std::vector<std::pair<size_t, GraphVertex<size_t, DistType>>> newJoins;
         for(auto& result: joinResults){
-            //std::heap_sort(result.second.begin(), result.second.end(), NeighborDistanceComparison<DataIndexType, DistType>);
+            //std::heap_sort(result.second.begin(), result.second.end(), NeighborDistanceComparison<size_t, DistType>);
             bool newNeighbor = false;
-            GraphVertex<DataIndexType, DistType> updatedResult;
+            GraphVertex<size_t, DistType> updatedResult;
             for (const auto& neighborCandidate: result.second){
                 if (neighborCandidate.second < currentGraphState[result.first][0].second){
                     newNeighbor = true;
@@ -93,10 +92,10 @@ JoinResults<DataIndexType, DistType> BlockwiseJoin(const JoinHints<DataIndexType
             if (newNeighbor){   
                 
                 for(const auto& leafNeighbor: searchSubgraph[result.first]){
-                    if(!nodesJoined[leafNeighbor.first]){
-                        newJoins.push_back({leafNeighbor.first, result.second});
+                    if(!nodesJoined[leafNeighbor]){
+                        newJoins.push_back({leafNeighbor, result.second});
                         //We can add these to nodesJoined a touch early to prevent dupes
-                        nodesJoined[leafNeighbor.first] = true;
+                        nodesJoined[leafNeighbor] = true;
                     }
                 }
                 retResults.push_back({result.first, std::move(updatedResult)});
@@ -108,16 +107,16 @@ JoinResults<DataIndexType, DistType> BlockwiseJoin(const JoinHints<DataIndexType
     return retResults;
 }
 
-template<typename BlockNumberType, typename DataIndexType, typename DistType>
-void NewJoinQueues(const std::vector<std::pair<DataIndexType, GraphVertex<DataIndexType, DistType>>>& joinResults,
+template<typename DistType>
+void NewJoinQueues(const std::vector<std::pair<size_t, GraphVertex<size_t, DistType>>>& joinResults,
                    const NodeTracker& blocksJoined,
                    const Graph<BlockIndecies, DistType>& targetGraphState,
-                   JoinMap<BlockNumberType, DataIndexType>& mapToUpdate){
+                   JoinMap<size_t, size_t>& mapToUpdate){
     
     for (const auto& result: joinResults){
         for (const auto index: result.second){
             for (const auto& targetVertexNeighbor: targetGraphState[index.first]){
-                BlockNumberType targetBlock = targetVertexNeighbor.first.blockNumber;
+                size_t targetBlock = targetVertexNeighbor.first.blockNumber;
                 if (blocksJoined[targetBlock]) continue;
                 auto findItr = std::find(mapToUpdate[targetBlock][result.first].begin(), mapToUpdate[targetBlock][result.first].end(), targetVertexNeighbor.first.dataIndex);
                 if (findItr == mapToUpdate[targetBlock][result.first].end()) mapToUpdate[targetBlock][result.first].push_back(targetVertexNeighbor.first.dataIndex);
@@ -127,61 +126,43 @@ void NewJoinQueues(const std::vector<std::pair<DataIndexType, GraphVertex<DataIn
     }
 }
 
-
-template<typename DataIndexType, typename DataEntry, typename DistType>
-struct QueryContextInitArgs{
-    GraphVertex<DataIndexType, DistType>& queryHint;
-    SpaceMetric<DataEntry, DataEntry, DistType> distanceFunctor;
-    BatchMetric<DataEntry, DataEntry, std::vector<DistType>> batchingFunctor;
-
-    QueryContextInitArgs(GraphVertex<DataIndexType, DistType>& queryHint, SpaceMetric<DataEntry, DataEntry, DistType> distanceFunctor, BatchMetric<DataEntry, DataEntry, std::vector<DistType>> batchingFunctor):
-        queryHint(queryHint),
-        distanceFunctor(distanceFunctor), 
-        batchingFunctor(batchingFunctor){};
-};
-
-template<typename BlockNumberType, typename DataIndexType, typename DataEntry, typename DataView, typename DistType>
+template<typename DistType>
 struct BlockUpdateContext {
 
     
-    using TemplatedSubProblem = SubProblemData<DataIndexType, DataEntry, DistType>;
-    using TemplatedContextInitArgs = QueryContextInitArgs<DataIndexType, DataView, DistType>;
 
     NodeTracker blockJoinTracker;
-    const DataBlock<DataEntry>& dataBlock;
-    JoinMap<BlockNumberType, DataIndexType> joinsToDo;
-    JoinMap<BlockNumberType, DataIndexType> newJoins;
-    QueryContext<BlockNumberType, DataIndexType, DataEntry, DataView, DistType> queryContext;
-    const Graph<DataIndexType, DistType>& leafGraph;
+    JoinMap<size_t, size_t> joinsToDo;
+    JoinMap<size_t, size_t> newJoins;
+    QueryContext<DistType> queryContext;
     Graph<BlockIndecies, DistType> currentGraph;
 
 
-    BlockUpdateContext(const TemplatedSubProblem subProbResults, const TemplatedContextInitArgs contextArgs, const BlockNumberType numberOfBlocksToJoin, const int queryDepth):
-        leafGraph(subProbResults.subGraph),
-        dataBlock(subProbResults.dataBlock),
-        queryContext(subProbResults.subGraph, subProbResults.dataBlock, contextArgs.queryHint, contextArgs.distanceFunctor, contextArgs.batchingFunctor, contextArgs.queryHint.size(), queryDepth),
-        currentGraph(subProbResults.dataBlock.size(), contextArgs.queryHint.size()),
-        joinsToDo(),
+    BlockUpdateContext(const Graph<size_t, DistType>& blockGraph, QueryContext<DistType>&& queryContext, const size_t numberOfBlocksToJoin):
+        queryContext(std::move(queryContext)),
+        currentGraph(blockGraph.size(), blockGraph[0].size()),
         blockJoinTracker(numberOfBlocksToJoin){
+            /*
             for(size_t i = 0; auto& vertex: currentGraph){
                 for (const auto& neighbor: leafGraph[i]){
                     vertex.push_back({{dataBlock.blockNumber, neighbor.first}, neighbor.second});
                 }
                 i++;
             }
+            */
     }
 
     void SetNextJoins(){
         joinsToDo = std::move(newJoins);
-        newJoins = JoinMap<BlockNumberType, DataIndexType>();
+        newJoins = JoinMap<size_t, size_t>();
     }
 };
 
-template<typename BlockNumberType, typename DataIndexType, typename DataEntry, typename DataView, typename DistType>
-JoinMap<BlockNumberType, DataIndexType> InitializeJoinMap(const std::vector<BlockUpdateContext<BlockNumberType, DataIndexType, DataEntry, DataView, DistType>>& blockUpdateContexts,
-                                                          const ComparisonMap<BlockNumberType, DataIndexType>& comparisonMap,
+template<typename DistType>
+JoinMap<size_t, size_t> InitializeJoinMap(const std::vector<BlockUpdateContext<DistType>>& blockUpdateContexts,
+                                                          const ComparisonMap<size_t, size_t>& comparisonMap,
                                                           const NodeTracker& nodesJoined){
-    JoinMap<BlockNumberType, DataIndexType> joinMap;
+    JoinMap<size_t, size_t> joinMap;
     for (auto& [targetBlock, queue]: comparisonMap){
         //std::unordered_map<size_t, std::pair<size_t, std::vector<size_t>>> joinHints;
         for (const auto& [sourceIndex, targetIndex]: queue){
@@ -197,9 +178,9 @@ JoinMap<BlockNumberType, DataIndexType> InitializeJoinMap(const std::vector<Bloc
 
 
 
-template<typename BlockNumberType, typename DataIndexType, typename DataEntry, typename DataView, typename DistType>
-int UpdateBlocks(BlockUpdateContext<BlockNumberType, DataIndexType, DataEntry, DataView, DistType>& blockLHS,
-                 BlockUpdateContext<BlockNumberType, DataIndexType, DataEntry, DataView, DistType>& blockRHS){
+template<typename DistType>
+int UpdateBlocks(BlockUpdateContext<DistType>& blockLHS,
+                 BlockUpdateContext<DistType>& blockRHS){
 /*(JoinHints<DataIndexType>&& joinsToDo,
                   NodeTracker& blockJoinTracker,
                   Graph<BlockIndecies, DistType>& updatedBlockGraph, 
@@ -222,65 +203,25 @@ int UpdateBlocks(BlockUpdateContext<BlockNumberType, DataIndexType, DataEntry, D
         blockLHS.blockJoinTracker[blockRHS.dataBlock.blockNumber] = true;
 
         DistanceCache<DistType> distanceCache;
-        /*
-        DistType operator()(DataIndexType LHSIndex, DataIndexType RHSIndex, const DataEntry& queryData) const{
-        return this->distanceFunctor(dataBlock[LHSIndex], queryData);
-        }
-        */
-        /*
-        auto cachingDistanceFunctor = [&](std::vector<DataIndexType> LHSIndecies, DataIndexType RHSIndex, const DataEntry& queryData) -> DistType{
-            std::vector<DistType> distances = blockRHS.queryContext.defaultQueryFunctor(LHSIndecies, RHSIndex, queryData);
-            for (size_t i = 0; i<LHSIndecies; i+=1){
-                distanceCache[std::pair{LHSIndecies[i], RHSIndex}] = distances[i];
-            }
-            return distances;
-        };
-        */
+        
         auto cachingDistanceFunctor = blockRHS.queryContext.defaultQueryFunctor.CachingFunctor(distanceCache);
         auto cachedDistanceFunctor = blockLHS.queryContext.defaultQueryFunctor.CachedFunctor(distanceCache);
         
 
-        JoinResults<DataIndexType, DistType> blockLHSUpdates = BlockwiseJoin(blockLHS.joinsToDo[blockRHS.dataBlock.blockNumber],
+        JoinResults<size_t, DistType> blockLHSUpdates = BlockwiseJoin(blockLHS.joinsToDo[blockRHS.dataBlock.blockNumber],
                                                                             blockLHS.currentGraph,
                                                                             blockLHS.leafGraph,
-                                                                            blockLHS.dataBlock,
                                                                             blockRHS.queryContext,
                                                                             cachingDistanceFunctor);
         NewJoinQueues<size_t, size_t, float>(blockLHSUpdates, blockLHS.blockJoinTracker, blockRHS.currentGraph, blockLHS.newJoins);
 
-        /*
-        auto cachedDistanceFunctor = [&](std::vector<DataIndexType> LHSIndecies, DataIndexType RHSIndex, const DataEntry& queryData) -> DistType{
-            std::vector<DataIndexType> distToCompute;
-            std::vector<DistType> precomputedDists;
-            for(size_t i = 0; i<LHSIndecies.size(); i += 1){
-                auto result = distanceCache.find(std::pair{RHSIndex, LHSIndecies[i]});
-                if(result != distanceCache.end()) distToCompute.push_back();
-                else precomputedDists.push_back(result->second);
-            }
-            std::vector<DistType> newDists = blockLHS.queryContext.defaultQueryFunctor(distToCompute, RHSIndex, queryData);
-            std::vector<DistType> results;
-            size_t newIndex = 0;
-            for(size_t i=0; i<LHSIndecies.size(); i+=1){
-                if (LHSIndecies[i] != distToCompute[newIndex]) results.push_back(precomputedDists[i-newIndex]);
-                else{
-                    results.push_back(newDists[newIndex]);
-                    newIndex += 1;
-                }
-            }
-            
-            //auto result = distanceCache.find(std::pair{RHSIndex, LHSIndex});
-            //if(result != distanceCache.end()) return result->second;
-            //else return blockLHS.queryContext.defaultQueryFunctor(LHSIndex, RHSIndex, queryData);
-            
-        };
-        */
+        
 
         blockRHS.blockJoinTracker[blockLHS.dataBlock.blockNumber] = true;
 
-        JoinResults<DataIndexType, DistType> blockRHSUpdates = BlockwiseJoin(blockRHS.joinsToDo[blockLHS.dataBlock.blockNumber],
+        JoinResults<size_t, DistType> blockRHSUpdates = BlockwiseJoin(blockRHS.joinsToDo[blockLHS.dataBlock.blockNumber],
                                                                             blockRHS.currentGraph,
                                                                             blockRHS.leafGraph,
-                                                                            blockRHS.dataBlock,
                                                                             blockLHS.queryContext,
                                                                             cachedDistanceFunctor);
 
@@ -301,10 +242,9 @@ int UpdateBlocks(BlockUpdateContext<BlockNumberType, DataIndexType, DataEntry, D
         
         
 
-        JoinResults<DataIndexType, DistType> blockLHSUpdates = BlockwiseJoin(blockLHS.joinsToDo[blockRHS.dataBlock.blockNumber],
+        JoinResults<size_t, DistType> blockLHSUpdates = BlockwiseJoin(blockLHS.joinsToDo[blockRHS.dataBlock.blockNumber],
                                                                             blockLHS.currentGraph,
                                                                             blockLHS.leafGraph,
-                                                                            blockLHS.dataBlock,
                                                                             blockRHS.queryContext,
                                                                             blockRHS.queryContext.defaultQueryFunctor);
         NewJoinQueues<size_t, size_t, float>(blockLHSUpdates, blockLHS.blockJoinTracker, blockRHS.currentGraph, blockLHS.newJoins);

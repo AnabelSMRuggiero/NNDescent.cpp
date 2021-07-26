@@ -8,8 +8,8 @@ Please refer to the project repo for any updates regarding liscensing.
 https://github.com/AnabelSMRuggiero/NNDescent.cpp
 */
 
-#ifndef NND_TYPE_HPP
-#define NND_TYPE_HPP
+#ifndef NND_GENERALTYPE_HPP
+#define NND_GENERALTYPE_HPP
 
 #include <vector>
 #include <concepts>
@@ -114,35 +114,13 @@ using SpaceMetric = RetType (*)(const DataTypeA&, const DataTypeB&);
 template<typename DataTypeA, typename DataTypeB, typename RetType=std::vector<double>>
 using BatchMetric = RetType (*)(const std::vector<DataTypeA>&, const DataTypeB&);
 
-/*
-I need to rethink this if this is the direction I'll go to refactor templates
-template<typename DistType, typename COMExtent, typename DataType,
-         std::integral BlockNumberType = size_t,
-         std::integral DataIndexType = size_t>
-struct nndBaseTypes{
-    
-    using DataEntry = AlignedArray<DataType>;
+struct BlockIndecies{
+    // The block a data point exists in
+    size_t blockNumber;
+    // The index within that block
+    size_t dataIndex;
 
 };
-
-template<typename baseTypeLiteral>
-using DistType = typename baseTypeLiteral::DistType;
-
-template<typename baseTypeLiteral>
-using COMExtent = typename baseTypeLiteral::COMExtent;
-
-template<typename baseTypeLiteral>
-using DataType = typename baseTypeLiteral::DataType;
-
-template<typename baseTypeLiteral>
-using BlockNumberType = typename baseTypeLiteral::BlockNumberType;
-
-template<typename baseTypeLiteral>
-using DataIndexType = typename baseTypeLiteral::DataIndexType;
-
-template<typename baseTypeLiteral>
-using DataEntry = typename baseTypeLiteral::DataEntry;
-*/
 
 
 }

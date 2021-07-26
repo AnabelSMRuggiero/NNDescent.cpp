@@ -58,4 +58,6 @@
   - QueryContexts
     - Checking to avoid double calculating.
 
+- When parallelizing: BE SURE TO REMOVE THE REFERENCE IN CONCRETEFUNCTOR 
+
 - I think I'll end up doing a tasking model where a producer wraps the work and resources in a functor and passes the functor to the thread.

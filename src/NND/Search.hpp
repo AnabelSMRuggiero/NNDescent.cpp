@@ -14,10 +14,12 @@ https://github.com/AnabelSMRuggiero/NNDescent.cpp
 #include <vector>
 
 
-#include "../Utilities/Data.hpp"
+
 #include "GraphStructures.hpp"
 #include "BlockwiseAlgorithm.hpp"
+#include "Type.hpp"
 
+#include "../Utilities/Data.hpp"
 
 namespace nnd{
 

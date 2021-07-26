@@ -160,12 +160,11 @@ std::vector<float> BatchEuclideanNorm(const std::vector<AlignedSpan<const float>
         //Core computation loop
         for(;index+15<pointB.size(); index+=8){
             fromComponent2 = _mm256_load_ps(&(pointB[index+8]));
-            for(size_t j = 0; j<numPointsTo; j+=1){
-                toComponents[j] = _mm256_sub_ps(toComponents[j], fromComponent1);
-                accumulators[j] = _mm256_fmadd_ps(toComponents[j], toComponents[j], accumulators[j]);
-                //Load for next iteration
+            for(size_t j = 0; j<numPointsTo; j+=1) toComponents[j] = _mm256_sub_ps(toComponents[j], fromComponent1);
                 
-            }
+            for(size_t j = 0; j<numPointsTo; j+=1) accumulators[j] = _mm256_fmadd_ps(toComponents[j], toComponents[j], accumulators[j]);
+                
+            //Load for next iteration
             for(size_t j = 0; j<numPointsTo; j+=1) toComponents[j] = _mm256_load_ps(&(pointsTo[j][index+8]));
 
             fromComponent1 = fromComponent2;
@@ -173,12 +172,9 @@ std::vector<float> BatchEuclideanNorm(const std::vector<AlignedSpan<const float>
         
         
         //Already have fromComponent1 loaded for the last iter
-        for(size_t j = 0; j<numPointsTo; j+=1){
-            toComponents[j] = _mm256_sub_ps(toComponents[j], fromComponent1);
-            accumulators[j] = _mm256_fmadd_ps(toComponents[j], toComponents[j], accumulators[j]);
-            //Load for next iteration
-            //toComponents[j] = _mm256_loadu_ps(&(pointsTo[j][index+8]));
-        }
+        for(size_t j = 0; j<numPointsTo; j+=1) toComponents[j] = _mm256_sub_ps(toComponents[j], fromComponent1);
+        for(size_t j = 0; j<numPointsTo; j+=1) accumulators[j] = _mm256_fmadd_ps(toComponents[j], toComponents[j], accumulators[j]);
+
         index +=8;
         fromComponent2 = _mm256_setzero_ps();
         //reduce the results
