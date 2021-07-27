@@ -561,8 +561,8 @@ int main(int argc, char *argv[]){
     const size_t numberSearchNeighbors = 15;
     size_t numberSearchBlocks = dataBlocks.size();
 
-    std::vector<SearchFunctor<AlignedArray<float>, EuclideanMetricPair>> searchFunctors;
-    searchFunctors.reserve(mnistFashionTest.size());
+    SearchFunctor<AlignedArray<float>, EuclideanMetricPair> searchDist(dataBlocks, mnistFashionTest);
+    SinglePointFunctor<float> searchFunctor(searchDist);
 
     auto searcherConstructor = [&, blocks = &dataBlocks](const DataSet<AlignedArray<float>>& dataSource, std::span<const size_t> indicies, size_t blockCounter)->
                                   std::vector<SearchContext<float>>{
@@ -571,9 +571,7 @@ int main(int argc, char *argv[]){
         for(size_t index: indicies){
             //const DataView searchPoint, const std::vector<DataBlock<DataEntry>>& blocks
             
-            searchFunctors.push_back(SearchFunctor<AlignedArray<float>, EuclideanMetricPair>(dataSource[index], *blocks));
-            SinglePointFunctor<float> erasedFunctor(searchFunctors.back());
-            retVec.push_back({numberSearchNeighbors, numberSearchBlocks, erasedFunctor});
+            retVec.push_back({numberSearchNeighbors, numberSearchBlocks, index});
         }
         return retVec;
     };
@@ -598,9 +596,8 @@ int main(int argc, char *argv[]){
         
         for (size_t j = 0; auto& context: testBlock){
             context.blocksJoined[i] = true;
-            auto& queryFunctor = context.distFunctor;
-            queryFunctor.SetBlock(i);
-            GraphVertex<size_t, float> initNeighbors = blockUpdateContexts[i].queryContext.QueryHotPath(hint, 0ul, queryFunctor);
+            searchFunctor.SetBlock(i);
+            GraphVertex<size_t, float> initNeighbors = blockUpdateContexts[i].queryContext.QueryHotPath(hint, context.dataIndex, searchFunctor);
             for (const auto& result: initNeighbors){
                 context.currentNeighbors.push_back({{i, result.first}, result.second});
                 for (const auto& resultNeighbor: blockUpdateContexts[i].currentGraph[result.first]){
@@ -620,7 +617,7 @@ int main(int argc, char *argv[]){
                 GraphVertex<size_t, float> newNodes = BlockwiseSearch(searchContexts[hint.first.blockNumber][hint.first.dataIndex],
                                                                                 blockUpdateContexts[i].queryContext,
                                                                                 hint.second,
-                                                                                searchContexts[hint.first.blockNumber][hint.first.dataIndex].distFunctor);
+                                                                                searchFunctor);
                 
                 searchUpdates += newNodes.size();
 

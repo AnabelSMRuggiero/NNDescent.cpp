@@ -29,10 +29,10 @@ struct SearchContext{
 
     GraphVertex<BlockIndecies, DistType> currentNeighbors;
     NodeTracker blocksJoined;
-    SinglePointFunctor<DistType> distFunctor;
+    size_t dataIndex;
     
-    SearchContext(const size_t numNeighbors, const size_t numBlocks, SinglePointFunctor<DistType> distFunctor):
-        currentNeighbors(numNeighbors), blocksJoined(numBlocks), distFunctor(distFunctor){};
+    SearchContext(const size_t numNeighbors, const size_t numBlocks, const size_t dataIndex):
+        currentNeighbors(numNeighbors), blocksJoined(numBlocks), dataIndex(dataIndex){};
 
 };
 
@@ -56,7 +56,7 @@ GraphVertex<size_t, DistType> BlockwiseSearch(SearchContext<DistType>& searching
 
     //std::vector<std::pair<DataIndexType, GraphVertex<DataIndexType, DistType>>> retResults;
     queryFunctor.SetBlock(targetBlock.blockNumber);
-    GraphVertex<size_t, DistType> joinResults = targetBlock.QueryHotPath(queryHint, 0, queryFunctor);
+    GraphVertex<size_t, DistType> joinResults = targetBlock.QueryHotPath(queryHint, searchingPoint.dataIndex, queryFunctor);
     searchingPoint.blocksJoined[targetBlock.blockNumber] = true;
     size_t resultsAdded = ConsumeVertex(searchingPoint.currentNeighbors, joinResults, targetBlock.blockNumber);
     

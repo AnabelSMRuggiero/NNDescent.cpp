@@ -166,27 +166,27 @@ template<typename DataEntry, typename MetricPair>
 struct SearchFunctor{
     using DistType = typename MetricPair::DistType;
     using DataView = typename DataBlock<DataEntry>::DataView;
-    //Reference to Com?
-    const DataView searchPoint;
     const DataBlock<DataEntry>* targetBlock;
     const std::vector<DataBlock<DataEntry>>& blocks;
+    const DataSet<DataEntry>& points;
     [[no_unique_address]] MetricPair functor;
 
-    SearchFunctor(const DataView searchPoint, const std::vector<DataBlock<DataEntry>>& blocks): searchPoint(searchPoint), blocks(blocks), functor(){};
+    SearchFunctor(const std::vector<DataBlock<DataEntry>>& blocks, const DataSet<DataEntry>& points):
+        blocks(blocks), points(points), functor(){};
 
-    SearchFunctor(const DataView searchPoint, const std::vector<DataBlock<DataEntry>>& blocks, MetricPair functor):
-                        searchPoint(searchPoint), blocks(blocks), functor(functor){};
+    SearchFunctor(const std::vector<DataBlock<DataEntry>>& blocks, const DataSet<DataEntry>& points, MetricPair functor):
+                        blocks(blocks), points(points), functor(functor){};
 
-    float operator()(const size_t sink, const size_t targetIndex) const{
-        return functor((*targetBlock)[targetIndex], searchPoint);
+    float operator()(const size_t searchIndex, const size_t targetIndex) const{
+        return functor(points[searchIndex], (*targetBlock)[targetIndex]);
     };
     
-    std::vector<float> operator()(const size_t sink, const std::vector<size_t>& targetIndecies) const{
+    std::vector<float> operator()(const size_t searchIndex, const std::vector<size_t>& targetIndecies) const{
         std::vector<DataView> targetData;
         for(const auto& index: targetIndecies){
             targetData.push_back((*targetBlock)[index]);
         }
-        return functor(searchPoint, targetData);
+        return functor(points[searchIndex], targetData);
     };
 
     void SetBlock(size_t targetBlockNum){
@@ -213,7 +213,6 @@ struct SinglePointFunctor{
     void SetBlock(size_t targetBlockNum){
         this->ptrToFunc->SetBlock(targetBlockNum);
     };
-
 
     private:
     struct AbstractFunctor{
