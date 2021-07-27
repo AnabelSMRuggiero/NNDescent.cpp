@@ -37,11 +37,19 @@ struct IntegralPairHasher{
 template<typename DistType>
 using DistanceCache = std::unordered_map<std::pair<size_t, size_t>, DistType, IntegralPairHasher<size_t>>;
 
+
 template<typename ValueType, size_t alignment=32>
 struct AlignedArray{
     using value_type = ValueType;
     private:
-    std::unique_ptr<ValueType[]> data;
+
+    struct AlignedDeleter{
+
+        void operator()(ValueType* arrayToDelete) {operator delete[](arrayToDelete, std::align_val_t(alignment)); };
+
+    };
+
+    std::unique_ptr<ValueType[], AlignedDeleter> data;
     size_t capacity;
 
     public:
@@ -71,6 +79,7 @@ struct AlignedArray{
     const ValueType* end() const { return data.get() + capacity; }
 
     const ValueType& operator[](size_t index) const{ return data[index]; }
+
 
 };
 

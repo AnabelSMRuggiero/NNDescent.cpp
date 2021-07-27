@@ -174,7 +174,7 @@ struct DefaultQueryFunctor{
             std::vector<DistType> results;
             size_t newIndex = 0;
             for(size_t i=0; i<rhsIndecies.size(); i+=1){
-                if (rhsIndecies[i] != distToCompute[newIndex]) results.push_back(precomputedDists[i-newIndex]);
+                if (newIndex == distToCompute.size() || rhsIndecies[i] != distToCompute[newIndex]) results.push_back(precomputedDists[i-newIndex]);
                 else{
                     results.push_back(newDists[newIndex]);
                     newIndex += 1;

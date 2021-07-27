@@ -73,7 +73,7 @@ struct RandomProjectionForest{
         std::pair<size_t, size_t> children;
         size_t parent;
         size_t thisIndex;
-        std::vector<TreeLeaf>* enclosingVector;
+        //std::vector<TreeLeaf>* enclosingVector;
         /*
         This structure probably can be condensed back down to just a tuple of {bool, size_t, size_t}
         (or two arrays, bool[] and std::pair/std::range[]).
@@ -83,53 +83,51 @@ struct RandomProjectionForest{
         I'll leave as is for now in case this makes some other piece easier to work on
         
         */
-        TreeLeaf() : splitRange(0,0), splittingIndex(-1), children(0, 0), parent(0), enclosingVector(nullptr){};
+        TreeLeaf() : splitRange(0,0), splittingIndex(-1), children(0, 0), parent(0){};
 
-        TreeLeaf(size_t index1, size_t index2, size_t splittingIndex, size_t thisIndex, std::vector<TreeLeaf>* enclose) : splitRange(index1, index2),
+        TreeLeaf(size_t index1, size_t index2, size_t splittingIndex, size_t thisIndex) : splitRange(index1, index2),
                                                                                 splittingIndex(splittingIndex), 
                                                                                 children(0,0),
                                                                                 parent(0), 
-                                                                                thisIndex(thisIndex),
-                                                                                enclosingVector(enclose){};
+                                                                                thisIndex(thisIndex){};
 
-        TreeLeaf(std::pair<size_t, size_t> indecies, size_t splittingIndex, size_t thisIndex, std::vector<TreeLeaf>* enclose) : splitRange(indecies),
+        TreeLeaf(std::pair<size_t, size_t> indecies, size_t splittingIndex, size_t thisIndex) : splitRange(indecies),
                                                                                     splittingIndex(splittingIndex), 
                                                                                     children(0,0),
                                                                                     parent(0), 
-                                                                                    thisIndex(thisIndex),
-                                                                                    enclosingVector(enclose){};
+                                                                                    thisIndex(thisIndex){};
 
-        TreeLeaf& AddLeftLeaf(size_t index1, size_t index2, size_t splittingIndex){
-            this->children.first = enclosingVector->size();
+        TreeLeaf AddLeftLeaf(size_t index1, size_t index2, size_t splittingIndex, std::vector<TreeLeaf>& enclosingVector){
+            this->children.first = enclosingVector.size();
             size_t indexToWrite = thisIndex;
-            TreeLeaf& newLeaf = enclosingVector->emplace_back(index1, index2, splittingIndex, enclosingVector->size(), enclosingVector);
+            TreeLeaf& newLeaf = enclosingVector.emplace_back(index1, index2, splittingIndex, enclosingVector.size());
             newLeaf.parent = indexToWrite;
             
             return newLeaf;
         };
 
-        TreeLeaf& AddLeftLeaf(std::pair<size_t, size_t> indecies, size_t splittingIndex){
-            this->children.first = enclosingVector->size();
+        TreeLeaf AddLeftLeaf(std::pair<size_t, size_t> indecies, size_t splittingIndex, std::vector<TreeLeaf>& enclosingVector){
+            this->children.first = enclosingVector.size();
             size_t indexToWrite = thisIndex;
-            TreeLeaf& newLeaf = enclosingVector->emplace_back(indecies, splittingIndex, enclosingVector->size(), enclosingVector);
+            TreeLeaf& newLeaf = enclosingVector.emplace_back(indecies, splittingIndex, enclosingVector.size());
             newLeaf.parent = indexToWrite;
 
             return newLeaf;
         };
 
-        TreeLeaf& AddRightLeaf(size_t index1, size_t index2, size_t splittingIndex, std::ptrdiff_t parentDiff){
-            this->children.second = enclosingVector->size();
+        TreeLeaf AddRightLeaf(size_t index1, size_t index2, size_t splittingIndex, std::ptrdiff_t parentDiff, std::vector<TreeLeaf>& enclosingVector){
+            this->children.second = enclosingVector.size();
             size_t indexToWrite = thisIndex;
-            TreeLeaf& newLeaf = enclosingVector->emplace_back(index1, index2, splittingIndex, enclosingVector->size(), enclosingVector);
+            TreeLeaf& newLeaf = enclosingVector.emplace_back(index1, index2, splittingIndex, enclosingVector.size());
             newLeaf.parent = indexToWrite;
 
             return newLeaf;
         };
 
-        TreeLeaf& AddRightLeaf(std::pair<size_t, size_t> indecies, size_t splittingIndex){
-            this->children.second = enclosingVector->size();
+        TreeLeaf AddRightLeaf(std::pair<size_t, size_t> indecies, size_t splittingIndex, std::vector<TreeLeaf>& enclosingVector){
+            this->children.second = enclosingVector.size();
             size_t indexToWrite = thisIndex;
-            TreeLeaf& newLeaf = enclosingVector->emplace_back(indecies, splittingIndex, enclosingVector->size(), enclosingVector);
+            TreeLeaf& newLeaf = enclosingVector.emplace_back(indecies, splittingIndex, enclosingVector.size());
             newLeaf.parent = indexToWrite;
             return newLeaf;
         };
@@ -144,7 +142,7 @@ struct RandomProjectionForest{
 
         //splittingVectors.reserve((1<<numberOfSplits) - 1);
         treeLeaves.reserve(std::min(size_t(1<<(numberOfSplits+1)), 2*numberOfSamples/size_t(heurisitics.splitThreshold)));
-        treeLeaves.emplace_back(std::pair<size_t, size_t>(0, numberOfSamples), 0, 0, &treeLeaves);
+        treeLeaves.emplace_back(std::pair<size_t, size_t>(0, numberOfSamples), 0, 0);
 
         std::vector<size_t> splitQueue1(1, 0);
         std::vector<size_t> splitQueue2(0);
@@ -201,8 +199,8 @@ struct RandomProjectionForest{
                 if (numSplit>heurisitics.childThreshold &&
                     (treeLeaves[currentIndex].splitRange.second - treeLeaves[currentIndex].splitRange.first - numSplit)>heurisitics.childThreshold){
 
-                    TreeLeaf& leftSplit = (treeLeaves[currentIndex].AddLeftLeaf(std::pair<size_t, size_t>(treeLeaves[currentIndex].splitRange.first, treeLeaves[currentIndex].splitRange.first + numSplit),
-                                                                    treeLeaves[currentIndex].splittingIndex * 2 + 1));
+                    TreeLeaf leftSplit = treeLeaves[currentIndex].AddLeftLeaf(std::pair<size_t, size_t>(treeLeaves[currentIndex].splitRange.first, treeLeaves[currentIndex].splitRange.first + numSplit),
+                                                                    treeLeaves[currentIndex].splittingIndex * 2 + 1, treeLeaves);
                     
 
                     if (leftSplit.splitRange.second - leftSplit.splitRange.first > heurisitics.splitThreshold) splitQueue2.push_back(leftSplit.thisIndex);
@@ -224,8 +222,8 @@ struct RandomProjectionForest{
                         std::copy(fromIt, endFrom, toIt);
                     }
 
-                    TreeLeaf& rightSplit = (treeLeaves[currentIndex].AddRightLeaf(std::pair<size_t, size_t>(treeLeaves[currentIndex].splitRange.first + numSplit, treeLeaves[currentIndex].splitRange.second),
-                        treeLeaves[currentIndex].splittingIndex * 2 + 2));
+                    TreeLeaf rightSplit = treeLeaves[currentIndex].AddRightLeaf(std::pair<size_t, size_t>(treeLeaves[currentIndex].splitRange.first + numSplit, treeLeaves[currentIndex].splitRange.second),
+                        treeLeaves[currentIndex].splittingIndex * 2 + 2, treeLeaves);
 
                     if (rightSplit.splitRange.second - rightSplit.splitRange.first > heurisitics.splitThreshold) splitQueue2.push_back(rightSplit.thisIndex);
                     else{
@@ -287,7 +285,7 @@ RandomProjectionForest::RandomProjectionForest(size_t numberOfSamples, Transform
 
         //splittingVectors.reserve((1<<numberOfSplits) - 1);
         treeLeaves.reserve(1<<(numberOfSplits+1));
-        treeLeaves.emplace_back(std::pair<size_t, size_t>(0, numberOfSamples), 0, 0, &treeLeaves);
+        treeLeaves.emplace_back(std::pair<size_t, size_t>(0, numberOfSamples), 0, 0);
 
         std::vector<size_t> splitQueue1(1, 0);
         std::vector<size_t> splitQueue2(0);
@@ -325,10 +323,10 @@ RandomProjectionForest::RandomProjectionForest(size_t numberOfSamples, Transform
                 int numSplit = Split(beginIt, endIt, toBegin, toRev, splittingFunction);
 
 
-                TreeLeaf& leftSplit = (treeLeaves[currentIndex].AddLeftLeaf(std::pair<size_t, size_t>(treeLeaves[currentIndex].splitRange.first, treeLeaves[currentIndex].splitRange.first + numSplit),
-                                                                 treeLeaves[currentIndex].splittingIndex * 2 + 1));
-                TreeLeaf& rightSplit = (treeLeaves[currentIndex].AddRightLeaf(std::pair<size_t, size_t>(treeLeaves[currentIndex].splitRange.first + numSplit, treeLeaves[currentIndex].splitRange.second),
-                                                                   treeLeaves[currentIndex].splittingIndex * 2 + 2));
+                TreeLeaf leftSplit = treeLeaves[currentIndex].AddLeftLeaf(std::pair<size_t, size_t>(treeLeaves[currentIndex].splitRange.first, treeLeaves[currentIndex].splitRange.first + numSplit),
+                                                                 treeLeaves[currentIndex].splittingIndex * 2 + 1, treeLeaves);
+                TreeLeaf rightSplit = treeLeaves[currentIndex].AddRightLeaf(std::pair<size_t, size_t>(treeLeaves[currentIndex].splitRange.first + numSplit, treeLeaves[currentIndex].splitRange.second),
+                                                                   treeLeaves[currentIndex].splittingIndex * 2 + 2, treeLeaves);
                 auto result = std::find(splitIndicies.begin(),splitIndicies.end(), leftSplit.splittingIndex);
                 if ((result != splitIndicies.end()) && (leftSplit.splitRange.second - leftSplit.splitRange.first > 1)) splitQueue2.push_back(leftSplit.thisIndex);
                 else {

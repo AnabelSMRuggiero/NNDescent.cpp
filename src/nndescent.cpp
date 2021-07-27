@@ -357,7 +357,7 @@ static const std::unordered_map<std::string, HyperParameter> optionNumber = {
 
 
 int main(int argc, char *argv[]){
-
+    
     static const std::endian dataEndianness = std::endian::big;
 
     size_t numBlockGraphNeighbors = 10;
