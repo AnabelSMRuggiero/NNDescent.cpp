@@ -72,7 +72,7 @@ JoinResults<size_t, DistType> BlockwiseJoin(const JoinHints<size_t>& startJoins,
     std::vector<std::pair<size_t, GraphVertex<size_t, DistType>>> retResults;
     while(joinHints.size()){
         std::vector<std::pair<size_t, GraphVertex<size_t, DistType>>> joinResults;
-        for (const auto& joinHint: joinHints){
+        for (auto& joinHint: joinHints){
             //GraphVertex<size_t, DistType> joinResult = targetBlock || QueryPoint{joinHint.second, blockData[joinHint.first]};
             //const QueryPoint<size_t, DataEntry, DistType> query(joinHint.second, blockData[joinHint.first], joinHint.first);
             joinResults.push_back({joinHint.first, targetBlock.QueryHotPath(joinHint.second, joinHint.first, queryFunctor)});
@@ -195,62 +195,64 @@ int UpdateBlocks(BlockUpdateContext<DistType>& blockLHS,
     
     //JoinMap<size_t, size_t> RHSNewJoinHints;
 
-    bool doRHSJoin = blockRHS.joinsToDo.find(blockLHS.dataBlock.blockNumber) != blockRHS.joinsToDo.end();
+    bool doRHSJoin = blockRHS.joinsToDo.find(blockLHS.queryContext.blockNumber) != blockRHS.joinsToDo.end();
 
     int graphUpdates(0);
 
     if(doRHSJoin){
-        blockLHS.blockJoinTracker[blockRHS.dataBlock.blockNumber] = true;
-
-        DistanceCache<DistType> distanceCache;
+        blockLHS.blockJoinTracker[blockRHS.queryContext.blockNumber] = true;
         
+        blockLHS.queryContext.defaultQueryFunctor.SetBlocks(blockLHS.queryContext.blockNumber, blockRHS.queryContext.blockNumber);
+        DistanceCache<DistType> distanceCache;
+        distanceCache.reserve(50*50); //This is a touch janky, but place holder while I get code working again
         auto cachingDistanceFunctor = blockRHS.queryContext.defaultQueryFunctor.CachingFunctor(distanceCache);
         auto cachedDistanceFunctor = blockLHS.queryContext.defaultQueryFunctor.CachedFunctor(distanceCache);
         
 
-        JoinResults<size_t, DistType> blockLHSUpdates = BlockwiseJoin(blockLHS.joinsToDo[blockRHS.dataBlock.blockNumber],
+        JoinResults<size_t, DistType> blockLHSUpdates = BlockwiseJoin(blockLHS.joinsToDo[blockRHS.queryContext.blockNumber],
                                                                             blockLHS.currentGraph,
-                                                                            blockLHS.leafGraph,
+                                                                            blockLHS.queryContext.subGraph,
                                                                             blockRHS.queryContext,
                                                                             cachingDistanceFunctor);
-        NewJoinQueues<size_t, size_t, float>(blockLHSUpdates, blockLHS.blockJoinTracker, blockRHS.currentGraph, blockLHS.newJoins);
+        NewJoinQueues<float>(blockLHSUpdates, blockLHS.blockJoinTracker, blockRHS.currentGraph, blockLHS.newJoins);
 
         
+        blockRHS.queryContext.defaultQueryFunctor.SetBlocks(blockRHS.queryContext.blockNumber, blockLHS.queryContext.blockNumber);
+        blockRHS.blockJoinTracker[blockLHS.queryContext.blockNumber] = true;
 
-        blockRHS.blockJoinTracker[blockLHS.dataBlock.blockNumber] = true;
-
-        JoinResults<size_t, DistType> blockRHSUpdates = BlockwiseJoin(blockRHS.joinsToDo[blockLHS.dataBlock.blockNumber],
+        JoinResults<size_t, DistType> blockRHSUpdates = BlockwiseJoin(blockRHS.joinsToDo[blockLHS.queryContext.blockNumber],
                                                                             blockRHS.currentGraph,
-                                                                            blockRHS.leafGraph,
+                                                                            blockRHS.queryContext.subGraph,
                                                                             blockLHS.queryContext,
                                                                             cachedDistanceFunctor);
 
-        NewJoinQueues<size_t, size_t, float>(blockRHSUpdates, blockRHS.blockJoinTracker, blockLHS.currentGraph, blockRHS.newJoins);
+        NewJoinQueues<float>(blockRHSUpdates, blockRHS.blockJoinTracker, blockLHS.currentGraph, blockRHS.newJoins);
 
         for (auto& result: blockRHSUpdates){
-            graphUpdates += ConsumeVertex(blockRHS.currentGraph[result.first], result.second, blockLHS.dataBlock.blockNumber);
+            graphUpdates += ConsumeVertex(blockRHS.currentGraph[result.first], result.second, blockLHS.queryContext.blockNumber);
         }
         for (auto& result: blockLHSUpdates){
-            graphUpdates += ConsumeVertex(blockLHS.currentGraph[result.first], result.second, blockRHS.dataBlock.blockNumber);
+            graphUpdates += ConsumeVertex(blockLHS.currentGraph[result.first], result.second, blockRHS.queryContext.blockNumber);
         }
         
         return graphUpdates;
 
     } else {
         //This feels like som jank control flow
-        blockLHS.blockJoinTracker[blockRHS.dataBlock.blockNumber] = true;
+        blockLHS.blockJoinTracker[blockRHS.queryContext.blockNumber] = true;
         
+        blockRHS.queryContext.defaultQueryFunctor.SetBlocks(blockLHS.queryContext.blockNumber, blockRHS.queryContext.blockNumber);
         
 
-        JoinResults<size_t, DistType> blockLHSUpdates = BlockwiseJoin(blockLHS.joinsToDo[blockRHS.dataBlock.blockNumber],
+        JoinResults<size_t, DistType> blockLHSUpdates = BlockwiseJoin(blockLHS.joinsToDo[blockRHS.queryContext.blockNumber],
                                                                             blockLHS.currentGraph,
-                                                                            blockLHS.leafGraph,
+                                                                            blockLHS.queryContext.subGraph,
                                                                             blockRHS.queryContext,
                                                                             blockRHS.queryContext.defaultQueryFunctor);
-        NewJoinQueues<size_t, size_t, float>(blockLHSUpdates, blockLHS.blockJoinTracker, blockRHS.currentGraph, blockLHS.newJoins);
+        NewJoinQueues<float>(blockLHSUpdates, blockLHS.blockJoinTracker, blockRHS.currentGraph, blockLHS.newJoins);
 
         for (auto& result: blockLHSUpdates){
-            graphUpdates += ConsumeVertex(blockLHS.currentGraph[result.first], result.second, blockRHS.dataBlock.blockNumber);
+            graphUpdates += ConsumeVertex(blockLHS.currentGraph[result.first], result.second, blockRHS.queryContext.blockNumber);
         }
         
         return graphUpdates;

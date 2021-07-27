@@ -15,21 +15,22 @@ namespace nnd{
 
 
 struct EuclideanMetricPair{
+    using DistType = float;
     float operator()(const AlignedSpan<const float> lhsVector, const AlignedSpan<const float> rhsVector) const{
         return EuclideanNorm<AlignedSpan<const float>, AlignedSpan<const float>, float>(lhsVector, rhsVector);
     };
     
-    std::vector<float> operator()(const std::vector<AlignedSpan<const float>>& lhsVectors, const AlignedSpan<const float> rhsVector) const{
-        return EuclideanBatcher(lhsVectors, rhsVector);
+    std::vector<float> operator()(AlignedSpan<const float> lhsVector, const std::vector<AlignedSpan<const float>>& rhsVectors) const{
+        return EuclideanBatcher(lhsVector, rhsVectors);
     };
 };
 
-template<typename DataEntry, typename MetricPair, typename DistType>
+template<typename DataEntry, typename MetricPair>
 struct MetricFunctor{
-
+    using DistType = typename MetricPair::DistType;
     using DataView = typename DataBlock<DataEntry>::DataView;
 
-    MetricPair metricPair;
+    [[no_unique_address]] MetricPair metricPair;
     const DataBlock<DataEntry>* lhsBlock;
     const DataBlock<DataEntry>* rhsBlock;
     const std::vector<DataBlock<DataEntry>>& blocks;
@@ -46,12 +47,12 @@ struct MetricFunctor{
         return metricPair((*lhsBlock)[LHSIndex], (*rhsBlock)[RHSIndex]);
     };
     
-    std::vector<DistType> operator()(const std::vector<size_t>& lhsIndecies, size_t rhsIndex) const {
-        std::vector<DataView> lhsData;
-        for(const auto& index: lhsIndecies){
-            lhsData.push_back((*lhsBlock)[index]);
+    std::vector<DistType> operator()(const size_t lhsIndex, const std::vector<size_t>& rhsIndecies) const {
+        std::vector<DataView> rhsData;
+        for(const auto& index: rhsIndecies){
+            rhsData.push_back((*rhsBlock)[index]);
         }
-        return metricPair(lhsData, (*rhsBlock)[rhsIndex]);
+        return metricPair((*lhsBlock)[lhsIndex], rhsData);
     };
 
     void SetBlocks(size_t lhsBlockNum, size_t rhsBlockNum){
@@ -70,11 +71,11 @@ struct DispatchFunctor{
         ptrToFunc(std::make_shared<ConcreteFunctor<DistanceFunctor>>(distanceFunctor)){};
     
     DistType operator()(const size_t LHSIndex, const size_t RHSIndex) const{
-        return this->*ptrToFunc(LHSIndex, RHSIndex);
+        return this->ptrToFunc->operator()(LHSIndex, RHSIndex);
     };
 
-    std::vector<DistType> operator()(const std::vector<size_t>& LHSIndecies, const size_t RHSIndex) const{
-        return this->*ptrToFunc(LHSIndecies, RHSIndex);
+    std::vector<DistType> operator()(const size_t lhsIndex, const std::vector<size_t>& rhsIndecies) const{
+        return this->ptrToFunc->operator()(lhsIndex, rhsIndecies);
     };
 
     void SetBlocks(size_t lhsBlockNum, size_t rhsBlockNum){
@@ -86,7 +87,7 @@ struct DispatchFunctor{
     struct AbstractFunctor{
         virtual ~AbstractFunctor(){};
         virtual DistType operator()(size_t LHSIndex, size_t RHSIndex) const = 0;
-        virtual std::vector<DistType> operator()(const std::vector<size_t>& LHSIndecies, size_t RHSIndex) const = 0;
+        virtual std::vector<DistType> operator()(const size_t lhsIndex, const std::vector<size_t>& rhsIndecies) const = 0;
         virtual void SetBlocks(size_t lhsBlockNum, size_t rhsBlockNum) = 0;
     };
 
@@ -102,8 +103,8 @@ struct DispatchFunctor{
             return this->underlyingFunctor(LHSIndex, RHSIndex);
         };
 
-        std::vector<DistType> operator()(const std::vector<size_t>& LHSIndecies, size_t RHSIndex) const final{
-            return this->underlyingFunctor(LHSIndecies, RHSIndex);
+        std::vector<DistType> operator()(const size_t lhsIndex, const std::vector<size_t>& rhsIndecies) const final{
+            return this->underlyingFunctor(lhsIndex, rhsIndecies);
         };
 
         void SetBlocks(size_t lhsBlockNum, size_t rhsBlockNum) final{
@@ -115,6 +116,140 @@ struct DispatchFunctor{
     const std::shared_ptr<AbstractFunctor> ptrToFunc;
     
 };
+
+
+struct EuclideanComDistance{
+    using DistType = float;
+    float operator()(const AlignedSpan<const float> dataVector, const AlignedSpan<const float> comVector) const{
+        return EuclideanNorm<AlignedSpan<const float>, AlignedSpan<const float>, float>(comVector, dataVector);
+    };
+    
+    std::vector<float> operator()(const AlignedSpan<const float> comVector, const std::vector<AlignedSpan<const float>>& rhsVectors) const{
+        return EuclideanBatcher(comVector, rhsVectors);
+    };
+};
+
+template<typename DataEntry, typename ComView, typename DistFunctor>
+struct DataComDistance{
+    using DistType = typename DistFunctor::DistType;
+    using DataView = typename DataBlock<DataEntry>::DataView;
+    //Reference to Com?
+    ComView centerOfMass;
+    const DataBlock<DataEntry>* targetBlock;
+    const std::vector<DataBlock<DataEntry>>& blocks;
+    [[no_unique_address]] DistFunctor functor;
+
+    DataComDistance(const ComView centerOfMass, const std::vector<DataBlock<DataEntry>>& blocks): centerOfMass(centerOfMass), blocks(blocks), functor(){};
+
+    DataComDistance(const ComView centerOfMass, const std::vector<DataBlock<DataEntry>>& blocks, DistFunctor functor):
+                        centerOfMass(centerOfMass), blocks(blocks), functor(functor){};
+
+    float operator()(const size_t dataIndex) const{
+        return functor(centerOfMass, (*targetBlock)[dataIndex]);
+    };
+    
+    std::vector<float> operator()(const std::vector<size_t>& rhsIndecies) const{
+        std::vector<DataView> rhsData;
+        for(const auto& index: rhsIndecies){
+            rhsData.push_back((*targetBlock)[index]);
+        }
+        return metricPair(centerOfMass, rhsData);
+    };
+
+    void SetBlock(size_t targetBlockNum){
+        this->targetBlock = &(blocks[targetBlockNum]);
+    }
+    
+};
+
+template<typename DataEntry, typename MetricPair>
+struct SearchFunctor{
+    using DistType = typename MetricPair::DistType;
+    using DataView = typename DataBlock<DataEntry>::DataView;
+    //Reference to Com?
+    const DataView searchPoint;
+    const DataBlock<DataEntry>* targetBlock;
+    const std::vector<DataBlock<DataEntry>>& blocks;
+    [[no_unique_address]] MetricPair functor;
+
+    SearchFunctor(const DataView searchPoint, const std::vector<DataBlock<DataEntry>>& blocks): searchPoint(searchPoint), blocks(blocks), functor(){};
+
+    SearchFunctor(const DataView searchPoint, const std::vector<DataBlock<DataEntry>>& blocks, MetricPair functor):
+                        searchPoint(searchPoint), blocks(blocks), functor(functor){};
+
+    float operator()(const size_t sink, const size_t targetIndex) const{
+        return functor((*targetBlock)[targetIndex], searchPoint);
+    };
+    
+    std::vector<float> operator()(const size_t sink, const std::vector<size_t>& targetIndecies) const{
+        std::vector<DataView> targetData;
+        for(const auto& index: targetIndecies){
+            targetData.push_back((*targetBlock)[index]);
+        }
+        return functor(searchPoint, targetData);
+    };
+
+    void SetBlock(size_t targetBlockNum){
+        this->targetBlock = &(blocks[targetBlockNum]);
+    }
+    
+};
+
+template<typename DistType>
+struct SinglePointFunctor{
+
+    template<typename DistanceFunctor>
+    SinglePointFunctor(DistanceFunctor& distanceFunctor):
+        ptrToFunc(std::make_shared<ConcreteFunctor<DistanceFunctor>>(distanceFunctor)){};
+    
+    DistType operator()(const size_t functorParam, const size_t targetIndex) const{
+        return this->ptrToFunc->operator()(functorParam, targetIndex);
+    };
+
+    std::vector<DistType> operator()(const size_t functorParam, const std::vector<size_t>& targetIndecies) const{
+        return this->ptrToFunc->operator()(functorParam, targetIndecies);
+    };
+
+    void SetBlock(size_t targetBlockNum){
+        this->ptrToFunc->SetBlock(targetBlockNum);
+    };
+
+
+    private:
+    struct AbstractFunctor{
+        virtual ~AbstractFunctor(){};
+        virtual DistType operator()(const size_t functorParam, const size_t targetIndex) const = 0;
+        virtual std::vector<DistType> operator()(const size_t functorParam, const std::vector<size_t>& targetIndecies) const = 0;
+        virtual void SetBlock(size_t targetBlockNum) = 0;
+    };
+
+    template<typename DistanceFunctor>
+    struct ConcreteFunctor final : AbstractFunctor{
+
+        DistanceFunctor& underlyingFunctor;
+
+        ConcreteFunctor(DistanceFunctor& underlyingFunctor): underlyingFunctor(underlyingFunctor){};
+        //~ConcreteFunctor() final = default;
+
+        DistType operator()(const size_t functorParam, size_t targetIndex) const final {
+            return this->underlyingFunctor(targetIndex, functorParam);
+        };
+
+        std::vector<DistType> operator()(const size_t functorParam, const std::vector<size_t>& targetIndecies) const final{
+            return this->underlyingFunctor(functorParam, targetIndecies);
+        };
+
+        void SetBlock(size_t targetBlockNum) final{
+            this->underlyingFunctor.SetBlock(targetBlockNum);
+        };
+
+    };
+
+    const std::shared_ptr<AbstractFunctor> ptrToFunc;
+    
+};
+
+
 
 
 

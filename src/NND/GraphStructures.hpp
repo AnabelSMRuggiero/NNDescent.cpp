@@ -431,7 +431,7 @@ struct UndirectedGraph{
 
 
 
-template<typename DataType, typename DataView, typename DistType>
+template<typename DistType>
 //numNeighbors, blockSize, distanceFunctor
 Graph<size_t, DistType> BruteForceBlock(const size_t numNeighbors, const size_t blockSize, DispatchFunctor<DistType>& distanceFunctor){
     Graph<size_t, DistType> retGraph(blockSize, numNeighbors);

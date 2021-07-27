@@ -77,10 +77,10 @@ void BruteForceGraph(Graph<size_t, FloatType>& uninitGraph, size_t numNeighbors,
     }
 }
 
-template<typename IndexType, typename COMExtent>
+template<typename COMExtent>
 struct MetaGraph{
     std::vector<MetaPoint<COMExtent>> points;
-    Graph<IndexType, COMExtent> verticies;
+    Graph<size_t, COMExtent> verticies;
 
     template<typename DataEntry>
     MetaGraph(const std::vector<DataBlock<DataEntry>>& dataBlocks, size_t numNeighbors): points(0), verticies(dataBlocks.size(), numNeighbors){

@@ -213,7 +213,7 @@ namespace internal{
 //const Container<DataIndexType>& LHSIndecies, DataIndexType RHSIndex, const DataEntry& queryData
 //lhsData, queryData
 //template<typename VectorSetA, typename VectorB, typename RetType = std::vector<double>>
-std::vector<float> EuclideanBatcher(const std::vector<AlignedSpan<const float>>& pointsTo, const AlignedSpan<const float>& pointFrom){
+std::vector<float> EuclideanBatcher(const AlignedSpan<const float>& pointFrom, const std::vector<AlignedSpan<const float>>& pointsTo){
     
     std::vector<float> retVector;
     switch(pointsTo.size()){
@@ -246,7 +246,7 @@ std::vector<float> EuclideanBatcher(const std::vector<AlignedSpan<const float>>&
         for (size_t i = 0; i<7; i += 1, index+=1){
             partialBatch.push_back(pointsTo[index]);
         }
-        std::vector<float> partialResult = EuclideanBatcher(partialBatch, pointFrom);
+        std::vector<float> partialResult = EuclideanBatcher(pointFrom, partialBatch);
         for(const auto res: partialResult) retVector.push_back(res);
     }
     
@@ -256,7 +256,7 @@ std::vector<float> EuclideanBatcher(const std::vector<AlignedSpan<const float>>&
         for (; index<pointsTo.size(); index += 1){
             partialBatch.push_back(pointsTo[index]);
         }
-        std::vector<float> partialResult = EuclideanBatcher(partialBatch, pointFrom);
+        std::vector<float> partialResult = EuclideanBatcher(pointFrom, partialBatch);
         for(const auto res: partialResult) retVector.push_back(res);
     }
 

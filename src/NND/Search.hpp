@@ -20,33 +20,34 @@ https://github.com/AnabelSMRuggiero/NNDescent.cpp
 #include "Type.hpp"
 
 #include "../Utilities/Data.hpp"
+#include "../Utilities/Metrics/FunctorErasure.hpp"
 
 namespace nnd{
 
-template<typename BlockNumberType, typename DataIndexType, typename DataEntry, typename DistType>
+template<typename DistType>
 struct SearchContext{
 
     GraphVertex<BlockIndecies, DistType> currentNeighbors;
     NodeTracker blocksJoined;
-    const DataEntry& data;
+    SinglePointFunctor<DistType> distFunctor;
     
-    SearchContext(const size_t numNeighbors, const size_t numBlocks, const DataEntry& dataEntry):
-        currentNeighbors(numNeighbors), blocksJoined(numBlocks), data(dataEntry){};
+    SearchContext(const size_t numNeighbors, const size_t numBlocks, SinglePointFunctor<DistType> distFunctor):
+        currentNeighbors(numNeighbors), blocksJoined(numBlocks), distFunctor(distFunctor){};
 
 };
 
 
 
 //template<typename BlockNumberType, typename DataIndexType, typename DataEntry, typename DistType>
-template<typename BlockNumberType, typename DataIndexType, typename DataEntry, typename DataView, typename DistType, typename QueryFunctor>
-GraphVertex<DataIndexType, DistType> BlockwiseSearch(SearchContext<BlockNumberType, DataIndexType, DataEntry, DistType>& searchingPoint,
-                   const QueryContext<BlockNumberType, DataIndexType, DataEntry, DataView, DistType>& targetBlock,
-                   const DataIndexType hint,
+template<typename DistType, typename QueryFunctor>
+GraphVertex<size_t, DistType> BlockwiseSearch(SearchContext<DistType>& searchingPoint,
+                   const QueryContext<DistType>& targetBlock,
+                   const size_t hint,
                    QueryFunctor queryFunctor){
     
     
     
-    GraphVertex<DataIndexType, DistType> queryHint;
+    GraphVertex<size_t, DistType> queryHint;
     
     queryHint.push_back({hint, std::numeric_limits<DistType>::max()});
 
@@ -54,10 +55,10 @@ GraphVertex<DataIndexType, DistType> BlockwiseSearch(SearchContext<BlockNumberTy
     
 
     //std::vector<std::pair<DataIndexType, GraphVertex<DataIndexType, DistType>>> retResults;
-    
-    GraphVertex<DataIndexType, DistType> joinResults = targetBlock.QueryHotPath(queryHint, searchingPoint.data, 0, queryFunctor);
-    searchingPoint.blocksJoined[targetBlock.dataBlock.blockNumber] = true;
-    size_t resultsAdded = ConsumeVertex(searchingPoint.currentNeighbors, joinResults, targetBlock.dataBlock.blockNumber);
+    queryFunctor.SetBlock(targetBlock.blockNumber);
+    GraphVertex<size_t, DistType> joinResults = targetBlock.QueryHotPath(queryHint, 0, queryFunctor);
+    searchingPoint.blocksJoined[targetBlock.blockNumber] = true;
+    size_t resultsAdded = ConsumeVertex(searchingPoint.currentNeighbors, joinResults, targetBlock.blockNumber);
     
     joinResults.resize(resultsAdded);
     
@@ -66,12 +67,12 @@ GraphVertex<DataIndexType, DistType> BlockwiseSearch(SearchContext<BlockNumberTy
 }
 
 
-template<typename BlockNumberType, typename DataIndexType, typename DataEntry, typename DataView, typename DistType>
-void QueueSearches(const BlockUpdateContext<BlockNumberType, DataIndexType, DataEntry, DataView, DistType>& graphFragment,
-                   SearchContext<BlockNumberType, DataIndexType, DataEntry, DistType>& searchingPoint,
+template<typename DistType>
+void QueueSearches(const BlockUpdateContext<DistType>& graphFragment,
+                   SearchContext<DistType>& searchingPoint,
                    const BlockIndecies searchToQueue,
-                   GraphVertex<DataIndexType, DistType>& joinResults,
-                   std::vector<std::unordered_map<BlockIndecies, BlockNumberType>>& searchQueues){
+                   GraphVertex<size_t, DistType>& joinResults,
+                   std::vector<std::unordered_map<BlockIndecies, size_t>>& searchQueues){
     for (const auto& result: joinResults){
         for (const auto& resultNeighbor: graphFragment.currentGraph[result.first]){
             if (!searchingPoint.blocksJoined[resultNeighbor.first.blockNumber]) searchQueues[resultNeighbor.first.blockNumber][searchToQueue] = resultNeighbor.first.dataIndex;

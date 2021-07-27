@@ -6,16 +6,12 @@
     - Front end some sort of generalized PCA?
     - I could just be boring and front end SVD (which doesn't really work for non-euclidian easily, but would be needed for generalized PCA init)
 
-- Template BlockIndicies
 
 - Fix my I/O. My I/O is bad. (I spend so much time in the stream operator).
   - I/O works okay when compiled on linux with Clang (??)
   - Pretty sure the way I do it might be UB
 
 - An actual, good, pair hashing func that's not from a library.
-
-- Rethink template arguements. The declarations are starting to get a bit long.
-  - Instead of keeping them in terms of the fundamental types, I can instead declare the templates in terms of the composed types.
 
 - Template out the manually vectorized functions. I should be able to make them generic enough that I don't need too many specializations.
   - AVX512 can use more registers
