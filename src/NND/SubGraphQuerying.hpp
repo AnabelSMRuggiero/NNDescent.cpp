@@ -127,13 +127,13 @@ GraphVertex<size_t, DistType> QueryHintFromCOM(const AlignedArray<COMExtentType>
     return retHint;
 }
 
-template<typename DistType>
+template<typename DistType, typename DistanceFunctor>
 struct DefaultQueryFunctor{
 
 
-    DispatchFunctor<DistType>& distanceFunctor;
+    DistanceFunctor distanceFunctor;
 
-    DefaultQueryFunctor(DispatchFunctor<DistType>& distanceFunctor): distanceFunctor(distanceFunctor){};
+    DefaultQueryFunctor(DistanceFunctor& distanceFunctor): distanceFunctor(distanceFunctor){};
     
     DistType operator()(size_t LHSIndex, size_t RHSIndex) const{
         return this->distanceFunctor(LHSIndex, RHSIndex);
@@ -191,12 +191,12 @@ namespace internal{
     static const size_t maxBatch = 7;
 }
 
-template<typename DistType>
+template<typename DistType, typename DistanceFunctor>
 struct QueryContext{
     const UndirectedGraph<size_t> subGraph;
     const GraphVertex<size_t, DistType> queryHint;
     const int querySearchDepth;
-    DefaultQueryFunctor<DistType> defaultQueryFunctor;
+    DefaultQueryFunctor<DistType, DistanceFunctor> defaultQueryFunctor;
     const size_t blockNumber;
     const size_t blockSize;
     //std::unordered_map<BlockNumberType, Graph<IndexType, DistType>> neighborCandidates;
@@ -204,7 +204,7 @@ struct QueryContext{
 
     QueryContext(const Graph<size_t, DistType>& subGraph,
                  const GraphVertex<size_t, DistType> queryHint,
-                 DefaultQueryFunctor<DistType> defaultQueryFunctor,
+                 DefaultQueryFunctor<DistType, DistanceFunctor> defaultQueryFunctor,
                  const int querySearchDepth,
                  const size_t blockNumber,
                  const size_t blockSize):
@@ -318,8 +318,8 @@ struct QueryContext{
         return initVertex;
     }
 
-    template<typename DistanceFunctor>
-    std::tuple<size_t, size_t, DistType> NearestNodes(const QueryContext& rhs, DistanceFunctor distanceFunctor) const{
+    template<typename QueryFunctor>
+    std::tuple<size_t, size_t, DistType> NearestNodes(const QueryContext& rhs, QueryFunctor distanceFunctor) const{
 
         distanceFunctor.SetBlocks(this->blockNumber, rhs.blockNumber);
 

@@ -341,7 +341,7 @@ struct UndirectedGraph{
 
     template<typename DistType>
     UndirectedGraph(Graph<IndexType, DistType> directedGraph): verticies(directedGraph.size()){
-
+        
         for (size_t i = 0; auto& vertex: directedGraph){
             vertex.neighbors.reserve(vertex.size()*2);
             for (const auto& neighbor: vertex){
