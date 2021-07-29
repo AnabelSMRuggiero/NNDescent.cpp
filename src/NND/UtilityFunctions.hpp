@@ -24,7 +24,7 @@ bool const NeighborIdentityCheck(const std::pair<IndexType, FloatType>& neighbor
     return neighborA.first == neighborB.first;
 };
 
-//Todo: template this so it can handle arbitrary float types
+
 template<TriviallyCopyable IndexType, typename DistType>
 struct NeighborSearchFunctor{
     
@@ -34,6 +34,32 @@ struct NeighborSearchFunctor{
 
     bool operator()(std::pair<IndexType, DistType> currentValue){
         return currentValue.first == searchValue;
+    }
+
+};
+
+template<TriviallyCopyable IndexType, typename DistType>
+struct NeighborUnderDist{
+    
+    IndexType threshold;
+
+    NeighborUnderDist(DistType threshold) : threshold(threshold){};
+
+    bool operator()(std::pair<IndexType, DistType> currentValue){
+        return currentValue.first < threshold;
+    }
+
+};
+
+template<TriviallyCopyable IndexType, typename DistType>
+struct NeighborOverDist{
+    
+    IndexType threshold;
+
+    NeighborOverDist(DistType threshold) : threshold(threshold){};
+
+    bool operator()(const std::pair<IndexType, DistType> currentValue){
+        return currentValue.second >= threshold;
     }
 
 };

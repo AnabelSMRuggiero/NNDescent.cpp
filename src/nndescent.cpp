@@ -239,7 +239,8 @@ std::pair<Graph<size_t, DistType>, InitialJoinHints<DistType>> NearestNodeDistan
 template<typename DistType, typename DistanceFunctor>
 void StitchBlocks(const Graph<size_t, DistType>& nearestNodeDistances,
                   const InitialJoinHints<DistType>& stitchHints,
-                  std::vector<BlockUpdateContext<DistType, DistanceFunctor>>& blockUpdateContexts){
+                  std::vector<BlockUpdateContext<DistType, DistanceFunctor>>& blockUpdateContexts,
+                  CachingFunctor<DistType, DistanceFunctor>& cachingFunctor){
 
     std::unordered_set<ComparisonKey<size_t>> initBlockJoinQueue;
     for(size_t i = 0; const auto& vertex: nearestNodeDistances){
@@ -271,7 +272,7 @@ void StitchBlocks(const Graph<size_t, DistType>& nearestNodeDistances,
         LHShint[std::get<0>(stitchHint)] = {std::get<1>(stitchHint)};
         JoinHints<size_t> RHShint;
         RHShint[std::get<1>(stitchHint)] = {std::get<0>(stitchHint)};
-
+        /*
         DistanceCache<DistType> distanceCache;
         distanceCache.reserve(50*50); //This is a touch janky, but place holder while I get code working again
 
@@ -279,20 +280,32 @@ void StitchBlocks(const Graph<size_t, DistType>& nearestNodeDistances,
         blockLHS.queryContext.defaultQueryFunctor.SetBlocks(blockNumbers.first, blockNumbers.second);
         auto cachingDistanceFunctor = blockLHS.queryContext.defaultQueryFunctor.CachingFunctor(distanceCache);
         auto cachedDistanceFunctor = blockRHS.queryContext.defaultQueryFunctor.CachedFunctor(distanceCache);
-        
+        */
+        cachingFunctor.SetBlocks(blockNumbers.first, blockNumbers.second);
+
         std::pair<JoinResults<size_t, DistType>, JoinResults<size_t, DistType>> retPair;
         retPair.first = BlockwiseJoin(LHShint,
                                       blockLHS.currentGraph,
                                       blockLHS.joinPropagation,
                                       blockRHS.queryContext,
-                                      cachingDistanceFunctor);
+                                      cachingFunctor);
 
-        blockRHS.queryContext.defaultQueryFunctor.SetBlocks(blockNumbers.second, blockNumbers.first);
-        retPair.second = BlockwiseJoin(RHShint,
-                                      blockRHS.currentGraph,
-                                      blockRHS.joinPropagation,
-                                      blockLHS.queryContext,
-                                      cachedDistanceFunctor);
+        cachingFunctor.metricFunctor.SetBlocks(blockNumbers.second, blockNumbers.first);
+        ReverseBlockJoin(RHShint,
+                         blockRHS.currentGraph,
+                         blockRHS.joinPropagation,
+                         blockLHS.queryContext,
+                         cachingFunctor,
+                         cachingFunctor.metricFunctor);
+
+        for(size_t i = 0; const auto& vertex: cachingFunctor.reverseGraph){
+            if(vertex.size()>0){
+                retPair.second.push_back({i, vertex});
+            }
+            i++;
+        }
+
+        
 
         return retPair;
     };
@@ -505,8 +518,12 @@ int main(int argc, char *argv[]){
                                                                                          queryDepth,
                                                                                          testDispatch);
     
+
+    CachingFunctor<float, DispatchFunctor<float>> cacher(testDispatch, splitParams.maxTreeSize, numBlockGraphNeighbors);
+
     auto [nearestNodeDistances, stitchHints] = NearestNodeDistances(blockUpdateContexts, metaGraph, maxNearestNodes);
-    StitchBlocks(nearestNodeDistances, stitchHints, blockUpdateContexts);
+    StitchBlocks(nearestNodeDistances, stitchHints, blockUpdateContexts, cacher);
+    
     
 
     GraphVertex<BlockIndecies, float> nullVertex;
@@ -519,7 +536,7 @@ int main(int argc, char *argv[]){
         graphUpdates = 0;
         for(size_t i = 0; i<blockUpdateContexts.size(); i+=1){
             for (auto& joinList: blockUpdateContexts[i].joinsToDo){
-                graphUpdates += UpdateBlocks(blockUpdateContexts[i], blockUpdateContexts[joinList.first]);
+                graphUpdates += UpdateBlocks(blockUpdateContexts[i], blockUpdateContexts[joinList.first], cacher);
                 blockUpdateContexts[joinList.first].joinsToDo.erase(i);
             }
         }
@@ -598,7 +615,7 @@ int main(int argc, char *argv[]){
         for (size_t j = 0; auto& context: testBlock){
             context.blocksJoined[i] = true;
             searchDist.SetBlock(i);
-            GraphVertex<size_t, float> initNeighbors = blockUpdateContexts[i].queryContext.QueryHotPath(hint, context.dataIndex, searchDist);
+            GraphVertex<size_t, float> initNeighbors = blockUpdateContexts[i].queryContext.Query(hint, context.dataIndex, searchDist);
             for (const auto& result: initNeighbors){
                 context.currentNeighbors.push_back({{i, result.first}, result.second});
                 for (const auto& resultNeighbor: blockUpdateContexts[i].currentGraph[result.first]){

@@ -56,7 +56,7 @@ GraphVertex<size_t, DistType> BlockwiseSearch(SearchContext<DistType>& searching
 
     //std::vector<std::pair<DataIndexType, GraphVertex<DataIndexType, DistType>>> retResults;
     queryFunctor.SetBlock(targetBlock.blockNumber);
-    GraphVertex<size_t, DistType> joinResults = targetBlock.QueryHotPath(queryHint, searchingPoint.dataIndex, queryFunctor);
+    GraphVertex<size_t, DistType> joinResults = targetBlock.Query(queryHint, searchingPoint.dataIndex, queryFunctor);
     searchingPoint.blocksJoined[targetBlock.blockNumber] = true;
     size_t resultsAdded = ConsumeVertex(searchingPoint.currentNeighbors, joinResults, targetBlock.blockNumber);
     

@@ -221,55 +221,33 @@ struct QueryContext{
 
     template<typename QueryType>
     GraphVertex<size_t, DistType> operator||(QueryPoint<DistType>& queryPoint) const {
-        return QueryHotPath(queryPoint.queryHint, queryPoint.dataIndex, defaultQueryFunctor);
+        return Query(queryPoint.queryHint, queryPoint.dataIndex, defaultQueryFunctor);
     }
 
     //I want copies when I use the queryHint member, but not really when I'm passing in hints. ???
     //Figure this out later
-    template<typename QueryFunctor = decltype(defaultQueryFunctor)>
-    GraphVertex<size_t, DistType> QueryHotPath(GraphVertex<size_t, DistType>& initVertex,
+    template<typename QueryFunctor>
+    GraphVertex<size_t, DistType> Query(GraphVertex<size_t, DistType>& initVertex,
                                                   const size_t queryIndex, //Can realistically be any parameter passed through to the Functor
                                                   QueryFunctor& queryFunctor,
                                                   std::optional<NodeTracker> previousVisits = std::nullopt) const {
 
-        NodeTracker nodesVisited = previousVisits.value_or( NodeTracker(blockSize) );
-
-        int sizeDif = initVertex.size() - queryHint.size();
-        //if sizeDif is negative, fill to numCandidates
-        if(sizeDif<0){
-            //Gotta avoid dupes
-            NodeTracker nodesInHint(blockSize);
-            for (const auto& hint: initVertex){
-                nodesInHint[hint.first] = true;
+        NodeTracker nodesVisited;
+        if (previousVisits){
+            nodesVisited = previousVisits.value();
+            if (initVertex.size()<queryHint.size()){
+                ReverseQueryInit(initVertex,
+                                 queryIndex, 
+                                 queryFunctor,
+                                 nodesVisited);
             }
-            int indexOffset(0);
-            for (int i = 0; i < -sizeDif; i += 1){
-                while (nodesInHint[queryHint[i+indexOffset].first]){
-                    indexOffset += 1;
-                }
-                initVertex.push_back(queryHint[i+indexOffset]);
-            }
-        }
-        std::vector<size_t> initComputations;
-        for (auto& queryStart: initVertex){
-            initComputations.push_back(queryStart.first);
-            nodesVisited[queryStart.first] = true;
-        }
-        std::vector<DistType> initDistances = queryFunctor(queryIndex, initComputations);
-        for (size_t i = 0; i<initVertex.size(); i+=1){
-            initVertex[i].second = initDistances[i];
-        }
-        /*
-        for (auto& queryStart: initVertex){
-            queryStart.second = queryFunctor(queryStart.first, queryIndex, queryData);
-            nodesVisited[queryStart.first] = true;
-        }
-        */
-        std::make_heap(initVertex.begin(), initVertex.end(), NeighborDistanceComparison<size_t, DistType>);
-        //if sizeDif is positive, reduce to numCandidates
-        for (int i = 0; i < sizeDif; i+=1){
-            std::pop_heap(initVertex.begin(), initVertex.end(), NeighborDistanceComparison<size_t, DistType>);
-            initVertex.pop_back();
+        } else {
+            nodesVisited = NodeTracker(blockSize);
+            ForwardQueryInit(initVertex,
+                             queryIndex, 
+                             queryFunctor,
+                             nodesVisited);
+            
         }
         GraphVertex<size_t, DistType> compareTargets;
         compareTargets.resize(querySearchDepth);
@@ -316,6 +294,74 @@ struct QueryContext{
             breakVar = breakVar || numCompared != querySearchDepth;
         }
         return initVertex;
+    }
+
+    template<typename QueryFunctor>
+    void ForwardQueryInit(GraphVertex<size_t, DistType>& initVertex,
+                            const size_t queryIndex, //Can realistically be any parameter passed through to the Functor
+                            QueryFunctor& queryFunctor,
+                            NodeTracker& nodesJoined) const{
+        int sizeDif = initVertex.size() - queryHint.size();
+        //if sizeDif is negative, fill to numCandidates
+        if(sizeDif<0){
+            //initVertex.reserve(queryHint.size());
+            for (const auto& hint: initVertex){
+                nodesJoined[hint.first] = true;
+            }
+            int indexOffset(0);
+            for (int i = 0; i < -sizeDif; i += 1){
+                while (nodesJoined[queryHint[i+indexOffset].first]){
+                    indexOffset += 1;
+                }
+                initVertex.push_back(queryHint[i+indexOffset]);
+            }
+        }
+        std::vector<size_t> initComputations;
+        for (auto& queryStart: initVertex){
+            initComputations.push_back(queryStart.first);
+            nodesJoined[queryStart.first] = true;
+        }
+        std::vector<DistType> initDistances = queryFunctor(queryIndex, initComputations);
+        for (size_t i = 0; i<initVertex.size(); i+=1){
+            initVertex[i].second = initDistances[i];
+        }
+
+        std::make_heap(initVertex.begin(), initVertex.end(), NeighborDistanceComparison<size_t, DistType>);
+        //if sizeDif is positive, reduce to numCandidates
+        for (int i = 0; i < sizeDif; i+=1){
+            std::pop_heap(initVertex.begin(), initVertex.end(), NeighborDistanceComparison<size_t, DistType>);
+            initVertex.pop_back();
+        }
+    }
+
+    template<typename QueryFunctor>
+    void ReverseQueryInit(GraphVertex<size_t, DistType>& initVertex,
+                            const size_t queryIndex, //Can realistically be any parameter passed through to the Functor
+                            QueryFunctor& queryFunctor,
+                            NodeTracker& previousVisits) const{
+
+        int sizeDif = queryHint.size() -  initVertex.size();
+        
+        //Gotta avoid dupes
+        NodeTracker nodesInHint(blockSize);
+        for (const auto& hint: initVertex){
+            nodesInHint[hint.first] = true;
+        }
+        int indexOffset(0);
+        std::vector<size_t> initComputations;
+        for (int i = 0; i < sizeDif; i += 1){
+            while (previousVisits[queryHint[i+indexOffset].first]){
+                indexOffset += 1;
+            }
+            initComputations.push_back(queryHint[i+indexOffset].first);
+            previousVisits[queryHint[i+indexOffset].first] = true;
+        }
+
+        std::vector<DistType> initDistances = queryFunctor(queryIndex, initComputations);
+        for (size_t i = 0; i<initDistances.size(); i+=1){
+            initVertex.push_back({initComputations[i], initDistances[i]});
+        }
+        initVertex.JoinPrep();
     }
 
     template<typename QueryFunctor>

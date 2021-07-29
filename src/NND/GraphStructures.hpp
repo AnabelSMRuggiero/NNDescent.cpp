@@ -132,6 +132,10 @@ struct GraphVertex{
         neighbors.resize(count);
     }
 
+    constexpr iterator erase(const_iterator first, const_iterator last) {
+        return neighbors.erase(first, last);
+    }
+
     //private:
     
 };
@@ -461,54 +465,55 @@ Graph<size_t, DistType> BruteForceBlock(const size_t numNeighbors, const size_t 
     return retGraph;
 }
 
-
-template<typename DistType>
+template<typename DistType, typename DistanceFunctor>
 struct CachingFunctor{
 
-    DispatchFunctor<DistType> metricFunctor;
+    DistanceFunctor& metricFunctor;
     //DistanceCache<DistType> cache;
     Graph<size_t, DistType> reverseGraph;
     std::vector<NodeTracker> nodesJoined;
+    //std::vector<DistType> minDists;
     size_t numNeighbors;
     size_t maxBlockSize;
 
-    CachingFunctor(DispatchFunctor<DistType> metricFunctor, size_t maxBlockSize, size_t numNeighbors): metricFunctor(metricFunctor), reverseGraph(maxBlockSize, numNeighbors), maxBlockSize(maxBlockSize){
+    CachingFunctor(DistanceFunctor& metricFunctor, size_t maxBlockSize, size_t numNeighbors):
+        metricFunctor(metricFunctor), 
+        reverseGraph(maxBlockSize, numNeighbors),
+        numNeighbors(numNeighbors),
+        nodesJoined(maxBlockSize, NodeTracker(maxBlockSize)),
+        maxBlockSize(maxBlockSize){
         //cache.reserve(cacheSize);
     }
 
-    DistType operator()(size_t targetIndex, size_t queryIndex){
-        DistType distance = this->underlyingFunctor(targetIndex, queryIndex);
+    DistType operator()(const size_t queryIndex, const size_t targetIndex){
+        DistType distance = this->metricFunctor(queryIndex, targetIndex);
         cachedGraphSize = std::max(targetIndex, cachedGraphSize);
-
-        switch(reverseGraph[targetIndex].size()){
-            case numNeighbors:
-                reverseGraph[targetIndex].PushNeighbor({queryIndex, distance});
-                break;
-            case numNeighbors-1:
-                reverseGraph[targetIndex].push_back({queryIndex, distance});
-                reverseGraph[targetIndex].JoinPrep();
-                break;
-            default:
-                reverseGraph[targetIndex].push_back({queryIndex, distance});
+        //minDists[targetIndex] = std::min(minDists[targetIndex], distance);
+        if(reverseGraph[targetIndex].size() == numNeighbors){
+            reverseGraph[targetIndex].PushNeighbor({queryIndex, distance});
+        } else if(reverseGraph[targetIndex].size() == numNeighbors-1){
+            reverseGraph[targetIndex].push_back({queryIndex, distance});
+            reverseGraph[targetIndex].JoinPrep();
+        } else{
+            reverseGraph[targetIndex].push_back({queryIndex, distance});
         }
+        
         nodesJoined[targetIndex][queryIndex] = true;
-
+        
         return distance;
     };
 
-    std::vector<DistType> operator()(const std::vector<size_t>& targetIndecies, size_t queryIndex){
-        std::vector<DistType> distances = this->underlyingFunctor(targetIndecies, queryIndex);
+    std::vector<DistType> operator()(const size_t queryIndex, const std::vector<size_t>& targetIndecies){
+        std::vector<DistType> distances = this->metricFunctor(queryIndex, targetIndecies);
         for (size_t i = 0; i<targetIndecies.size(); i+=1){
-            switch(reverseGraph[targetIndecies[i]].size()){
-                case numNeighbors:
-                    reverseGraph[targetIndecies[i]].PushNeighbor({queryIndex, distances[i]});
-                    break;
-                case numNeighbors-1:
-                    reverseGraph[targetIndecies[i]].push_back({queryIndex, distances[i]});
-                    reverseGraph[targetIndecies[i]].JoinPrep();
-                    break;
-                default:
-                    reverseGraph[targetIndecies[i]].push_back({queryIndex, distances[i]});
+            cachedGraphSize = std::max(targetIndecies[i], cachedGraphSize);
+            if(reverseGraph[targetIndecies[i]].size() == numNeighbors){
+                reverseGraph[targetIndecies[i]].PushNeighbor({queryIndex, distances[i]});
+            } else if(reverseGraph[targetIndecies[i]].size() == numNeighbors-1){
+                reverseGraph[targetIndecies[i]].push_back({queryIndex, distances[i]});
+                reverseGraph[targetIndecies[i]].JoinPrep();
+            } else{
+                reverseGraph[targetIndecies[i]].push_back({queryIndex, distances[i]});
             }
             nodesJoined[targetIndecies[i]][queryIndex] = true;
         }
@@ -523,7 +528,41 @@ struct CachingFunctor{
         for (auto& tracker: nodesJoined){
             tracker = NodeTracker(maxBlockSize);
         }
-        this->underlyingFunctor->SetBlocks(lhsBlockNum, rhsBlockNum);
+        //for (auto& minDist: minDists){
+        //    minDist = std::numeric_limits<DistType>::max();
+        //}
+        this->metricFunctor.SetBlocks(lhsBlockNum, rhsBlockNum);
+    }
+
+    using iterator = typename std::vector<GraphVertex<size_t, DistType>>::iterator;
+    using const_iterator = typename std::vector<GraphVertex<size_t, DistType>>::const_iterator;
+
+    size_t size() const noexcept{
+        return cachedGraphSize + 1;
+    }
+    
+    constexpr iterator begin() noexcept{
+        return reverseGraph.begin();
+    }
+
+    constexpr const_iterator begin() const noexcept{
+        return reverseGraph.begin();
+    }
+
+    constexpr const_iterator cbegin() const noexcept{
+        return reverseGraph.cbegin();
+    }
+
+    constexpr iterator end() noexcept{
+        return reverseGraph.begin() + cachedGraphSize + 1;
+    }
+
+    constexpr const_iterator end() const noexcept{
+        return reverseGraph.begin() + cachedGraphSize + 1;
+    }
+
+    constexpr const_iterator cend() const noexcept{
+        return reverseGraph.begin() + cachedGraphSize + 1;
     }
 
     private:

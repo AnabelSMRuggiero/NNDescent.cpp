@@ -46,6 +46,8 @@
 - I convert the initial directed block graphs into an directed graph using block indecies and an undirected graph without the neighbors. Don't think I use the initial graph after that.
   - I can sink the memory into the undirected graph constructor.
 
+- Refactor blockwise algos to pass in BlockUpdateContext (really feel like Closure is better than context /shrug) to simplify function declaration and so I alway have the appropriate info to call .SetBlocks() before computing distances.
+
 #Parallelization and Distributed Computing
 - Do a second pass on the MetaGraph procedures 
 - Points of caution for parallelization

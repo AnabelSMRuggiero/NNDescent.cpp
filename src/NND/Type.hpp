@@ -15,6 +15,8 @@ struct NodeTracker{
 
     std::vector<bool> flags;
 
+    NodeTracker() = default;
+
     NodeTracker(size_t graphSize): flags(graphSize, false){};
 
     reference operator[](size_type i){
