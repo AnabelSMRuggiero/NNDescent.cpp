@@ -195,7 +195,8 @@ template<typename DistType, typename DistanceFunctor>
 struct QueryContext{
     const UndirectedGraph<size_t> subGraph;
     const GraphVertex<size_t, DistType> queryHint;
-    const int querySearchDepth;
+    size_t querySize;
+    size_t querySearchDepth;
     DefaultQueryFunctor<DistType, DistanceFunctor> defaultQueryFunctor;
     const size_t blockNumber;
     const size_t blockSize;
@@ -214,17 +215,18 @@ struct QueryContext{
                     defaultQueryFunctor(defaultQueryFunctor),
                     blockNumber(blockNumber),
                     blockSize(blockSize){
-            
+            querySize = queryHint.size();
             //defaultQueryFunctor = DefaultQueryFunctor<IndexType, DataEntry, DistType>(distanceFunctor, dataBlock);
     };
     
-
+    /*
     template<typename QueryType>
     GraphVertex<size_t, DistType> operator||(QueryPoint<DistType>& queryPoint) const {
         return Query(queryPoint.queryHint, queryPoint.dataIndex, defaultQueryFunctor);
     }
-
-    //I want copies when I use the queryHint member, but not really when I'm passing in hints. ???
+    */
+   
+    
     //Figure this out later
     template<typename QueryFunctor>
     GraphVertex<size_t, DistType> Query(GraphVertex<size_t, DistType>& initVertex,
@@ -235,7 +237,7 @@ struct QueryContext{
         NodeTracker nodesVisited;
         if (previousVisits){
             nodesVisited = previousVisits.value();
-            if (initVertex.size()<queryHint.size()){
+            if (initVertex.size()<querySize){
                 ReverseQueryInit(initVertex,
                                  queryIndex, 
                                  queryFunctor,
@@ -301,7 +303,7 @@ struct QueryContext{
                             const size_t queryIndex, //Can realistically be any parameter passed through to the Functor
                             QueryFunctor& queryFunctor,
                             NodeTracker& nodesJoined) const{
-        int sizeDif = initVertex.size() - queryHint.size();
+        int sizeDif = initVertex.size() - querySize;
         //if sizeDif is negative, fill to numCandidates
         if(sizeDif<0){
             //initVertex.reserve(queryHint.size());
@@ -309,11 +311,22 @@ struct QueryContext{
                 nodesJoined[hint.first] = true;
             }
             int indexOffset(0);
-            for (int i = 0; i < -sizeDif; i += 1){
-                while (nodesJoined[queryHint[i+indexOffset].first]){
+            for (int i = 0; initVertex.size() < querySize; i += 1){
+                while (i+indexOffset < queryHint.size() && nodesJoined[queryHint[i+indexOffset].first]){
                     indexOffset += 1;
                 }
-                initVertex.push_back(queryHint[i+indexOffset]);
+                [[likely]] if(i+indexOffset<queryHint.size()){
+                    
+                    initVertex.push_back(queryHint[i+indexOffset]);
+                    nodesJoined[queryHint[i+indexOffset].first] = true;
+                } else{
+                    while(nodesJoined[indexOffset]){
+                        indexOffset += 1;
+                    }
+                    initVertex.push_back({indexOffset, std::numeric_limits<DistType>::max()});
+                    nodesJoined[indexOffset] = true;
+                    
+                }
             }
         }
         std::vector<size_t> initComputations;
@@ -328,10 +341,10 @@ struct QueryContext{
 
         std::make_heap(initVertex.begin(), initVertex.end(), NeighborDistanceComparison<size_t, DistType>);
         //if sizeDif is positive, reduce to numCandidates
-        for (int i = 0; i < sizeDif; i+=1){
-            std::pop_heap(initVertex.begin(), initVertex.end(), NeighborDistanceComparison<size_t, DistType>);
-            initVertex.pop_back();
-        }
+        //for (int i = 0; i < sizeDif; i+=1){
+        //    std::pop_heap(initVertex.begin(), initVertex.end(), NeighborDistanceComparison<size_t, DistType>);
+        //    initVertex.pop_back();
+        //}
     }
 
     template<typename QueryFunctor>
@@ -340,13 +353,9 @@ struct QueryContext{
                             QueryFunctor& queryFunctor,
                             NodeTracker& previousVisits) const{
 
-        int sizeDif = queryHint.size() -  initVertex.size();
+        int sizeDif = querySize - initVertex.size();
         
-        //Gotta avoid dupes
-        NodeTracker nodesInHint(blockSize);
-        for (const auto& hint: initVertex){
-            nodesInHint[hint.first] = true;
-        }
+        
         int indexOffset(0);
         std::vector<size_t> initComputations;
         for (int i = 0; i < sizeDif; i += 1){

@@ -18,6 +18,7 @@ https://github.com/AnabelSMRuggiero/NNDescent.cpp
 #include <valarray>
 #include <numeric>
 #include <cmath>
+#include <iterator>
 #include <unordered_map>
 #include <unordered_set>
 #include <bit>
@@ -353,7 +354,10 @@ enum class HyperParameter{
     queryDepth,
     targetSplitSize,
     minSplitSize,
-    maxSplitSize
+    maxSplitSize,
+    searchNeighbors,
+    searchDepth,
+    maxSearchesQueued
 };
 
 
@@ -365,7 +369,10 @@ static const std::unordered_map<std::string, HyperParameter> optionNumber = {
     {"-queryDepth"s,            HyperParameter::queryDepth},
     {"-targetSplitSize"s,       HyperParameter::targetSplitSize},
     {"-minSplitSize"s,          HyperParameter::minSplitSize},
-    {"-maxSplitSize"s,          HyperParameter::maxSplitSize}
+    {"-maxSplitSize"s,          HyperParameter::maxSplitSize},
+    {"-searchNeighbors"s,       HyperParameter::searchNeighbors},
+    {"-searchDepth"s,           HyperParameter::searchDepth},
+    {"-maxSearchesQueued"s,     HyperParameter::maxSearchesQueued}
 };
 
 
@@ -374,10 +381,14 @@ int main(int argc, char *argv[]){
     
     static const std::endian dataEndianness = std::endian::big;
 
-    size_t numBlockGraphNeighbors = 10;
-    size_t numCOMNeighbors = 30;
+    size_t numBlockGraphNeighbors = 5;
+    size_t numCOMNeighbors = 10;
     size_t maxNearestNodes = 3;
     size_t queryDepth = 2;
+
+    size_t numberSearchNeighbors = 10;
+    size_t searchQueryDepth = 10;
+    size_t maxNewSearches = 10;
 
     SplittingHeurisitcs splitParams= {16, 140, 60, 180};
 
@@ -431,6 +442,24 @@ int main(int argc, char *argv[]){
                 splitParams.maxTreeSize = stoul(std::string(option.substr(nameEnd+1)));
                 break;
 
+            case HyperParameter::searchNeighbors:
+                numberSearchNeighbors = stoul(std::string(option.substr(nameEnd+1)));
+                break;
+                
+
+            case HyperParameter::searchDepth:
+                searchQueryDepth = stoul(std::string(option.substr(nameEnd+1)));
+                break;
+
+            case HyperParameter::maxSearchesQueued:
+                maxNewSearches = stoul(std::string(option.substr(nameEnd+1)));
+                break;
+                /*
+                    searchNeighbors,
+                    searchDepth,
+                    maxSearchesQueued
+                */
+
         }
     }
 
@@ -469,7 +498,7 @@ int main(int argc, char *argv[]){
     //std::chrono::time_point<std::chrono::steady_clock> runEnd = std::chrono::steady_clock::now();
     //std::cout << std::chrono::duration_cast<std::chrono::seconds>(runEnd - runStart).count() << "s Pointwise Join Calcs " << std::endl;
 
-    std::cout << "I/O done." << std::endl;
+    //std::cout << "I/O done." << std::endl;
 
 
     std::chrono::time_point<std::chrono::steady_clock> runStart = std::chrono::steady_clock::now();
@@ -526,10 +555,7 @@ int main(int argc, char *argv[]){
     
     
 
-    GraphVertex<BlockIndecies, float> nullVertex;
-    for(size_t i = 0; i<10; i+=1){
-        nullVertex.push_back({{0,0}, std::numeric_limits<float>::max()});
-    }
+    
     int iteration(1);
     int graphUpdates(1);
     while(graphUpdates>0){
@@ -548,8 +574,8 @@ int main(int argc, char *argv[]){
     }
 
     std::chrono::time_point<std::chrono::steady_clock> runEnd = std::chrono::steady_clock::now();
-    std::cout << std::chrono::duration_cast<std::chrono::duration<float>>(runEnd - runStart).count() << "s total for index building " << std::endl;
-
+    //std::cout << std::chrono::duration_cast<std::chrono::duration<float>>(runEnd - runStart).count() << "s total for index building " << std::endl;
+    std::cout << std::chrono::duration_cast<std::chrono::duration<float>>(runEnd - runStart).count() << std::endl;
 
     std::chrono::time_point<std::chrono::steady_clock> runStart2 = std::chrono::steady_clock::now();
 
@@ -576,8 +602,17 @@ int main(int argc, char *argv[]){
     */
 
 
-    const size_t numberSearchNeighbors = 15;
     size_t numberSearchBlocks = dataBlocks.size();
+
+    GraphVertex<BlockIndecies, float> nullVertex;
+    for(size_t i = 0; i<numberSearchNeighbors; i+=1){
+        nullVertex.push_back({{0,0}, std::numeric_limits<float>::max()});
+    }
+
+    for (auto& context: blockUpdateContexts){
+        context.queryContext.querySearchDepth = searchQueryDepth;
+        context.queryContext.querySize = numberSearchNeighbors;
+    }
 
     SearchFunctor<AlignedArray<float>, EuclideanMetricPair> searchDist(dataBlocks, mnistFashionTest);
     //SinglePointFunctor<float> searchFunctor(searchDist);
@@ -607,21 +642,39 @@ int main(int argc, char *argv[]){
         std::move(testMapper.sourceToSplitIndex)
     };
     
-    std::vector<std::unordered_map<BlockIndecies, size_t>> searchHints(dataBlocks.size());
-
+    SearchQueue searchHints(dataBlocks.size());
+    
+    for (auto& queue: searchHints){
+        queue.reserve(maxNewSearches * 10'000 / dataBlocks.size());
+    }
+    
     for (size_t i = 0; auto& testBlock: searchContexts){
-        GraphVertex<size_t, float> hint = blockUpdateContexts[i].queryContext.queryHint;
+        
         
         for (size_t j = 0; auto& context: testBlock){
             context.blocksJoined[i] = true;
             searchDist.SetBlock(i);
-            GraphVertex<size_t, float> initNeighbors = blockUpdateContexts[i].queryContext.Query(hint, context.dataIndex, searchDist);
-            for (const auto& result: initNeighbors){
-                context.currentNeighbors.push_back({{i, result.first}, result.second});
+            GraphVertex<size_t, float> initNeighbors = blockUpdateContexts[i].queryContext.queryHint;
+            blockUpdateContexts[i].queryContext.Query(initNeighbors, context.dataIndex, searchDist);
+            size_t hintsAdded = 0;
+            context.blocksJoined[i] = true;
+            context.currentNeighbors = nullVertex;
+            ConsumeVertex(context.currentNeighbors, initNeighbors, i);
+            std::sort(context.currentNeighbors.begin(), context.currentNeighbors.end(), NeighborDistanceComparison<BlockIndecies, float>);
+            for (const auto& result: context.currentNeighbors){
+                
                 for (const auto& resultNeighbor: blockUpdateContexts[i].currentGraph[result.first]){
-                    if (resultNeighbor.first.blockNumber != i) searchHints[resultNeighbor.first.blockNumber][{i,j}] = resultNeighbor.first.dataIndex;
+                    if (!context.blocksJoined[resultNeighbor.first.blockNumber]) {
+                        context.blocksJoined[resultNeighbor.first.blockNumber] = true;
+                        searchHints[resultNeighbor.first.blockNumber].push_back({{i,j}, resultNeighbor.first.dataIndex});
+                        hintsAdded++;
+                        
+                    }
                 }
+                if (hintsAdded >= maxNewSearches) break;
             }
+            context.currentNeighbors.JoinPrep();
+            //std::cout << hintsAdded << std::endl;
             j++;
         }
         i++;
@@ -630,7 +683,7 @@ int main(int argc, char *argv[]){
     while(searchUpdates){
         searchUpdates = 0;
         for (size_t i = 0; auto& hintMap: searchHints){
-            for (const auto& hint: hintMap){
+            for (size_t j = 0; const auto& hint: hintMap){
                 
                 GraphVertex<size_t, float> newNodes = BlockwiseSearch(searchContexts[hint.first.blockNumber][hint.first.dataIndex],
                                                                                 blockUpdateContexts[i].queryContext,
@@ -643,17 +696,19 @@ int main(int argc, char *argv[]){
                                 searchContexts[hint.first.blockNumber][hint.first.dataIndex],
                                 hint.first,
                                 newNodes,
-                                searchHints);
+                                searchHints,
+                                maxNewSearches);
 
 
                 
             }
-            hintMap = std::unordered_map<BlockIndecies, size_t>();
+            hintMap.clear();
             i++;
         }
     }
     std::chrono::time_point<std::chrono::steady_clock> runEnd2 = std::chrono::steady_clock::now();
-    std::cout << std::chrono::duration_cast<std::chrono::duration<float>>(runEnd2 - runStart2).count() << "s test set search " << std::endl;
+    //std::cout << std::chrono::duration_cast<std::chrono::duration<float>>(runEnd2 - runStart2).count() << "s test set search " << std::endl;
+    std::cout << std::chrono::duration_cast<std::chrono::duration<float>>(runEnd2 - runStart2).count() << std::endl;
 
 
     /*
@@ -768,7 +823,8 @@ int main(int argc, char *argv[]){
         correctPerBlockFloat[i] = float(correctNeighborsPerBlock[i]*10)/float(searchContexts[i].size());
     }
     double recall = double(numNeighborsCorrect)/ double(10*mnistFashionTestNeighbors.samples.size());
-    std::cout << "Recall: " << (recall * 100) << "%" << std::endl;
+    std::cout << (recall * 100) << std::endl;
+    //std::cout << "Recall: " << (recall * 100) << "%" << std::endl;
     
     //WeightedGraphEdges graphEdges = NeighborsOutOfBlock(mnistFashionTestNeighbors, trainMapper.sourceToBlockIndex, testClassifications);
 
@@ -779,16 +835,5 @@ int main(int argc, char *argv[]){
     //SerializeCOMS(metaGraph.points, "./TestData/MNIST-Fashion-Train-COMs.bin");
     //SerializeMetaGraph(graphEdges, "./TestData/MNIST-Fashion-Test-MetaGraphEdges.bin");
     //SerializeVector<size_t>(trainClassifications, "./TestData/MNIST-Fashion-Train-SplittingIndicies.bin");
-
-    //std::chrono::time_point<std::chrono::steady_clock> runEnd = std::chrono::steady_clock::now();
-    //std::cout << std::chrono::duration_cast<std::chrono::seconds>(runEnd - runStart).count() << "s Pointwise Join Calcs " << std::endl;
-    
-
-
-    //std::chrono::time_point<std::chrono::steady_clock> runEnd = std::chrono::steady_clock::now();
-    //std::cout << std::chrono::duration_cast<std::chrono::seconds>(runEnd - runStart).count() << "s Nearest Node Calcs " << std::endl;
-
-
-
     return 0;
 }

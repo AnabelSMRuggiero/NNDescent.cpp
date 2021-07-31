@@ -142,9 +142,9 @@ struct GraphVertex{
 
 //Rewrite as stream operator?
 template<typename DistType>
-int ConsumeVertex(GraphVertex<BlockIndecies, DistType>& consumer, GraphVertex<BlockIndecies, DistType>& consumee){
+unsigned int ConsumeVertex(GraphVertex<BlockIndecies, DistType>& consumer, GraphVertex<BlockIndecies, DistType>& consumee){
     std::sort(consumee.begin(), consumee.end(), NeighborDistanceComparison<BlockIndecies, DistType>);
-    int neighborsAdded(0);
+    unsigned int neighborsAdded(0);
     for (auto& pair: consumee){
         if (pair.second >= consumer.neighbors[0].second) return neighborsAdded;
         consumer.PushNeighbor(pair);
@@ -156,9 +156,9 @@ int ConsumeVertex(GraphVertex<BlockIndecies, DistType>& consumer, GraphVertex<Bl
 
 
 template<TriviallyCopyable OtherIndex, typename OtherDist, typename ConsumerDist>
-int ConsumeVertex(GraphVertex<BlockIndecies, ConsumerDist>& consumer, GraphVertex<OtherIndex, OtherDist>& consumee, size_t consumeeBlockNum){
+unsigned int ConsumeVertex(GraphVertex<BlockIndecies, ConsumerDist>& consumer, GraphVertex<OtherIndex, OtherDist>& consumee, size_t consumeeBlockNum){
     std::sort(consumee.begin(), consumee.end(), NeighborDistanceComparison<OtherIndex, OtherDist>);
-    int neighborsAdded(0);
+    unsigned int neighborsAdded(0);
     for (auto& pair: consumee){
         if (pair.second >= consumer.neighbors[0].second) return neighborsAdded;
         consumer.PushNeighbor({{consumeeBlockNum, pair.first}, static_cast<ConsumerDist>(pair.second)});

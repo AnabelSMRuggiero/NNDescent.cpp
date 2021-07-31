@@ -1,5 +1,5 @@
 #General
-- Refactor RNG stuff
+
 - Think of more sensical names for the headers
 - Get a better idea of the actual data that will be fed into the algorithm.
   - Assume always array of numerics?
@@ -47,6 +47,8 @@
   - I can sink the memory into the undirected graph constructor.
 
 - Refactor blockwise algos to pass in BlockUpdateContext (really feel like Closure is better than context /shrug) to simplify function declaration and so I alway have the appropriate info to call .SetBlocks() before computing distances.
+
+- Add in search bailout
 
 #Parallelization and Distributed Computing
 - Do a second pass on the MetaGraph procedures 

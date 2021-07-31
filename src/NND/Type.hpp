@@ -39,6 +39,8 @@ struct NodeTracker{
 
 };
 
+    using SearchQueue = std::vector<std::vector<std::pair<BlockIndecies, size_t>>>;
+
 }
 
 #endif

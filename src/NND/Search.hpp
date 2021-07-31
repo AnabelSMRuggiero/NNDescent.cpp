@@ -47,7 +47,7 @@ GraphVertex<size_t, DistType> BlockwiseSearch(SearchContext<DistType>& searching
     
     
     
-    GraphVertex<size_t, DistType> queryHint;
+    GraphVertex<size_t, DistType> queryHint(targetBlock.queryHint.size());
     
     queryHint.push_back({hint, std::numeric_limits<DistType>::max()});
 
@@ -55,9 +55,32 @@ GraphVertex<size_t, DistType> BlockwiseSearch(SearchContext<DistType>& searching
     
 
     //std::vector<std::pair<DataIndexType, GraphVertex<DataIndexType, DistType>>> retResults;
-    queryFunctor.SetBlock(targetBlock.blockNumber);
-    GraphVertex<size_t, DistType> joinResults = targetBlock.Query(queryHint, searchingPoint.dataIndex, queryFunctor);
     searchingPoint.blocksJoined[targetBlock.blockNumber] = true;
+    queryFunctor.SetBlock(targetBlock.blockNumber);
+    targetBlock.Query(queryHint, searchingPoint.dataIndex, queryFunctor);
+    size_t resultsAdded = ConsumeVertex(searchingPoint.currentNeighbors, queryHint, targetBlock.blockNumber);
+    
+    queryHint.resize(resultsAdded);
+    
+    
+    return queryHint;
+}
+
+/*
+template<typename DistType, typename QueryFunctor, typename DistanceFunctor>
+unsigned int BlockwiseSearch(SearchContext<DistType>& searchingPoint,
+                   const QueryContext<DistType, DistanceFunctor>& targetBlock,
+                   const size_t hint,
+                   QueryFunctor queryFunctor){
+    
+    
+    
+    GraphVertex<size_t, DistType> queryHint(searchingPoint.currentNeighbors.size());
+    queryHint.push_back({hint, std::numeric_limits<DistType>::max()});
+
+    queryFunctor.SetBlock(targetBlock.blockNumber);
+    targetBlock.Query(queryHint, searchingPoint.dataIndex, queryFunctor);
+    //searchingPoint.blocksJoined[targetBlock.blockNumber] = true;
     size_t resultsAdded = ConsumeVertex(searchingPoint.currentNeighbors, joinResults, targetBlock.blockNumber);
     
     joinResults.resize(resultsAdded);
@@ -65,6 +88,7 @@ GraphVertex<size_t, DistType> BlockwiseSearch(SearchContext<DistType>& searching
     
     return joinResults;
 }
+*/
 
 
 template<typename DistType, typename DistanceFunctor>
@@ -72,11 +96,18 @@ void QueueSearches(const BlockUpdateContext<DistType, DistanceFunctor>& graphFra
                    SearchContext<DistType>& searchingPoint,
                    const BlockIndecies searchToQueue,
                    GraphVertex<size_t, DistType>& joinResults,
-                   std::vector<std::unordered_map<BlockIndecies, size_t>>& searchQueues){
+                   SearchQueue& searchQueues,
+                   const size_t maxNewSearches){
+    unsigned int hintsAdded(0);
     for (const auto& result: joinResults){
         for (const auto& resultNeighbor: graphFragment.currentGraph[result.first]){
-            if (!searchingPoint.blocksJoined[resultNeighbor.first.blockNumber]) searchQueues[resultNeighbor.first.blockNumber][searchToQueue] = resultNeighbor.first.dataIndex;
+            if (!searchingPoint.blocksJoined[resultNeighbor.first.blockNumber]){
+                searchingPoint.blocksJoined[resultNeighbor.first.blockNumber] = true;
+                searchQueues[resultNeighbor.first.blockNumber].push_back({searchToQueue, resultNeighbor.first.dataIndex});
+                hintsAdded++;
+            }
         }
+        if (hintsAdded >= maxNewSearches) break;
     }
 }
 
