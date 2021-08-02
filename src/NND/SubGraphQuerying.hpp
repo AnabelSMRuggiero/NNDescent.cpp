@@ -204,7 +204,7 @@ struct QueryContext{
     //SpaceMetric<DataView, DataView, DistType> distanceFunctor;
 
     QueryContext(const Graph<size_t, DistType>& subGraph,
-                 const GraphVertex<size_t, DistType> queryHint,
+                 const GraphVertex<size_t, DistType>&& queryHint,
                  DefaultQueryFunctor<DistType, DistanceFunctor> defaultQueryFunctor,
                  const int querySearchDepth,
                  const size_t blockNumber,

@@ -1,3 +1,13 @@
+/*
+NNDescent.cpp: Copyright (c) Anabel Ruggiero
+At the time of writting, this code is unreleased and not published under a license.
+As a result, I currently retain all legal rights I am legally entitled to.
+
+I am currently considering a permissive license for releasing this code, such as the Apache 2.0 w/LLVM exception.
+Please refer to the project repo for any updates regarding liscensing.
+https://github.com/AnabelSMRuggiero/NNDescent.cpp
+*/
+
 #ifndef NND_BLOCKWISEALGORITHM_HPP
 #define NND_BLOCKWISEALGORITHM_HPP
 
@@ -160,28 +170,16 @@ void ReverseBlockJoin(const JoinHints<size_t>& startJoins,
         joinHints.push_back({hint.first, std::move(queryHint)});
         */
     }
-    /* 
-    for (size_t i = 0; auto& vertex: cache.reverseGraph){
 
-        if (vertex.size()!=0){
-            
-        }
-
-        i++;
-    }
-    */
     std::vector<size_t> joinQueue;
     for (auto success: successfulJoins){
         for (const auto& leafNeighbor: searchSubgraph[success]){
             if(!nodesJoined[leafNeighbor.first]){
                 joinQueue.push_back(leafNeighbor.first);
-                //cache.reverseGraph[leafNeighbor.first].resize(cache.reverseGraph[success].size());
-                //std::copy(cache.reverseGraph[success].begin(),
-                //          cache.reverseGraph[success].end(),
-                //          cache.reverseGraph[leafNeighbor.first].begin());
+
                 
                 //We can add these to nodesJoined a touch early to prevent dupes
-                //nodesJoined[leafNeighbor.first] = true;
+                nodesJoined[leafNeighbor.first] = true;
             }
         }
     }
@@ -191,8 +189,7 @@ void ReverseBlockJoin(const JoinHints<size_t>& startJoins,
     while(joinQueue.size()){
         std::vector<std::pair<size_t, GraphVertex<size_t, DistType>>> joinResults;
         for (auto& joinee: joinQueue){
-            //GraphVertex<size_t, DistType> joinResult = targetBlock || QueryPoint{joinHint.second, blockData[joinHint.first]};
-            //const QueryPoint<size_t, DataEntry, DistType> query(joinHint.second, blockData[joinHint.first], joinHint.first);
+
             targetBlock.Query(cache.reverseGraph[joinee], joinee, queryFunctor);
             nodesJoined[joinee] = true;
             NeighborOverDist<size_t, DistType> comparison(currentGraphState[joinee][0].second);
@@ -200,24 +197,17 @@ void ReverseBlockJoin(const JoinHints<size_t>& startJoins,
             if (cache.reverseGraph[joinee].size()!=0) successfulJoins.push_back(joinee);
         }
         joinQueue.clear();
-        //std::vector<std::pair<size_t, GraphVertex<size_t, DistType>>> newJoins;
+        
         for(auto& success: successfulJoins){
-            //std::heap_sort(result.second.begin(), result.second.end(), NeighborDistanceComparison<size_t, DistType>);    
+            
             for(const auto& leafNeighbor: searchSubgraph[success]){
                 if(!nodesJoined[leafNeighbor.first]){
                     joinQueue.push_back(leafNeighbor.first);
-                    //cache.reverseGraph[leafNeighbor.first].resize(cache.reverseGraph[success].size());
-                    //std::copy(cache.reverseGraph[success].begin(),
-                    //        cache.reverseGraph[success].end(),
-                    //        cache.reverseGraph[leafNeighbor.first].begin());
-                
+
                     //We can add these to nodesJoined a touch early to prevent dupes
                     nodesJoined[leafNeighbor.first] = true;
                 }
             }
-            //retResults.push_back({result.first, std::move(updatedResult)});
-
-            //result.second = updatedResult;
         }
         //joinHints = std::move(newJoins);
     }
@@ -280,14 +270,7 @@ struct BlockUpdateContext {
         joinPropagation(blockGraph),
         currentGraph(blockGraph.size(), blockGraph[0].size()),
         blockJoinTracker(numberOfBlocksToJoin){
-            /*
-            for(size_t i = 0; auto& vertex: currentGraph){
-                for (const auto& neighbor: leafGraph[i]){
-                    vertex.push_back({{dataBlock.blockNumber, neighbor.first}, neighbor.second});
-                }
-                i++;
-            }
-            */
+            
     }
 
     void SetNextJoins(){
