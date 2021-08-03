@@ -24,8 +24,7 @@ https://github.com/AnabelSMRuggiero/NNDescent.cpp
 #include <execution>
 #include <string_view>
 #include <cstdlib>
-#include <mutex>
-#include <atomic>
+
 //#include <type_traits>
 
 #include "Utilities/Type.hpp"
@@ -114,84 +113,8 @@ std::vector<BlockUpdateContext<float, DispatchFunctor<float>>> BuildGraph(const 
     return blockUpdateContexts;
 }
 
-template<typename DistType>
-struct ThreadFunctors{
-    DispatchFunctor<DistType> dispatchFunctor;
-    CachingFunctor<DistType> cache;
-
-    template<typename DistanceFunctor>
-    ThreadFunctors(DistanceFunctor distanceFunctor, size_t maxBlockSize, size_t numNeighbors): dispatchFunctor(distanceFunctor), cache(dispatchFunctor, maxBlockSize, numNeighbors){}
-
-};
-
-template<typename DistType>
-struct TaskQueue{
-
-    void AddTask(std::function<void(ThreadFunctors<DistType>)>&& task){
-        std::scoped_lock queueLock(queueMutex);
-        tasks.push_back(std::move(task));
-        taskCounter++;
-    }
-
-    void AddTasks(std::vector<std::function<void(ThreadFunctors<DistType>)>>&& newTasks){
-        std::scoped_lock queueLock(queueMutex);
-        for (auto& task: newTasks){
-            tasks.push_back(std::move(task));
-            taskCounter++;
-        }
-    }
-
-    std::function<void(ThreadFunctors<DistType>)> TakeTask(){
-        std::scoped_lock queueLock(queueMutex);
-        std::function<void(ThreadFunctors<DistType>)> retTask = std::move(tasks.back());
-        tasks.pop_back();
-        taskCounter--;
-        return retTask;
-    }
-    
-    std::vector<std::function<void(ThreadFunctors<DistType>)>> TakeTasks(){
-        std::scoped_lock queueLock(queueMutex);
-        std::vector<std::function<void(ThreadFunctors<DistType>)>> retTasks = std::move(tasks);
-        tasks = std::vector<std::function<void(ThreadFunctors<DistType>)>>();
-        taskCounter = 0;
-        return retTasks;
-    }
 
 
-    private:
-    std::vector<std::function<void(ThreadFunctors<DistType>)>> tasks;
-    std::mutex queueMutex;
-    std::atomic<size_t> taskCounter
-
-};
-
-template<typename DistType>
-struct TaskThread{
-
-    
-
-    ThreadFunctors<DistType> functors;
-    TaskQueue<DistType> workQueue;
-
-    template<typename DistanceFunctor>
-    TaskThread(DistanceFunctor distanceFunctor, size_t maxBlockSize, size_t numNeighbors): functors(distanceFunctor, maxBlockSize, numNeighbors), workQueue() {};
-
-
-};
-/*
-template<typename DistType>
-std::vector<Graph<size_t, DistType>> InitializeBlockGraphs(const size_t numBlocks, const std::vector<size_t> blockSizes, const size_t numNeighbors, DispatchFunctor<DistType> distanceFunctor, std::execution::parallel_policy){
-    
-    std::vector<Graph<size_t, DistType>> blockGraphs(0);
-    blockGraphs.reserve(blockSizes.size());
-    for (size_t i =0; i<numBlocks; i+=1){
-        distanceFunctor.SetBlocks(i,i);
-        blockGraphs.push_back(BruteForceBlock<DistType>(numNeighbors, blockSizes[i], distanceFunctor));
-    }
-
-    return blockGraphs;
-}
-*/
 
 
 
@@ -353,7 +276,7 @@ int main(int argc, char *argv[]){
     EuclidianTrain<AlignedArray<float>, AlignedArray<float>> splittingScheme(mnistFashionTrain);
     TrainingSplittingScheme splitterFunc(splittingScheme);
     
-    RandomProjectionForest rpTreesTrain(size_t(mnistFashionTrain.numberOfSamples), rngFunctor, splitterFunc, splitParams);
+    RandomProjectionForest rpTreesTrain(size_t(mnistFashionTrain.numberOfSamples), rngFunctor, splitterFunc, parameters.splitParams);
 
 
     //std::vector<size_t> trainClassifications(mnistFashionTrain.numberOfSamples);
