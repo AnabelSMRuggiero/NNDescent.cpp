@@ -47,11 +47,16 @@ std::pair<IndexMaps<size_t>, std::vector<DataBlock<DataEntry>>> PartitionData(co
         std::move(dataMapper.sourceToSplitIndex)
     };
 
+
+    
     return {retMaps, std::move(retBlocks)};
 }
 
 template<typename DistType>
-std::vector<Graph<size_t, DistType>> InitializeBlockGraphs(const size_t numBlocks, const std::vector<size_t>& blockSizes, const size_t numNeighbors, DispatchFunctor<DistType> distanceFunctor){
+std::vector<Graph<size_t, DistType>> InitializeBlockGraphs(const size_t numBlocks,
+                                                           const std::vector<size_t>& blockSizes,
+                                                           const size_t numNeighbors,
+                                                           DispatchFunctor<DistType> distanceFunctor){
     
     std::vector<Graph<size_t, DistType>> blockGraphs(0);
     blockGraphs.reserve(blockSizes.size());

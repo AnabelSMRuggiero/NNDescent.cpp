@@ -236,9 +236,9 @@ struct SinglePointFunctor{
     template<typename DistanceFunctor>
     struct ConcreteFunctor final : AbstractFunctor{
 
-        DistanceFunctor& underlyingFunctor;
+        DistanceFunctor underlyingFunctor;
 
-        ConcreteFunctor(DistanceFunctor& underlyingFunctor): underlyingFunctor(underlyingFunctor){};
+        ConcreteFunctor(DistanceFunctor underlyingFunctor): underlyingFunctor(underlyingFunctor){};
         //~ConcreteFunctor() final = default;
 
         DistType operator()(const size_t functorParam, size_t targetIndex) const final {

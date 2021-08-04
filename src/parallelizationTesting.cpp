@@ -80,7 +80,7 @@ struct TaskQueue{
     }
 
     Task TakeTask(){
-        std::scoped_lock queueLock(queueMutex);
+        std::unique_lock queueLock(queueMutex);
         if (taskCounter == 0){
             needTasks.wait(queueLock, [&]{return taskCounter != 0;});
         }
@@ -92,7 +92,7 @@ struct TaskQueue{
     }
     
     std::list<Task> TakeTasks(){
-        std::scoped_lock queueLock(queueMutex);
+        std::unique_lock queueLock(queueMutex);
         if (taskCounter == 0){
             needTasks.wait(queueLock, [&]{return taskCounter != 0;});
         }
@@ -133,31 +133,33 @@ struct TaskThread{
     TaskThread(TaskThread&& other) = default;
 
 
-    /*
-    TaskThread& operator=(TaskThread&& rhs){
-        assert(rhs.running == false);
-
-        state = std::move(rhs.state);
-        running = false;
-        workQueue = std::move(rhs.workQueue);
-        return *this;
-    }
-    */
+    
     template<typename ...ThreadStateArgs>
     TaskThread(ThreadStateArgs... args): state(args...), workQueue(), running(false) {};
 
-    //template<typename StopCallBack>
-    void operator()(std::stop_token stopToken, auto queueStopTask){
+    auto GetThreadLoop(){
+        auto threadLoop = [&](std::stop_token stopToken)->void{
 
-        std::stop_callback stopQueuer(stopToken, queueStopTask);
+            assert(!(this->running));
 
-        running = true;
-        while(running){
+            auto queueTerminator = [&]() mutable {
+                this->workQueue.AddTask(this->GetTerminator());
+            };
 
-            ThreadTask taskToDo = workQueue.TakeTask();
-            taskToDo(state);
 
-        }
+            std::stop_callback stopQueuer(stopToken, queueTerminator);
+
+            this->running = true;
+            while(running){
+
+                ThreadTask taskToDo = this->workQueue.TakeTask();
+                taskToDo(state);
+
+            }
+
+        };
+
+        return threadLoop;
     }
 
     ThreadTask GetTerminator(){
@@ -217,12 +219,12 @@ struct ThreadPool{
                                          threadStates(std::make_unique<TaskThread<ThreadState>[]>(numThreads)), 
                                          threadHandles(std::make_unique<std::jthread[]>(numThreads)){
         for (size_t i = 0; i<numThreads; i += 1){
-            threadStates[i].state = std::move(ThreadState(args...));
+            threadStates[i].state = ThreadState(args...);
         }
     }
 
     void StartThreads(){
-        
+        /*
         auto stopTaskGenerator = [&](const size_t threadNumber)->auto{
             ThreadTask stopTask = threadStates[threadNumber].GetTerminator();
             auto queueStop = [&, threadNumber, stopTask]() mutable {
@@ -230,10 +232,10 @@ struct ThreadPool{
             };
             return queueStop;
         };
-        
+        */
 
         for(size_t i = 0; i<numThreads; i+=1){
-            threadHandles[i] = std::jthread(threadStates[i], stopTaskGenerator(i));
+            threadHandles[i] = std::jthread(threadStates[i].GetThreadLoop());
         }
 
     };
@@ -248,7 +250,8 @@ struct ThreadPool{
         //implement something smarter here
         //or maybe I won't need to if/when I implement task stealing
         threadStates[delegationCounter].workQueue.AddTask(std::move(task));
-        delegationCounter++;
+        delegationCounter = (delegationCounter+1)%numThreads;
+
     }
 
     private:
@@ -260,32 +263,40 @@ struct ThreadPool{
     
 };
 
+template<typename TaskResult>
+using TaskStates = std::unique_ptr<std::pair<std::promise<TaskResult>, std::future<TaskResult>>[]>;
 
 template<typename DistType>
-std::vector<std::future<Graph<size_t, DistType>>> InitializeBlockGraphs(const size_t numBlocks, const std::vector<size_t>& blockSizes, const size_t numNeighbors, ThreadPool<ThreadFunctors<DistType>>& threadPool){
+TaskStates<Graph<size_t, DistType>> InitializeBlockGraphs(const size_t numBlocks,
+                                                          const std::vector<size_t>& blockSizes,
+                                                          const size_t numNeighbors, 
+                                                          ThreadPool<ThreadFunctors<DistType>>& threadPool){
     
+    TaskStates<Graph<size_t, DistType>> retArr = std::make_unique<std::pair<std::promise<Graph<size_t, DistType>>, std::future<Graph<size_t, DistType>>>[]>(blockSizes.size());
+    //retArr.reserve(blockSizes.size());
+
     //lambda that generates a function that executes the relevant work
     auto taskGenerator = [&](size_t blockNum, size_t blockSize)-> auto{
+
         std::promise<Graph<size_t, DistType>> taskResult;
-        
-        auto task = [&, blockNum](ThreadFunctors<DistType>& functors){
+        std::future<Graph<size_t, DistType>> taskFuture = taskResult.get_future();
+
+        retArr[blockNum] = {std::move(taskResult), std::move(taskFuture)};
+        auto task = [=, &result = retArr[blockNum].first](ThreadFunctors<DistType>& functors) mutable {
             functors.dispatchFunctor.SetBlocks(blockNum, blockNum);
-            taskResult.set_value(BruteForceBlock(numNeighbors, blockSize, functors.dispatchFunctor));
+            result.set_value(BruteForceBlock(numNeighbors, blockSize, functors.dispatchFunctor));
         };
 
-        return std::make_pair(std::function(task), taskResult.get_future());
+        return std::function(std::move(task));
     };
 
-    std::vector<std::future<Graph<size_t, DistType>>> retVector;
+    
     //generate tasks, return futures
     for (size_t i = 0; i<numBlocks; i+=1){
-        auto [task, future] = taskGenerator(i, blockSizes[i]);
-        threadPool.DelegateTask(std::move(task));
-        retVector.push_back(std::move(future));
+        threadPool.DelegateTask(taskGenerator(i, blockSizes[i]));
     }
 
-    return retVector;
-    
+    return retArr;
 }
 
 /*
@@ -327,10 +338,21 @@ int main(){
     MetricFunctor<AlignedArray<float>, EuclideanMetricPair> testFunctor(dataBlocks);
     
 
-    ThreadPool<ThreadFunctors<float>> pool(1, testFunctor, splitParams.maxTreeSize, 10);
+    ThreadPool<ThreadFunctors<float>> pool(12, testFunctor, splitParams.maxTreeSize, 10);
+
+    std::vector<size_t> sizes;
+    sizes.reserve(dataBlocks.size());
+    for(const auto& block: dataBlocks){
+        sizes.push_back(block.size());
+    }
+    
+
 
     pool.StartThreads();
 
+    auto futures = InitializeBlockGraphs(dataBlocks.size(), sizes, 10, pool);
+
+    auto testRes = futures[sizes.size()-1].second.get();
 
     pool.StopThreads();
 
