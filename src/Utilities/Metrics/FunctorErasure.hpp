@@ -4,6 +4,8 @@
 #include <vector>
 #include <concepts>
 #include <memory>
+#include <type_traits>
+#include <concepts>
 
 #include "Utilities/Type.hpp"
 #include "Utilities/Data.hpp"
@@ -61,12 +63,20 @@ struct MetricFunctor{
     }
 };
 
-
+template<typename Type, typename OtherType>
+concept IsNot = !std::same_as<Type, OtherType>;
 
 template<typename DistType>
 struct DispatchFunctor{
 
-    template<typename DistanceFunctor>
+    DispatchFunctor() = default;
+
+    DispatchFunctor(const DispatchFunctor& other):
+        ptrToFunc(other.ptrToFunc){};
+
+    DispatchFunctor& operator=(const DispatchFunctor&) = default;
+
+    template<IsNot<DispatchFunctor> DistanceFunctor>
     DispatchFunctor(DistanceFunctor& distanceFunctor):
         ptrToFunc(std::make_shared<ConcreteFunctor<DistanceFunctor>>(distanceFunctor)){};
     
@@ -94,9 +104,9 @@ struct DispatchFunctor{
     template<typename DistanceFunctor>
     struct ConcreteFunctor final : AbstractFunctor{
 
-        DistanceFunctor& underlyingFunctor;
+        DistanceFunctor underlyingFunctor;
 
-        ConcreteFunctor(DistanceFunctor& underlyingFunctor): underlyingFunctor(underlyingFunctor){};
+        ConcreteFunctor(DistanceFunctor underlyingFunctor): underlyingFunctor(underlyingFunctor){};
         //~ConcreteFunctor() final = default;
 
         DistType operator()(size_t LHSIndex, size_t RHSIndex) const final {
@@ -113,7 +123,8 @@ struct DispatchFunctor{
 
     };
 
-    const std::shared_ptr<AbstractFunctor> ptrToFunc;
+    private:
+    std::shared_ptr<AbstractFunctor> ptrToFunc;
     
 };
 

@@ -18,6 +18,7 @@ https://github.com/AnabelSMRuggiero/NNDescent.cpp
 #include <memory>
 #include <vector>
 #include <list>
+#include <cassert>
 
 
 #include "Utilities/Type.hpp"
@@ -42,15 +43,21 @@ struct ThreadFunctors{
     DispatchFunctor<DistType> dispatchFunctor;
     CachingFunctor<DistType> cache;
 
+    ThreadFunctors() = default;
+
     template<typename DistanceFunctor>
     ThreadFunctors(DistanceFunctor distanceFunctor, size_t maxBlockSize, size_t numNeighbors): dispatchFunctor(distanceFunctor), cache(dispatchFunctor, maxBlockSize, numNeighbors){}
 
 };
 
+
+
 template<typename Task>
 struct TaskQueue{
 
     using TaskType = Task;
+
+    TaskQueue& operator=(TaskQueue&& rhs) = default;
 
     void AddTask(Task&& task){
         std::unique_lock queueLock(queueMutex);
@@ -75,7 +82,7 @@ struct TaskQueue{
     Task TakeTask(){
         std::scoped_lock queueLock(queueMutex);
         if (taskCounter == 0){
-            needTasks.wait(queueLock, []{return taskCounter != 0;});
+            needTasks.wait(queueLock, [&]{return taskCounter != 0;});
         }
         taskCounter--;
         Task retTask = std::move(tasks.front());
@@ -87,7 +94,7 @@ struct TaskQueue{
     std::list<Task> TakeTasks(){
         std::scoped_lock queueLock(queueMutex);
         if (taskCounter == 0){
-            needTasks.wait(queueLock, []{return taskCounter != 0;});
+            needTasks.wait(queueLock, [&]{return taskCounter != 0;});
         }
         taskCounter = 0;
         std::list<Task> retTasks = std::move(tasks);
@@ -95,7 +102,7 @@ struct TaskQueue{
         return retTasks;
     }
 
-    bool operator bool(){
+    operator bool(){
         return taskCounter != 0;
     }
 
@@ -108,18 +115,36 @@ struct TaskQueue{
 };
 
 template<typename ThreadState>
+struct ThreadPool;
+
+template<typename ThreadState>
 struct TaskThread{
 
     using ThreadTask = std::function<void(ThreadState&)>;
+
+    friend ThreadPool<ThreadState>;
 
     TaskQueue<ThreadTask> workQueue;
 
     TaskThread() = default;
 
-    TaskThread(const TaskThread&) = delete;
+    
 
-    template<typename DistanceFunctor>
-    TaskThread(DistanceFunctor distanceFunctor, size_t maxBlockSize, size_t numNeighbors): functors(distanceFunctor, maxBlockSize, numNeighbors), workQueue(), running(false) {};
+    TaskThread(TaskThread&& other) = default;
+
+
+    /*
+    TaskThread& operator=(TaskThread&& rhs){
+        assert(rhs.running == false);
+
+        state = std::move(rhs.state);
+        running = false;
+        workQueue = std::move(rhs.workQueue);
+        return *this;
+    }
+    */
+    template<typename ...ThreadStateArgs>
+    TaskThread(ThreadStateArgs... args): state(args...), workQueue(), running(false) {};
 
     //template<typename StopCallBack>
     void operator()(std::stop_token stopToken, auto queueStopTask){
@@ -130,45 +155,78 @@ struct TaskThread{
         while(running){
 
             ThreadTask taskToDo = workQueue.TakeTask();
-            taskToDo(functors);
+            taskToDo(state);
 
         }
     }
 
     ThreadTask GetTerminator(){
-        return [&running](ThreadFunctors<DistType>& threadState){
+        return [&](ThreadState& threadState){
             running = false;
         };
     }
 
 
     private:
+    TaskThread(const TaskThread&) = default;
+    TaskThread& operator=(const TaskThread&) = default;
     bool running;
-    ThreadState functors;
+    ThreadState state;
 
 };
 
+
+/*
+template<typename ElementType, typename ...ConstructorArgs>
+    requires std::is_unbounded_array_v<T>
+std::unique_ptr<ArrayType> MakeArray(size_t numEle, ConstructorArgs... args){
+    ElementType* retArray = ::operator new[](numEle*sizeof(ElementType));
+    size_t constructCount(0);
+    try{
+        for (size_t i = 0; i<numEle; i+=1){
+            ElementType* catchPtr = new(retArray+i) ElementType(args...);
+        }
+    } catch (...){
+        for (size_t i = constructCount; i>=0; i-=1){
+            (retArray+i)->~ElementType();
+        }
+        ::operator delete[](retArray);
+        throw;
+    }
+}
+*/
 template<typename ThreadState>
 struct ThreadPool{
+
 
     using ThreadTask = std::function<void(ThreadState&)>;
 
     ThreadPool(): numThreads(std::jthread::hardware_concurrency()),
                   delegationCounter(0),
-                  threadStates(std::make_unique<TaskThread<ThreadState>>(numThreads)), 
-                  threadHandles(std::make_unique<std::jthread>(numThreads)) {};
+                  threadStates(std::make_unique<TaskThread<ThreadState>[]>(numThreads)), 
+                  threadHandles(std::make_unique<std::jthread[]>(numThreads)) {};
 
     ThreadPool(const size_t numThreads): numThreads(numThreads),
                                          delegationCounter(0),
-                                         threadStates(std::make_unique<TaskThread<ThreadState>>(numThreads)), 
-                                         threadHandles(std::make_unique<std::jthread>(numThreads)) {};
+                                         threadStates(std::make_unique<TaskThread<ThreadState>[]>(numThreads)), 
+                                         threadHandles(std::make_unique<std::jthread[]>(numThreads)) {};
+
+    template<typename ...ThreadStateArgs>
+    ThreadPool(const size_t numThreads, ThreadStateArgs... args): numThreads(numThreads),
+                                         delegationCounter(0),
+                                         threadStates(std::make_unique<TaskThread<ThreadState>[]>(numThreads)), 
+                                         threadHandles(std::make_unique<std::jthread[]>(numThreads)){
+        for (size_t i = 0; i<numThreads; i += 1){
+            threadStates[i].state = std::move(ThreadState(args...));
+        }
+    }
 
     void StartThreads(){
         
         auto stopTaskGenerator = [&](const size_t threadNumber)->auto{
-            ThreadTask stopTask = threadStates[threadNumber];
-            auto queueStop = [&, threadNumber, stopTask](){
-                threadStates[threadNumber].workQueue.AddTask(stopTask);
+            ThreadTask stopTask = threadStates[threadNumber].GetTerminator();
+            auto queueStop = [&, threadNumber, stopTask]() mutable {
+                threadStates[threadNumber].workQueue.AddTask(std::move(stopTask));
             };
             return queueStop;
         };
@@ -194,8 +252,9 @@ struct ThreadPool{
     }
 
     private:
+    
     const size_t numThreads;
-    const size_t delegationCounter;
+    size_t delegationCounter;
     std::unique_ptr<TaskThread<ThreadState>[]> threadStates; 
     std::unique_ptr<std::jthread[]> threadHandles;
     
@@ -211,7 +270,7 @@ std::vector<std::future<Graph<size_t, DistType>>> InitializeBlockGraphs(const si
         
         auto task = [&, blockNum](ThreadFunctors<DistType>& functors){
             functors.dispatchFunctor.SetBlocks(blockNum, blockNum);
-            taskResult.set_value(BruteForceBlock(numNeighbors, blockSize, functors.dispatchFunctor))
+            taskResult.set_value(BruteForceBlock(numNeighbors, blockSize, functors.dispatchFunctor));
         };
 
         return std::make_pair(std::function(task), taskResult.get_future());
@@ -266,9 +325,14 @@ int main(){
 
     
     MetricFunctor<AlignedArray<float>, EuclideanMetricPair> testFunctor(dataBlocks);
+    
+
+    ThreadPool<ThreadFunctors<float>> pool(1, testFunctor, splitParams.maxTreeSize, 10);
+
+    pool.StartThreads();
 
 
-    //ThreadPool<ThreadFunctors<float>>
+    pool.StopThreads();
 
     return 0;
 }

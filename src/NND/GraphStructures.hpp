@@ -468,7 +468,7 @@ Graph<size_t, DistType> BruteForceBlock(const size_t numNeighbors, const size_t 
 template<typename DistType>
 struct CachingFunctor{
 
-    DispatchFunctor<DistType>& metricFunctor;
+    DispatchFunctor<DistType> metricFunctor;
     //DistanceCache<DistType> cache;
     Graph<size_t, DistType> reverseGraph;
     std::vector<NodeTracker> nodesJoined;
@@ -484,6 +484,12 @@ struct CachingFunctor{
         maxBlockSize(maxBlockSize){
         //cache.reserve(cacheSize);
     }
+
+    CachingFunctor() = default;
+
+    CachingFunctor(const CachingFunctor&) = default;
+
+    CachingFunctor& operator= (const CachingFunctor&) = default;
 
     DistType operator()(const size_t queryIndex, const size_t targetIndex){
         DistType distance = this->metricFunctor(queryIndex, targetIndex);

@@ -128,7 +128,7 @@ void ReverseBlockJoin(const JoinHints<size_t>& startJoins,
                    const Graph<BlockIndecies, DistType>& currentGraphState,
                    const Graph<size_t, DistType>& searchSubgraph,
                    const QueryContext<DistType, DistanceFunctor>& targetBlock,
-                   CachingFunctor<DistType, DistanceFunctor>& cache,
+                   CachingFunctor<DistType>& cache,
                    DistanceFunctor& queryFunctor){
     
     //std::vector<std::pair<size_t, GraphVertex<size_t, DistType>>> joinHints;
@@ -302,7 +302,7 @@ JoinMap<size_t, size_t> InitializeJoinMap(const std::vector<BlockUpdateContext<D
 template<typename DistType, typename DistanceFunctor>
 int UpdateBlocks(BlockUpdateContext<DistType, DistanceFunctor>& blockLHS,
                  BlockUpdateContext<DistType, DistanceFunctor>& blockRHS,
-                 CachingFunctor<DistType, DistanceFunctor>& cachingFunctor){
+                 CachingFunctor<DistType>& cachingFunctor){
 
 
     bool doRHSJoin = blockRHS.joinsToDo.find(blockLHS.queryContext.blockNumber) != blockRHS.joinsToDo.end();
