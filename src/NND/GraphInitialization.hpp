@@ -82,19 +82,19 @@ Graph<BlockIndecies, DistType> ToBlockIndecies(const Graph<DataIndexType, DistTy
     return newGraph;
 }
 
-template <typename DataEntry, typename DataView, typename DistType, typename COMExtent>
+template <typename DistType, typename COMExtent>
 Graph<size_t, DistType> GenerateQueryHints(const std::vector<Graph<size_t, DistType>>& blockGraphs,
-                                                  const std::vector<DataBlock<DataEntry>>& dataBlocks,
                                                   const MetaGraph<COMExtent>& metaGraph,
                                                   const size_t numNeighbors,
-                                                  SpaceMetric<AlignedSpan<const COMExtent>, DataView, COMExtent> distanceFunctor){
+                                                  SinglePointFunctor<COMExtent> distanceFunctor){
     
     Graph<size_t, DistType> retGraph;
     for(size_t i = 0; i<metaGraph.points.size(); i+=1){
-        retGraph.push_back(QueryHintFromCOM<DataEntry, DataView, DistType, COMExtent>(metaGraph.points[i].centerOfMass, 
-                                                                                           {blockGraphs[i], dataBlocks[i]}, 
-                                                                                           numNeighbors, 
-                                                                                           distanceFunctor));
+        distanceFunctor.SetBlock(i);
+        retGraph.push_back(QueryHintFromCOM<DistType, COMExtent>(i, 
+                                                                 blockGraphs[i], 
+                                                                 numNeighbors, 
+                                                                 distanceFunctor));
     }
 
     return retGraph;

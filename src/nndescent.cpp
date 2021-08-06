@@ -67,7 +67,7 @@ struct HyperParameterValues{
 };
 
 
-template<typename DataEntry, typename DistType>
+template<typename DataEntry, typename DistType, typename COMExtent>
 std::vector<BlockUpdateContext<float, DispatchFunctor<float>>> BuildGraph(const std::vector<DataBlock<DataEntry>>& dataBlocks,
                                                                           const MetaGraph<DistType>& metaGraph,
                                                                           DispatchFunctor<DistType>& dispatch,
@@ -78,7 +78,9 @@ std::vector<BlockUpdateContext<float, DispatchFunctor<float>>> BuildGraph(const 
 
     std::vector<Graph<size_t, float>> blockGraphs = InitializeBlockGraphs<float>(dataBlocks.size(), sizes, hyperParams.indexParams.blockGraphNeighbors, dispatch);
 
-    Graph<size_t, float> queryHints = GenerateQueryHints<AlignedArray<float>, AlignedSpan<const float>, float, float>(blockGraphs, dataBlocks, metaGraph, hyperParams.indexParams.blockGraphNeighbors, EuclideanNorm<AlignedSpan<const float>, AlignedSpan<const float>, float>);
+    DataComDistance<DataEntry, COMExtent, EuclideanMetricPair> comFunctor(metaGraph, dataBlocks);
+
+    Graph<size_t, float> queryHints = GenerateQueryHints<float, float>(blockGraphs, metaGraph, hyperParams.indexParams.blockGraphNeighbors, comFunctor);
 
 
     std::vector<BlockUpdateContext<float, DispatchFunctor<float>>> blockUpdateContexts = InitializeBlockContexts<float, float, DispatchFunctor<float>>(blockGraphs, 
@@ -296,51 +298,12 @@ int main(int argc, char *argv[]){
     }
     
     
-    MetaGraph<float> metaGraph(dataBlocks, numCOMNeighbors);
+    MetaGraph<float> metaGraph(dataBlocks, numCOMNeighbors, EuclideanMetricPair());
 
-    std::vector<BlockUpdateContext<float, DispatchFunctor<float>>> blockUpdateContexts = BuildGraph<AlignedArray<float>, float>(dataBlocks, metaGraph, testDispatch, std::move(sizes), parameters, std::execution::seq);
-
-    
-    /*
-    std::vector<Graph<size_t, float>> blockGraphs = InitializeBlockGraphs<float>(dataBlocks.size(), sizes, numBlockGraphNeighbors, testFunctor);
+    std::vector<BlockUpdateContext<float, DispatchFunctor<float>>> blockUpdateContexts = BuildGraph<AlignedArray<float>, float, float>(dataBlocks, metaGraph, testDispatch, std::move(sizes), parameters, std::execution::seq);
 
     
-
-    Graph<size_t, float> queryHints = GenerateQueryHints<AlignedArray<float>, AlignedSpan<const float>, float, float>(blockGraphs, dataBlocks, metaGraph, numBlockGraphNeighbors, EuclideanNorm<AlignedSpan<const float>, AlignedSpan<const float>, float>);
-
-
-    std::vector<BlockUpdateContext<float, DispatchFunctor<float>>> blockUpdateContexts = InitializeBlockContexts<float, float, DispatchFunctor<float>>(blockGraphs, 
-                                                                                         metaGraph,
-                                                                                         queryHints,
-                                                                                         queryDepth,
-                                                                                         testDispatch);
     
-
-    CachingFunctor<float, DispatchFunctor<float>> cacher(testDispatch, splitParams.maxTreeSize, numBlockGraphNeighbors);
-
-    auto [nearestNodeDistances, stitchHints] = NearestNodeDistances(blockUpdateContexts, metaGraph, maxNearestNodes);
-    StitchBlocks(nearestNodeDistances, stitchHints, blockUpdateContexts, cacher);
-    
-    
-
-    
-    int iteration(1);
-    int graphUpdates(1);
-    while(graphUpdates>0){
-        graphUpdates = 0;
-        for(size_t i = 0; i<blockUpdateContexts.size(); i+=1){
-            for (auto& joinList: blockUpdateContexts[i].joinsToDo){
-                graphUpdates += UpdateBlocks(blockUpdateContexts[i], blockUpdateContexts[joinList.first], cacher);
-                blockUpdateContexts[joinList.first].joinsToDo.erase(i);
-            }
-        }
-        for (auto& context: blockUpdateContexts){
-            context.SetNextJoins();
-        }
-
-        iteration += 1;
-    }
-    */
     std::chrono::time_point<std::chrono::steady_clock> runEnd = std::chrono::steady_clock::now();
     //std::cout << std::chrono::duration_cast<std::chrono::duration<float>>(runEnd - runStart).count() << "s total for index building " << std::endl;
     std::cout << std::chrono::duration_cast<std::chrono::duration<float>>(runEnd - runStart).count() << std::endl;

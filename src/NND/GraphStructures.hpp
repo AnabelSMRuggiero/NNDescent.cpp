@@ -265,9 +265,9 @@ struct Graph{
     Graph(size_t numVerticies, size_t numNeighbors): 
         verticies(numVerticies, GraphVertex<IndexType, FloatType>(numNeighbors)){};
 
-    Graph(Graph&&) = default;
-    
-    Graph& operator=(Graph&&) = default; 	
+    //Graph(Graph&&) = default;
+
+    //Graph& operator=(Graph&&) = default; 	
 
     Graph(const Graph& otherGraph): verticies(otherGraph.size(), GraphVertex<IndexType, FloatType>(otherGraph[0].size())){
         for (size_t i = 0; const auto& vertex: otherGraph){

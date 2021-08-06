@@ -140,31 +140,34 @@ struct EuclideanComDistance{
     };
 };
 
-template<typename DataEntry, typename ComView, typename DistFunctor>
+template<typename COMExtent>
+struct MetaGraph;
+
+template<typename DataEntry, typename COMExtent, typename MetricPair>
 struct DataComDistance{
-    using DistType = typename DistFunctor::DistType;
+    using DistType = typename MetricPair::DistType;
     using DataView = typename DataBlock<DataEntry>::DataView;
     //Reference to Com?
-    ComView centerOfMass;
+    const MetaGraph<COMExtent>& centersOfMass;
     const DataBlock<DataEntry>* targetBlock;
     const std::vector<DataBlock<DataEntry>>& blocks;
-    [[no_unique_address]] DistFunctor functor;
+    [[no_unique_address]] MetricPair functor;
 
-    DataComDistance(const ComView centerOfMass, const std::vector<DataBlock<DataEntry>>& blocks): centerOfMass(centerOfMass), blocks(blocks), functor(){};
+    DataComDistance(const MetaGraph<COMExtent>& centersOfMass, const std::vector<DataBlock<DataEntry>>& blocks): centersOfMass(centersOfMass), blocks(blocks), functor(){};
 
-    DataComDistance(const ComView centerOfMass, const std::vector<DataBlock<DataEntry>>& blocks, DistFunctor functor):
-                        centerOfMass(centerOfMass), blocks(blocks), functor(functor){};
+    DataComDistance(const MetaGraph<COMExtent>& centersOfMass, const std::vector<DataBlock<DataEntry>>& blocks, MetricPair functor):
+                        centersOfMass(centersOfMass), blocks(blocks), functor(functor){};
 
-    float operator()(const size_t dataIndex) const{
-        return functor(centerOfMass, (*targetBlock)[dataIndex]);
+    float operator()(const size_t metagraphIndex, const size_t dataIndex) const{
+        return functor(centersOfMass.points[metagraphIndex].centerOfMass, (*targetBlock)[dataIndex]);
     };
     
-    std::vector<float> operator()(const std::vector<size_t>& rhsIndecies) const{
+    std::vector<float> operator()(const size_t metagraphIndex, const std::vector<size_t>& rhsIndecies) const{
         std::vector<DataView> rhsData;
         for(const auto& index: rhsIndecies){
             rhsData.push_back((*targetBlock)[index]);
         }
-        return metricPair(centerOfMass, rhsData);
+        return functor(centersOfMass.points[metagraphIndex].centerOfMass, rhsData);
     };
 
     void SetBlock(size_t targetBlockNum){
@@ -209,7 +212,9 @@ struct SearchFunctor{
 template<typename DistType>
 struct SinglePointFunctor{
 
-    template<typename DistanceFunctor>
+    SinglePointFunctor(SinglePointFunctor& other): ptrToFunc(other.ptrToFunc){};
+
+    template<IsNot<SinglePointFunctor> DistanceFunctor>
     SinglePointFunctor(DistanceFunctor& distanceFunctor):
         ptrToFunc(std::make_shared<ConcreteFunctor<DistanceFunctor>>(distanceFunctor)){};
     
@@ -242,7 +247,7 @@ struct SinglePointFunctor{
         //~ConcreteFunctor() final = default;
 
         DistType operator()(const size_t functorParam, size_t targetIndex) const final {
-            return this->underlyingFunctor(targetIndex, functorParam);
+            return this->underlyingFunctor(functorParam, targetIndex);
         };
 
         std::vector<DistType> operator()(const size_t functorParam, const std::vector<size_t>& targetIndecies) const final{

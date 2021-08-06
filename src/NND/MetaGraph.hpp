@@ -25,8 +25,9 @@ namespace nnd{
 // Todo might need to use something other than valarray if I need to handle truly arbitrary data types.
 template<typename DistType>
 struct MetaPoint{
-    int weight;
+    unsigned int weight;
     AlignedArray<DistType> centerOfMass;
+    //SinglePointFunctor<DistType> distanceFunctor;
 };
 
 
@@ -35,8 +36,9 @@ template<std::ranges::random_access_range DataEntry, typename COMExtent>
 MetaPoint<COMExtent> CalculateCOM(const DataBlock<DataEntry>& dataBlock){
 
     MetaPoint<COMExtent> retPoint;
-    retPoint.weight = std::ranges::size(dataBlock.blockData);
+    retPoint.weight = dataBlock.size();
     retPoint.centerOfMass = AlignedArray<COMExtent>(std::ranges::size(dataBlock.blockData[0]));
+    //retPoint.distanceFunctor = distanceFunctor;
     
     for (size_t i = 0; i<dataBlock.blockData.size(); i += 1){
         for(size_t j = 0; j<dataBlock.blockData[i].size(); j += 1){
@@ -50,8 +52,8 @@ MetaPoint<COMExtent> CalculateCOM(const DataBlock<DataEntry>& dataBlock){
     return retPoint;
 }
 
-template<typename DataType, typename FloatType>
-void BruteForceGraph(Graph<size_t, FloatType>& uninitGraph, size_t numNeighbors, const std::vector<MetaPoint<FloatType>>& dataVector, SpaceMetric<DataType, DataType, FloatType> distanceFunctor){
+template<typename FloatType, typename Metric>
+void BruteForceGraph(Graph<size_t, FloatType>& uninitGraph, size_t numNeighbors, const std::vector<MetaPoint<FloatType>>& dataVector, Metric distanceFunctor){
     
     // I can make this branchless. Check to see if /O2 or /O3 can make this branchless (I really doubt it)
     for (size_t i = 0; i < dataVector.size(); i += 1){
@@ -82,13 +84,19 @@ struct MetaGraph{
     std::vector<MetaPoint<COMExtent>> points;
     Graph<size_t, COMExtent> verticies;
 
-    template<typename DataEntry>
-    MetaGraph(const std::vector<DataBlock<DataEntry>>& dataBlocks, size_t numNeighbors): points(0), verticies(dataBlocks.size(), numNeighbors){
+    template<typename DataEntry, typename Metric>
+    MetaGraph(const std::vector<DataBlock<DataEntry>>& dataBlocks, const size_t numNeighbors, Metric metricFunctor): points(0), verticies(dataBlocks.size(), numNeighbors){
+        //SinglePointFunctor<COMExtent> functor(DataComDistance<DataEntry, COMExtent, MetricPair>(*this, dataBlocks, metricFunctor));
         for (const auto& dataBlock: dataBlocks){
             points.push_back(CalculateCOM<DataEntry, COMExtent>(dataBlock));
         }
-        BruteForceGraph<AlignedArray<COMExtent>, COMExtent>(verticies, numNeighbors, points, EuclideanNorm<AlignedArray<COMExtent>, AlignedArray<COMExtent>, COMExtent>);
+        BruteForceGraph<COMExtent, Metric>(verticies, numNeighbors, points, metricFunctor);
     }
+    /*
+    DataComDistance(const ComView& centerOfMass, const std::vector<DataBlock<DataEntry>>& blocks): centerOfMass(centerOfMass), blocks(blocks), functor(){};
+
+    DataComDistance(const ComView& centerOfMass, const std::vector<DataBlock<DataEntry>>& blocks, MetricPair functor)
+    */
 };
 
 

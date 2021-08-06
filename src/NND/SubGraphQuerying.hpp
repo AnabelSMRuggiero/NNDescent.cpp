@@ -19,6 +19,7 @@ https://github.com/AnabelSMRuggiero/NNDescent.cpp
 #include <cstdint>
 #include <utility>
 #include <optional>
+#include <type_traits>
 
 #include "../Utilities/Data.hpp"
 #include "../Utilities/DataDeserialization.hpp"
@@ -66,32 +67,32 @@ std::tuple<size_t, size_t, FloatType> BruteNearestNodes(const Graph<IndexType, F
     return {bestPair.first, bestPair.second, bestDistance};
 }
 
-template<typename DataEntry, typename DataView, std::floating_point COMExtentType, typename DistType>
-GraphVertex<size_t, DistType> QueryCOMNeighbors(const AlignedArray<COMExtentType>& centerOfMass,
-                                                     const SubProblemData<size_t, DataEntry, DistType> subProb, 
-                                                     const int numCandidates,
-                                                     SpaceMetric<AlignedSpan<const COMExtentType>, DataView, COMExtentType> distanceFunctor){
+template<std::floating_point COMExtent, typename DistType>
+GraphVertex<size_t, DistType> QueryCOMNeighbors(const size_t pointIndex,
+                                                     const Graph<size_t, DistType>& subProb, 
+                                                     const size_t numCandidates,
+                                                     SinglePointFunctor<COMExtent> distanceFunctor){
 
     GraphVertex<size_t, DistType> COMneighbors(numCandidates);
     
     //Just gonna dummy it and select the first few nodes. Since the splitting process is randomized, this is a totally random selection, right? /s
-    NodeTracker nodesVisited(subProb.dataBlock.size());
+    NodeTracker nodesVisited(subProb.size());
     for (size_t i = 0; i < numCandidates; i+=1){
-        COMneighbors.neighbors.push_back(std::pair<size_t, DistType>(i,
-                                          distanceFunctor(centerOfMass, subProb.dataBlock.blockData[i])));
+        COMneighbors.push_back(std::pair<size_t, DistType>(i,
+                                distanceFunctor(pointIndex, i)));
         nodesVisited[i] = true;
     }
-    std::make_heap(COMneighbors.neighbors.begin(), COMneighbors.neighbors.end(), NeighborDistanceComparison<size_t, COMExtentType>);
+    std::make_heap(COMneighbors.neighbors.begin(), COMneighbors.neighbors.end(), NeighborDistanceComparison<size_t, COMExtent>);
 
     bool breakVar = false;
-    GraphVertex<size_t, COMExtentType> newState(COMneighbors);
+    GraphVertex<size_t, COMExtent> newState(COMneighbors);
     while (!breakVar){
         breakVar = true;   
         for (const auto& curCandidate: COMneighbors){
-            for (const auto& joinTarget: subProb.subGraph[curCandidate.first]){
+            for (const auto& joinTarget: subProb[curCandidate.first]){
                 if(nodesVisited[joinTarget.first]) continue;
                 nodesVisited[joinTarget.first] = true;
-                COMExtentType distance = distanceFunctor(centerOfMass, subProb.dataBlock[joinTarget.first]);
+                COMExtent distance = distanceFunctor(pointIndex, joinTarget.first);
                 if (distance < newState[0].second){
                     newState.PushNeighbor({joinTarget.first, distance});
                     breakVar = false;
@@ -113,18 +114,25 @@ struct QueryPoint{
     QueryPoint(const GraphVertex<size_t, DistType>& hint, const size_t index): queryHint(hint), dataIndex(index){}
 };
 
-template<typename DataEntry, typename DataView, typename DistType, typename COMExtentType>
-GraphVertex<size_t, DistType> QueryHintFromCOM(const AlignedArray<COMExtentType>& centerOfMass,
-                                                       const SubProblemData<size_t, DataEntry, DistType> subProb,
-                                                       const std::uint32_t numCandidates,
-                                                       SpaceMetric<AlignedSpan<const COMExtentType>, DataView, DistType> comDistanceFunctor){
-    GraphVertex<size_t, COMExtentType> comNeighbors = QueryCOMNeighbors<DataEntry, DataView, COMExtentType, DistType>(centerOfMass, subProb, numCandidates, comDistanceFunctor);
-    GraphVertex<size_t, DistType> retHint;
-    for (auto& hint: comNeighbors){
-        //This should be an emplace_back
-        retHint.push_back({hint.first, std::numeric_limits<DistType>::max()});
+template<typename DistType, typename COMExtent>
+GraphVertex<size_t, DistType> QueryHintFromCOM(const size_t metaPointIndex,
+                                                const Graph<size_t, DistType> subProb,
+                                                const size_t numCandidates,
+                                                SinglePointFunctor<COMExtent> distanceFunctor){
+    GraphVertex<size_t, COMExtent> comNeighbors = QueryCOMNeighbors<COMExtent, DistType>(metaPointIndex, subProb, numCandidates, distanceFunctor);
+    if constexpr (std::is_same<DistType, COMExtent>()){
+        for (auto& neighbor: comNeighbors){
+            neighbor.second = std::numeric_limits<DistType>::max();
+        }
+        return comNeighbors;
+    } else{
+        GraphVertex<size_t, DistType> retHint;
+        for (auto& hint: comNeighbors){
+            //This should be an emplace_back
+            retHint.push_back({hint.first, std::numeric_limits<DistType>::max()});
+        }
+        return retHint;
     }
-    return retHint;
 }
 
 template<typename DistType, typename DistanceFunctor>
