@@ -39,9 +39,9 @@ struct SearchContext{
 
 
 //template<typename BlockNumberType, typename DataIndexType, typename DataEntry, typename DistType>
-template<typename DistType, typename QueryFunctor, typename DistanceFunctor>
+template<typename DistType, typename QueryFunctor>
 GraphVertex<size_t, DistType> BlockwiseSearch(SearchContext<DistType>& searchingPoint,
-                   const QueryContext<DistType, DistanceFunctor>& targetBlock,
+                   const QueryContext<DistType>& targetBlock,
                    const size_t hint,
                    QueryFunctor queryFunctor){
     
@@ -91,8 +91,8 @@ unsigned int BlockwiseSearch(SearchContext<DistType>& searchingPoint,
 */
 
 
-template<typename DistType, typename DistanceFunctor>
-void QueueSearches(const BlockUpdateContext<DistType, DistanceFunctor>& graphFragment,
+template<typename DistType>
+void QueueSearches(const BlockUpdateContext<DistType>& graphFragment,
                    SearchContext<DistType>& searchingPoint,
                    const BlockIndecies searchToQueue,
                    GraphVertex<size_t, DistType>& joinResults,

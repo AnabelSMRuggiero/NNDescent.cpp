@@ -56,6 +56,32 @@ bool operator==(ComparisonKey<IndexType> lhs, ComparisonKey<IndexType> rhs){
 }
 
 
+struct IndexParamters{
+    size_t blockGraphNeighbors;
+    size_t COMNeighbors;
+    size_t nearestNodeNeighbors;
+    size_t queryDepth;
+};
+
+struct SearchParameters{
+    size_t searchNeighbors;
+    size_t searchDepth;
+    size_t maxSearchesQueued;
+};
+
+struct SplittingHeurisitcs{
+    int splits = 16;
+    int splitThreshold = 80;
+    int childThreshold = 32;
+    int maxTreeSize = 130;
+};
+
+struct HyperParameterValues{
+    SplittingHeurisitcs splitParams;
+    IndexParamters indexParams;
+    SearchParameters searchParams;
+};
+
 
 }
 

@@ -67,11 +67,11 @@ template<typename DataIndexType, typename DistType>
 using JoinResults = std::vector<std::pair<DataIndexType, GraphVertex<DataIndexType, DistType>>>;
 
 //template<typename BlockNumberType, typename DataIndexType, typename DataEntry, typename DistType>
-template<typename DistType, typename DistanceFunctor, typename QueryFunctor>
+template<typename DistType, typename QueryFunctor>
 JoinResults<size_t, DistType> BlockwiseJoin(const JoinHints<size_t>& startJoins,
                    const Graph<BlockIndecies, DistType>& currentGraphState,
                    const Graph<size_t, DistType>& searchSubgraph,
-                   const QueryContext<DistType, DistanceFunctor>& targetBlock,
+                   const QueryContext<DistType>& targetBlock,
                    QueryFunctor& queryFunctor){
     
     std::vector<std::pair<size_t, GraphVertex<size_t, DistType>>> joinHints;
@@ -127,7 +127,7 @@ template<typename DistType, typename DistanceFunctor>
 void ReverseBlockJoin(const JoinHints<size_t>& startJoins,
                    const Graph<BlockIndecies, DistType>& currentGraphState,
                    const Graph<size_t, DistType>& searchSubgraph,
-                   const QueryContext<DistType, DistanceFunctor>& targetBlock,
+                   const QueryContext<DistType>& targetBlock,
                    CachingFunctor<DistType>& cache,
                    DistanceFunctor& queryFunctor){
     
@@ -252,7 +252,7 @@ void NewJoinQueues(const Graph<size_t, DistType>& joinResults,
     }
 }
 
-template<typename DistType, typename DistanceFunctor>
+template<typename DistType>
 struct BlockUpdateContext {
 
     
@@ -260,12 +260,12 @@ struct BlockUpdateContext {
     NodeTracker blockJoinTracker;
     JoinMap<size_t, size_t> joinsToDo;
     JoinMap<size_t, size_t> newJoins;
-    QueryContext<DistType, DistanceFunctor> queryContext;
+    QueryContext<DistType> queryContext;
     const Graph<size_t, DistType>& joinPropagation;
     Graph<BlockIndecies, DistType> currentGraph;
 
 
-    BlockUpdateContext(const Graph<size_t, DistType>& blockGraph, QueryContext<DistType, DistanceFunctor>&& queryContext, const size_t numberOfBlocksToJoin):
+    BlockUpdateContext(const Graph<size_t, DistType>& blockGraph, QueryContext<DistType>&& queryContext, const size_t numberOfBlocksToJoin):
         queryContext(std::move(queryContext)),
         joinPropagation(blockGraph),
         currentGraph(blockGraph.size(), blockGraph[0].size()),
@@ -279,8 +279,8 @@ struct BlockUpdateContext {
     }
 };
 
-template<typename DistType, typename DistanceFunctor>
-JoinMap<size_t, size_t> InitializeJoinMap(const std::vector<BlockUpdateContext<DistType, DistanceFunctor>>& blockUpdateContexts,
+template<typename DistType>
+JoinMap<size_t, size_t> InitializeJoinMap(const std::vector<BlockUpdateContext<DistType>>& blockUpdateContexts,
                                                           const ComparisonMap<size_t, size_t>& comparisonMap,
                                                           const NodeTracker& nodesJoined){
     JoinMap<size_t, size_t> joinMap;
@@ -299,9 +299,9 @@ JoinMap<size_t, size_t> InitializeJoinMap(const std::vector<BlockUpdateContext<D
 
 
 
-template<typename DistType, typename DistanceFunctor>
-int UpdateBlocks(BlockUpdateContext<DistType, DistanceFunctor>& blockLHS,
-                 BlockUpdateContext<DistType, DistanceFunctor>& blockRHS,
+template<typename DistType>
+int UpdateBlocks(BlockUpdateContext<DistType>& blockLHS,
+                 BlockUpdateContext<DistType>& blockRHS,
                  CachingFunctor<DistType>& cachingFunctor){
 
 
@@ -371,14 +371,14 @@ int UpdateBlocks(BlockUpdateContext<DistType, DistanceFunctor>& blockLHS,
         //This feels like som jank control flow
         blockLHS.blockJoinTracker[blockRHS.queryContext.blockNumber] = true;
         
-        blockRHS.queryContext.defaultQueryFunctor.SetBlocks(blockLHS.queryContext.blockNumber, blockRHS.queryContext.blockNumber);
+        cachingFunctor.metricFunctor.SetBlocks(blockLHS.queryContext.blockNumber, blockRHS.queryContext.blockNumber);
         
 
         JoinResults<size_t, DistType> blockLHSUpdates = BlockwiseJoin(blockLHS.joinsToDo[blockRHS.queryContext.blockNumber],
                                                                             blockLHS.currentGraph,
                                                                             blockLHS.joinPropagation,
                                                                             blockRHS.queryContext,
-                                                                            blockRHS.queryContext.defaultQueryFunctor);
+                                                                            cachingFunctor.metricFunctor);
         NewJoinQueues<float>(blockLHSUpdates, blockLHS.blockJoinTracker, blockRHS.currentGraph, blockLHS.newJoins);
 
         for (auto& result: blockLHSUpdates){

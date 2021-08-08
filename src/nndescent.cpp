@@ -46,7 +46,7 @@ https://github.com/AnabelSMRuggiero/NNDescent.cpp
 #include "Utilities/DataDeserialization.hpp"
 
 using namespace nnd;
-
+/*
 struct IndexParamters{
     size_t blockGraphNeighbors;
     size_t COMNeighbors;
@@ -65,10 +65,10 @@ struct HyperParameterValues{
     IndexParamters indexParams;
     SearchParameters searchParams;
 };
-
+*/
 
 template<typename DataEntry, typename DistType, typename COMExtent>
-std::vector<BlockUpdateContext<float, DispatchFunctor<float>>> BuildGraph(const std::vector<DataBlock<DataEntry>>& dataBlocks,
+std::vector<BlockUpdateContext<float>> BuildGraph(const std::vector<DataBlock<DataEntry>>& dataBlocks,
                                                                           const MetaGraph<DistType>& metaGraph,
                                                                           DispatchFunctor<DistType>& dispatch,
                                                                           std::vector<size_t>&& sizes,
@@ -83,16 +83,15 @@ std::vector<BlockUpdateContext<float, DispatchFunctor<float>>> BuildGraph(const 
     Graph<size_t, float> queryHints = GenerateQueryHints<float, float>(blockGraphs, metaGraph, hyperParams.indexParams.blockGraphNeighbors, comFunctor);
 
 
-    std::vector<BlockUpdateContext<float, DispatchFunctor<float>>> blockUpdateContexts = InitializeBlockContexts<float, float, DispatchFunctor<float>>(blockGraphs, 
+    std::vector<BlockUpdateContext<float>> blockUpdateContexts = InitializeBlockContexts<DistType, COMExtent>(blockGraphs, 
                                                                                          metaGraph,
                                                                                          queryHints,
-                                                                                         hyperParams.indexParams.queryDepth,
-                                                                                         dispatch);
+                                                                                         hyperParams.indexParams.queryDepth);
     
 
     CachingFunctor<float> cacher(dispatch, hyperParams.splitParams.maxTreeSize, hyperParams.indexParams.blockGraphNeighbors);
 
-    auto [nearestNodeDistances, stitchHints] = NearestNodeDistances(blockUpdateContexts, metaGraph, hyperParams.indexParams.nearestNodeNeighbors);
+    auto [nearestNodeDistances, stitchHints] = NearestNodeDistances(blockUpdateContexts, metaGraph, hyperParams.indexParams.nearestNodeNeighbors, dispatch);
     StitchBlocks(nearestNodeDistances, stitchHints, blockUpdateContexts, cacher);
     
     
@@ -298,9 +297,9 @@ int main(int argc, char *argv[]){
     }
     
     
-    MetaGraph<float> metaGraph(dataBlocks, numCOMNeighbors, EuclideanMetricPair());
+    MetaGraph<float> metaGraph(dataBlocks, parameters.indexParams.COMNeighbors, EuclideanMetricPair());
 
-    std::vector<BlockUpdateContext<float, DispatchFunctor<float>>> blockUpdateContexts = BuildGraph<AlignedArray<float>, float, float>(dataBlocks, metaGraph, testDispatch, std::move(sizes), parameters, std::execution::seq);
+    std::vector<BlockUpdateContext<float>> blockUpdateContexts = BuildGraph<AlignedArray<float>, float, float>(dataBlocks, metaGraph, testDispatch, std::move(sizes), parameters, std::execution::seq);
 
     
     

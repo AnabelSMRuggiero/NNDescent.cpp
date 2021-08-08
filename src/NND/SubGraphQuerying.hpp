@@ -199,13 +199,13 @@ namespace internal{
     static const size_t maxBatch = 7;
 }
 
-template<typename DistType, typename DistanceFunctor>
+template<typename DistType>
 struct QueryContext{
     const UndirectedGraph<size_t> subGraph;
     const GraphVertex<size_t, DistType> queryHint;
     size_t querySize;
     size_t querySearchDepth;
-    DefaultQueryFunctor<DistType, DistanceFunctor> defaultQueryFunctor;
+    //DefaultQueryFunctor<DistType, DistanceFunctor> defaultQueryFunctor;
     const size_t blockNumber;
     const size_t blockSize;
     //std::unordered_map<BlockNumberType, Graph<IndexType, DistType>> neighborCandidates;
@@ -213,14 +213,14 @@ struct QueryContext{
 
     QueryContext(const Graph<size_t, DistType>& subGraph,
                  const GraphVertex<size_t, DistType>&& queryHint,
-                 DefaultQueryFunctor<DistType, DistanceFunctor> defaultQueryFunctor,
+                 //DefaultQueryFunctor<DistType, DistanceFunctor> defaultQueryFunctor,
                  const int querySearchDepth,
                  const size_t blockNumber,
                  const size_t blockSize):
                     subGraph(subGraph),
                     queryHint(std::move(queryHint)),
                     querySearchDepth(querySearchDepth),
-                    defaultQueryFunctor(defaultQueryFunctor),
+                    //defaultQueryFunctor(defaultQueryFunctor),
                     blockNumber(blockNumber),
                     blockSize(blockSize){
             querySize = queryHint.size();

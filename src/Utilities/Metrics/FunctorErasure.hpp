@@ -212,7 +212,11 @@ struct SearchFunctor{
 template<typename DistType>
 struct SinglePointFunctor{
 
-    SinglePointFunctor(SinglePointFunctor& other): ptrToFunc(other.ptrToFunc){};
+    SinglePointFunctor() = default;
+
+    SinglePointFunctor(const SinglePointFunctor& other): ptrToFunc(other.ptrToFunc){};
+
+    SinglePointFunctor& operator=(const SinglePointFunctor&) = default;
 
     template<IsNot<SinglePointFunctor> DistanceFunctor>
     SinglePointFunctor(DistanceFunctor& distanceFunctor):
@@ -260,7 +264,8 @@ struct SinglePointFunctor{
 
     };
 
-    const std::shared_ptr<AbstractFunctor> ptrToFunc;
+    private:
+    std::shared_ptr<AbstractFunctor> ptrToFunc;
     
 };
 

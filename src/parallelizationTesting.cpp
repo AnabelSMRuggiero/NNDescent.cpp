@@ -19,6 +19,9 @@ https://github.com/AnabelSMRuggiero/NNDescent.cpp
 #include <vector>
 #include <list>
 #include <cassert>
+#include <type_traits>
+#include <iostream>
+#include <optional>
 
 
 #include "Utilities/Type.hpp"
@@ -38,15 +41,23 @@ https://github.com/AnabelSMRuggiero/NNDescent.cpp
 using namespace nnd;
 
 
-template<typename DistType>
+template<typename DistType, typename COMExtent>
 struct ThreadFunctors{
     DispatchFunctor<DistType> dispatchFunctor;
     CachingFunctor<DistType> cache;
+    SinglePointFunctor<COMExtent> comDistFunctor;
 
     ThreadFunctors() = default;
 
-    template<typename DistanceFunctor>
-    ThreadFunctors(DistanceFunctor distanceFunctor, size_t maxBlockSize, size_t numNeighbors): dispatchFunctor(distanceFunctor), cache(dispatchFunctor, maxBlockSize, numNeighbors){}
+    ThreadFunctors(const ThreadFunctors&) = default;
+
+    ThreadFunctors& operator=(const ThreadFunctors&) = default;
+
+    template<typename DistanceFunctor, typename COMFunctor>
+    ThreadFunctors(DistanceFunctor distanceFunctor, COMFunctor comFunctor, size_t maxBlockSize, size_t numNeighbors):
+        dispatchFunctor(distanceFunctor),
+        cache(dispatchFunctor, maxBlockSize, numNeighbors),
+        comDistFunctor(comFunctor) {};
 
 };
 
@@ -244,6 +255,9 @@ struct ThreadPool{
         for(size_t i = 0; i<numThreads; i+=1){
             threadHandles[i].request_stop();
         } 
+        for(size_t i = 0; i<numThreads; i+=1){
+            threadHandles[i].join();
+        } 
     };
 
     void DelegateTask(ThreadTask&& task){
@@ -266,25 +280,81 @@ struct ThreadPool{
 template<typename TaskResult>
 using TaskStates = std::unique_ptr<std::pair<std::promise<TaskResult>, std::future<TaskResult>>[]>;
 
-template<typename DistType>
-TaskStates<Graph<size_t, DistType>> InitializeBlockGraphs(const size_t numBlocks,
+//libstdc++/libc++ don't support atomic shared ptrs yet
+
+
+//Only supports stateless deleters atm
+template<typename PointedAt, typename Deleter = std::default_delete<PointedAt>>
+struct AtomicUniquePtr{
+
+    AtomicUniquePtr(): ptr(nullptr), deleter() {};
+
+    AtomicUniquePtr(PointedAt* ptr): ptr(ptr), deleter(){};
+
+    AtomicUniquePtr(PointedAt* ptr, const Deleter&): ptr(ptr), deleter(){};
+    AtomicUniquePtr(PointedAt* ptr, Deleter&&): ptr(ptr), deleter(){};
+
+    AtomicUniquePtr(const AtomicUniquePtr&) = delete;
+    AtomicUniquePtr(AtomicUniquePtr&&) = delete;
+
+    ~AtomicUniquePtr(){
+        PointedAt* dyingPtr = ptr.load();
+        if(dyingPtr != nullptr) Deleter()(dyingPtr);
+    }
+
+    operator bool(){
+        return ptr.load() != nullptr;
+    }
+
+
+
+    void operator=(std::unique_ptr<PointedAt, Deleter>&& livePtr){
+        PointedAt* null = nullptr;
+        assert(ptr.compare_exchange_strong(null, livePtr.get()));
+        livePtr.release();
+    }
+
+    std::unique_ptr<PointedAt, Deleter> load(){
+        return std::unique_ptr<PointedAt, Deleter>(ptr.exchange(nullptr));
+    }
+
+    private:
+    std::atomic<PointedAt*> ptr;
+    [[no_unique_address]] Deleter deleter;
+
+};
+
+//template<typename ElementType>
+//using AtomicPtrVector = std::vector<std::atomic<std::shared_ptr<ElementType>>>;
+
+template<typename ElementType>
+using AtomicPtrArr = std::unique_ptr<AtomicUniquePtr<ElementType>[]>;
+/*
+template<typename DistType, typename COMExtent>
+TaskStates<BlockUpdateContext<DistType>> InitializeBlockContexts(const size_t numBlocks,
                                                           const std::vector<size_t>& blockSizes,
-                                                          const size_t numNeighbors, 
-                                                          ThreadPool<ThreadFunctors<DistType>>& threadPool){
+                                                          const HyperParameterValues& params,
+                                                          ThreadPool<ThreadFunctors<DistType, COMExtent>>& threadPool){
     
-    TaskStates<Graph<size_t, DistType>> retArr = std::make_unique<std::pair<std::promise<Graph<size_t, DistType>>, std::future<Graph<size_t, DistType>>>[]>(blockSizes.size());
+    TaskStates<BlockUpdateContext<DistType>> retArr = std::make_unique<std::pair<std::promise<Graph<size_t, DistType>>, std::future<Graph<size_t, DistType>>>[]>(blockSizes.size());
     //retArr.reserve(blockSizes.size());
 
     //lambda that generates a function that executes the relevant work
     auto taskGenerator = [&](size_t blockNum, size_t blockSize)-> auto{
 
-        std::promise<Graph<size_t, DistType>> taskResult;
-        std::future<Graph<size_t, DistType>> taskFuture = taskResult.get_future();
+        std::promise<BlockUpdateContext<DistType>> taskResult;
+        std::future<BlockUpdateContext<DistType>> taskFuture = taskResult.get_future();
 
         retArr[blockNum] = {std::move(taskResult), std::move(taskFuture)};
-        auto task = [=, &result = retArr[blockNum].first](ThreadFunctors<DistType>& functors) mutable {
+        auto task = [=, &result = retArr[blockNum].first](ThreadFunctors<DistType, COMExtent>& functors) mutable {
             functors.dispatchFunctor.SetBlocks(blockNum, blockNum);
-            result.set_value(BruteForceBlock(numNeighbors, blockSize, functors.dispatchFunctor));
+            functors.comDistFunctor.SetBlock(blockNum);
+            Graph<size_t, DistType> blockGraph = BruteForceBlock(params.indexParams.blockGraphNeighbors, blockSize, functors.dispatchFunctor);
+            
+            GraphVertex<size_t, DistType> queryHint = QueryHintFromCOM(blockNum, blockGraph, params.indexParams.blockGraphNeighbors, functors.comDistFunctor);
+            QueryContext<DistType> queryContext(blockGraph, std::move(queryHint), params.indexParams.queryDepth, blockNum, numBlocks);
+            BlockUpdateContext<DistType> blockContext(blockGraph, std::move(queryContext), numBlocks);
+            result.set_value(blockContext);
         };
 
         return std::function(std::move(task));
@@ -298,6 +368,73 @@ TaskStates<Graph<size_t, DistType>> InitializeBlockGraphs(const size_t numBlocks
 
     return retArr;
 }
+*/
+
+template<typename DistType, typename COMExtent>
+AtomicPtrArr<BlockUpdateContext<DistType>> InitializeBlockContexts(const size_t numBlocks,
+                                                          const std::vector<size_t>& blockSizes,
+                                                          const HyperParameterValues& params,
+                                                          ThreadPool<ThreadFunctors<DistType, COMExtent>>& threadPool){
+    
+    AtomicPtrArr<BlockUpdateContext<DistType>> retArr = std::make_unique<AtomicUniquePtr<BlockUpdateContext<DistType>>[]>(blockSizes.size());
+
+
+    //lambda that generates a function that executes the relevant work
+    auto taskGenerator = [&](size_t blockNum, size_t blockSize)-> auto{
+
+        auto task = [=, &atomicPtr = retArr[blockNum]](ThreadFunctors<DistType, COMExtent>& functors) mutable {
+            functors.dispatchFunctor.SetBlocks(blockNum, blockNum);
+            functors.comDistFunctor.SetBlock(blockNum);
+            Graph<size_t, DistType> blockGraph = BruteForceBlock(params.indexParams.blockGraphNeighbors, blockSize, functors.dispatchFunctor);
+            
+            GraphVertex<size_t, DistType> queryHint = QueryHintFromCOM(blockNum, blockGraph, params.indexParams.blockGraphNeighbors, functors.comDistFunctor);
+            QueryContext<DistType> queryContext(blockGraph, std::move(queryHint), params.indexParams.queryDepth, blockNum, numBlocks);
+            std::unique_ptr<BlockUpdateContext<DistType>> blockContextPtr = std::make_unique<BlockUpdateContext<DistType>>(blockGraph, std::move(queryContext), numBlocks);
+            atomicPtr = std::move(blockContextPtr);
+        };
+
+        return std::function(std::move(task));
+    };
+
+    
+    //generate tasks, return ptrs
+    for (size_t i = 0; i<numBlocks; i+=1){
+        threadPool.DelegateTask(taskGenerator(i, blockSizes[i]));
+    }
+
+    return retArr;
+}
+
+template<typename COMExtent>
+std::vector<std::optional<ComparisonKey<size_t>>> NearestNodesToDo(const MetaGraph<COMExtent>& metaGraph){
+
+    std::unordered_set<ComparisonKey<size_t>> nearestNodeDistQueue;
+
+    for (size_t i = 0; const auto& vertex: metaGraph.verticies){
+        for (const auto& neighbor: vertex){
+            nearestNodeDistQueue.insert({i, neighbor.first});
+        }
+        i++;
+    }
+    
+    std::vector<std::optional<ComparisonKey<size_t>>> distancesToCompute;
+    distancesToCompute.reserve(nearestNodeDistQueue.size());
+    for (const auto& pair: nearestNodeDistQueue){
+        distancesToCompute.push_back(std::make_optional(pair));
+    }
+
+    return distancesToCompute;
+}
+
+template<typename DistType>
+void QueueNearestNodes(std::vector<std::optional<ComparisonKey<size_t>>>& distancesToCompute, const AtomicUniquePtr<BlockUpdateContext<DistType>>* blockUpdateContexts){
+    std::vector<std::tuple<size_t, size_t, DistType>> nnDistanceResults(nearestNodeDistQueue.size());
+    auto nnDistanceFunctor = [&](const ComparisonKey<size_t> blockNumbers) -> std::tuple<size_t, size_t, DistType>{
+        return blockUpdateContexts[blockNumbers.first].queryContext.NearestNodes(blockUpdateContexts[blockNumbers.second].queryContext,
+                                                                                 distanceFunctor);
+    };
+}
+
 
 /*
     std::vector<Graph<size_t, DistType>> blockGraphs(0);
@@ -326,7 +463,21 @@ int main(){
     EuclidianTrain<AlignedArray<float>, AlignedArray<float>> splittingScheme(mnistFashionTrain);
     TrainingSplittingScheme splitterFunc(splittingScheme);
     
+    IndexParamters indexParams{5, 10, 3, 2};
+
+    size_t numBlockGraphNeighbors = 5;
+    size_t numCOMNeighbors = 10;
+    size_t maxNearestNodes = 3;
+    size_t queryDepth = 2;
+
+    SearchParameters searchParams{10, 10, 10};
+    size_t numberSearchNeighbors = 10;
+    size_t searchQueryDepth = 10;
+    size_t maxNewSearches = 10;
+
     SplittingHeurisitcs splitParams= {16, 140, 60, 180};
+
+    HyperParameterValues parameters{splitParams, indexParams, searchParams};
 
     RandomProjectionForest rpTreesTrain(size_t(mnistFashionTrain.numberOfSamples), rngFunctor, splitterFunc, splitParams);
 
@@ -335,10 +486,12 @@ int main(){
     auto [indexMappings, dataBlocks] = PartitionData<AlignedArray<float>>(rpTreesTrain, mnistFashionTrain);
 
     
-    MetricFunctor<AlignedArray<float>, EuclideanMetricPair> testFunctor(dataBlocks);
-    
+    MetaGraph<float> metaGraph(dataBlocks, parameters.indexParams.COMNeighbors, EuclideanMetricPair());
 
-    ThreadPool<ThreadFunctors<float>> pool(12, testFunctor, splitParams.maxTreeSize, 10);
+    MetricFunctor<AlignedArray<float>, EuclideanMetricPair> euclideanFunctor(dataBlocks);
+    DataComDistance<AlignedArray<float>, float, EuclideanMetricPair> comFunctor(metaGraph, dataBlocks);
+
+    ThreadPool<ThreadFunctors<float, float>> pool(12, euclideanFunctor, comFunctor, splitParams.maxTreeSize, 10);
 
     std::vector<size_t> sizes;
     sizes.reserve(dataBlocks.size());
@@ -350,11 +503,19 @@ int main(){
 
     pool.StartThreads();
 
-    auto futures = InitializeBlockGraphs(dataBlocks.size(), sizes, 10, pool);
+    auto futures = InitializeBlockContexts(dataBlocks.size(), sizes, parameters, pool);
 
-    auto testRes = futures[sizes.size()-1].second.get();
+    //auto testRes = futures[sizes.size()-1].second.get();
+    
 
     pool.StopThreads();
 
+    for (size_t i = 0; i<dataBlocks.size(); i+=1){
+        //if (!(futures[i])) 
+        assert(futures[i]);
+        auto test = futures[i].load();
+        std::cout << test->currentGraph.size() << std::endl;
+    }
+    assert(futures[0] == false);
     return 0;
 }

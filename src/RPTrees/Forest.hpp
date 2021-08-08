@@ -21,6 +21,8 @@ https://github.com/AnabelSMRuggiero/NNDescent.cpp
 #include <iostream>
 #include <span>
 
+#include "../Utilities/Type.hpp"
+
 #include "../NND/RNG.hpp"
 #include "SplittingScheme.hpp"
 
@@ -46,12 +48,7 @@ int Split(Iterator fromBegin, Iterator fromEnd, Iterator toBegin, rIterator toRe
     return numTrue;
 }
 
-struct SplittingHeurisitcs{
-    int splits = 16;
-    int splitThreshold = 80;
-    int childThreshold = 32;
-    int maxTreeSize = 130;
-};
+
 
 SplittingHeurisitcs test = {8, 64, 8};
 

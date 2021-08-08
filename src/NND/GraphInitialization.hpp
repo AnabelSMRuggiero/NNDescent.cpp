@@ -102,19 +102,23 @@ Graph<size_t, DistType> GenerateQueryHints(const std::vector<Graph<size_t, DistT
 }
 
 
-template<typename DistType, typename COMExtent, typename DistanceFunctor>
-std::vector<BlockUpdateContext<DistType, DistanceFunctor>> InitializeBlockContexts(const std::vector<Graph<size_t, DistType>>& blockGraphs,
+template<typename DistType, typename COMExtent>
+std::vector<BlockUpdateContext<DistType>> InitializeBlockContexts(const std::vector<Graph<size_t, DistType>>& blockGraphs,
                                                                   const MetaGraph<COMExtent>& metaGraph,
                                                                   Graph<size_t, DistType>& queryHints,
-                                                                  const int queryDepth,
-                                                                  DistanceFunctor& distanceFunctor){
+                                                                  const int queryDepth){
                                                                         
-    std::vector<BlockUpdateContext<DistType, DistanceFunctor>> blockUpdateContexts;
+    std::vector<BlockUpdateContext<DistType>> blockUpdateContexts;
     blockUpdateContexts.reserve(blockGraphs.size());
     //template<typename size_t, typename DataEntry, typename DistType, typename COMExtentType>
     for (size_t i = 0; i<blockGraphs.size(); i+=1){
 
-        QueryContext<DistType, DistanceFunctor> queryContext(blockGraphs[i], std::move(queryHints[i]), DefaultQueryFunctor<DistType, DistanceFunctor>(distanceFunctor), queryDepth, i, blockGraphs[i].size());
+        QueryContext<DistType> queryContext(blockGraphs[i],
+                                            std::move(queryHints[i]),
+                                            //DefaultQueryFunctor<DistType, DistanceFunctor>(distanceFunctor),
+                                            queryDepth,
+                                            i,
+                                            blockGraphs[i].size());
             /*
             const Graph<size_t, DistType>& subGraph,
                  const GraphVertex<size_t, DistType> queryHint,
@@ -138,10 +142,11 @@ std::vector<BlockUpdateContext<DistType, DistanceFunctor>> InitializeBlockContex
 template<typename DistType>
 using InitialJoinHints = std::unordered_map<ComparisonKey<size_t>, std::tuple<size_t, size_t, DistType>>;
 
-template<typename DistType, typename DistanceFunctor>
-std::pair<Graph<size_t, DistType>, InitialJoinHints<DistType>> NearestNodeDistances(const std::vector<BlockUpdateContext<DistType, DistanceFunctor>>& blockUpdateContexts,
+template<typename DistType>
+std::pair<Graph<size_t, DistType>, InitialJoinHints<DistType>> NearestNodeDistances(const std::vector<BlockUpdateContext<DistType>>& blockUpdateContexts,
                                                         const MetaGraph<DistType>& metaGraph,
-                                                        const size_t maxNearestNodeNeighbors){
+                                                        const size_t maxNearestNodeNeighbors,
+                                                        DispatchFunctor<DistType> distanceFunctor){
 
     std::unordered_set<ComparisonKey<size_t>> nearestNodeDistQueue;
 
@@ -161,7 +166,7 @@ std::pair<Graph<size_t, DistType>, InitialJoinHints<DistType>> NearestNodeDistan
     std::vector<std::tuple<size_t, size_t, DistType>> nnDistanceResults(nearestNodeDistQueue.size());
     auto nnDistanceFunctor = [&](const ComparisonKey<size_t> blockNumbers) -> std::tuple<size_t, size_t, DistType>{
         return blockUpdateContexts[blockNumbers.first].queryContext.NearestNodes(blockUpdateContexts[blockNumbers.second].queryContext,
-                                                                                 blockUpdateContexts[blockNumbers.first].queryContext.defaultQueryFunctor);
+                                                                                 distanceFunctor);
     };
 
     std::transform(std::execution::unseq, distancesToCompute.begin(), distancesToCompute.end(), nnDistanceResults.begin(), nnDistanceFunctor);
@@ -193,10 +198,10 @@ std::pair<Graph<size_t, DistType>, InitialJoinHints<DistType>> NearestNodeDistan
 }
 
 
-template<typename DistType, typename DistanceFunctor>
+template<typename DistType>
 void StitchBlocks(const Graph<size_t, DistType>& nearestNodeDistances,
                   const InitialJoinHints<DistType>& stitchHints,
-                  std::vector<BlockUpdateContext<DistType, DistanceFunctor>>& blockUpdateContexts,
+                  std::vector<BlockUpdateContext<DistType>>& blockUpdateContexts,
                   CachingFunctor<DistType>& cachingFunctor){
 
     std::unordered_set<ComparisonKey<size_t>> initBlockJoinQueue;
