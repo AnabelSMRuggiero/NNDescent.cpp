@@ -206,10 +206,12 @@ struct QueryContext{
     size_t querySize;
     size_t querySearchDepth;
     //DefaultQueryFunctor<DistType, DistanceFunctor> defaultQueryFunctor;
-    const size_t blockNumber;
-    const size_t blockSize;
+    const size_t blockNumber{size_t(-1)};
+    const size_t blockSize{size_t(-1)};
     //std::unordered_map<BlockNumberType, Graph<IndexType, DistType>> neighborCandidates;
     //SpaceMetric<DataView, DataView, DistType> distanceFunctor;
+
+    QueryContext() = default;
 
     QueryContext(const Graph<size_t, DistType>& subGraph,
                  const GraphVertex<size_t, DistType>&& queryHint,

@@ -128,11 +128,11 @@ std::vector<BlockUpdateContext<DistType>> InitializeBlockContexts(const std::vec
                  const size_t blockSize
             */
 
-        blockUpdateContexts.emplace_back(blockGraphs[i],
+        blockUpdateContexts.emplace_back(std::move(blockGraphs[i]),
                                          std::move(queryContext),
                                          metaGraph.verticies.size());
 
-        blockUpdateContexts.back().currentGraph = ToBlockIndecies(blockGraphs[i], i);
+        //blockUpdateContexts.back().currentGraph = ToBlockIndecies(blockGraphs[i], i);
         blockUpdateContexts.back().blockJoinTracker[i] = true;
     }
 

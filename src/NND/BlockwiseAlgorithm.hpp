@@ -261,17 +261,16 @@ struct BlockUpdateContext {
     JoinMap<size_t, size_t> joinsToDo;
     JoinMap<size_t, size_t> newJoins;
     QueryContext<DistType> queryContext;
-    const Graph<size_t, DistType>& joinPropagation;
+    Graph<size_t, DistType> joinPropagation;
     Graph<BlockIndecies, DistType> currentGraph;
 
+    BlockUpdateContext() = default;
 
-    BlockUpdateContext(const Graph<size_t, DistType>& blockGraph, QueryContext<DistType>&& queryContext, const size_t numberOfBlocksToJoin):
+    BlockUpdateContext(Graph<size_t, DistType>&& blockGraph, QueryContext<DistType>&& queryContext, const size_t numberOfBlocksToJoin):
+        blockJoinTracker(numberOfBlocksToJoin),
         queryContext(std::move(queryContext)),
-        joinPropagation(blockGraph),
-        currentGraph(blockGraph.size(), blockGraph[0].size()),
-        blockJoinTracker(numberOfBlocksToJoin){
-            
-    }
+        joinPropagation(std::forward<Graph<size_t, DistType>>(blockGraph)),
+        currentGraph(ToBlockIndecies(joinPropagation, queryContext.blockNumber)) {};
 
     void SetNextJoins(){
         joinsToDo = std::move(newJoins);

@@ -22,6 +22,7 @@ https://github.com/AnabelSMRuggiero/NNDescent.cpp
 #include <type_traits>
 #include <iostream>
 #include <optional>
+#include <span>
 
 
 #include "Parallelization/AtomicUniquePtr.hpp"
@@ -74,26 +75,27 @@ using TaskStates = std::unique_ptr<std::pair<std::promise<TaskResult>, std::futu
 
 
 template<typename DistType, typename COMExtent>
-AtomicPtrArr<BlockUpdateContext<DistType>> InitializeBlockContexts(const size_t numBlocks,
+std::unique_ptr<BlockUpdateContext<DistType>[]> InitializeBlockContexts(const size_t numBlocks,
                                                           const std::vector<size_t>& blockSizes,
                                                           const HyperParameterValues& params,
                                                           ThreadPool<ThreadFunctors<DistType, COMExtent>>& threadPool){
     
-    AtomicPtrArr<BlockUpdateContext<DistType>> retArr = std::make_unique<AtomicUniquePtr<BlockUpdateContext<DistType>>[]>(blockSizes.size());
+    std::unique_ptr<BlockUpdateContext<DistType>[]> retArr = std::make_unique<BlockUpdateContext<DistType>[]>(blockSizes.size());
 
 
     //lambda that generates a function that executes the relevant work
     auto taskGenerator = [&](size_t blockNum, size_t blockSize)-> auto{
 
-        auto task = [=, &atomicPtr = retArr[blockNum]](ThreadFunctors<DistType, COMExtent>& functors) mutable {
+        auto task = [=, blockLocation = &(retArr[blockNum])](ThreadFunctors<DistType, COMExtent>& functors) mutable {
             functors.dispatchFunctor.SetBlocks(blockNum, blockNum);
             functors.comDistFunctor.SetBlock(blockNum);
             Graph<size_t, DistType> blockGraph = BruteForceBlock(params.indexParams.blockGraphNeighbors, blockSize, functors.dispatchFunctor);
             
             GraphVertex<size_t, DistType> queryHint = QueryHintFromCOM(blockNum, blockGraph, params.indexParams.blockGraphNeighbors, functors.comDistFunctor);
             QueryContext<DistType> queryContext(blockGraph, std::move(queryHint), params.indexParams.queryDepth, blockNum, numBlocks);
-            std::unique_ptr<BlockUpdateContext<DistType>> blockContextPtr = std::make_unique<BlockUpdateContext<DistType>>(blockGraph, std::move(queryContext), numBlocks);
-            atomicPtr = std::move(blockContextPtr);
+            blockLocation->~BlockUpdateContext<DistType>();
+            new(blockLocation) BlockUpdateContext<DistType>(std::move(blockGraph), std::move(queryContext), numBlocks);
+            //blockLocation = std::make_from_tuple<BlockUpdateContext<DistType>>(std::forward_as_tuple(std::move(blockGraph), std::move(queryContext), numBlocks));
         };
 
         return std::function(std::move(task));
@@ -108,14 +110,19 @@ AtomicPtrArr<BlockUpdateContext<DistType>> InitializeBlockContexts(const size_t 
     return retArr;
 }
 
+using AsyncNNResults = std::pair<std::vector<std::optional<ComparisonKey<size_t>>>, std::unique_ptr<size_t[]>>;
+
 template<typename DistType, typename COMExtent>
-std::future<std::pair<std::vector<std::optional<ComparisonKey<size_t>>>, std::unique_ptr<size_t[]>>> NearestNodesToDo(const MetaGraph<COMExtent>& metaGraph,
+std::pair<std::promise<AsyncNNResults>, std::future<AsyncNNResults>> NearestNodesToDo(const MetaGraph<COMExtent>& metaGraph,
                                                                                                          ThreadPool<ThreadFunctors<DistType, COMExtent>>& threadPool){
-    std::promise<std::pair<std::vector<std::optional<ComparisonKey<size_t>>>, std::unique_ptr<size_t[]>>> promise;
-    std::future<std::pair<std::vector<std::optional<ComparisonKey<size_t>>>, std::unique_ptr<size_t[]>>> retFuture = promise.get_future();
-    auto task = [&, resPromise = std::move(promise)](ThreadFunctors<DistType,COMExtent>&){
+    
+    std::pair<std::promise<AsyncNNResults>, std::future<AsyncNNResults>> retPair;
+    
+    retPair.second = retPair.first.get_future();
+
+    auto task = [&, &resPromise = retPair.first](ThreadFunctors<DistType,COMExtent>&){
         std::unordered_set<ComparisonKey<size_t>> nearestNodeDistQueue;
-        std::unique_ptr<size_t[]> distancesPerBlock = std::make_unique<size_t[]>(metaGraph.size());
+        std::unique_ptr<size_t[]> distancesPerBlock = std::make_unique<size_t[]>(metaGraph.points.size());
 
         for (size_t i = 0; const auto& vertex: metaGraph.verticies){
             for (const auto& neighbor: vertex){
@@ -133,17 +140,23 @@ std::future<std::pair<std::vector<std::optional<ComparisonKey<size_t>>>, std::un
             distancesToCompute.push_back(std::make_optional(pair));
         }
 
-        promise.set_value({distancesToCompute, std::move(distancesPerBlock)});
+        resPromise.set_value({distancesToCompute, std::move(distancesPerBlock)});
     };
 
-    return std::move(retFuture);
+    threadPool.DelegateTask(std::move(task));
+
+    return retPair;
 }
 
 template<typename DistType, typename COMExtent>
 struct NearestNodesGenerator{
 
-    using BlockPtrPair = std::pair<std::unique_ptr<BlockUpdateContext<DistType>>,std::unique_ptr<BlockUpdateContext<DistType>>>;
+    using BlockPtrPair = std::pair<BlockUpdateContext<DistType>*, BlockUpdateContext<DistType>*>;
     
+    NearestNodesGenerator(std::span<BlockUpdateContext<DistType>> span, std::vector<std::optional<ComparisonKey<size_t>>>& nnToDo):
+        blocks(span),
+        distancesToCompute(nnToDo),
+        nullCounter(0) {};
     
     /*
     std::span<AtomicUniquePtr<BlockUpdateContext<DistType>>> blocks;
@@ -153,9 +166,9 @@ struct NearestNodesGenerator{
     bool operator()(ThreadPool<ThreadFunctors<DistType, COMExtent>>& pool, AsyncQueue<std::pair<ComparisonKey<size_t>, std::tuple<size_t, size_t, DistType>>>& resultsQueue){
         auto nnDistanceTaskGenerator = [&](BlockPtrPair blockPtrs)->auto{
 
-            auto task = [&, ptrs = std::move(blockPtrs)](ThreadFunctors<DistType, COMExtent>& functors) mutable-> std::tuple<size_t, size_t, DistType>{
-                const QueryContext<DistType>& lhsQueryContext = ptrs.first.get()->queryContext;
-                const QueryContext<DistType>& rhsQueryContext = ptrs.second.get()->queryContext;
+            auto task = [&, ptrs = blockPtrs](ThreadFunctors<DistType, COMExtent>& functors) mutable-> std::tuple<size_t, size_t, DistType>{
+                const QueryContext<DistType>& lhsQueryContext = ptrs.first->queryContext;
+                const QueryContext<DistType>& rhsQueryContext = ptrs.second->queryContext;
                 std::tuple<size_t, size_t, DistType> nnDistResult = lhsQueryContext.NearestNodes(rhsQueryContext,
                                                                                                 functors.dispatchFunctor);
                 /*
@@ -164,25 +177,37 @@ struct NearestNodesGenerator{
                                                 std::get<2>(nnDistResult)};
                 */
                resultsQueue.Put(nnDistResult);
-               blocks[lhsQueryContext.blockNumber] = std::move(ptrs.first);
-               blocks[rhsQueryContext.blockNumber] = std::move(ptrs.second);
+               readyBlocks[lhsQueryContext.blockNumber] = true;
+               readyBlocks[rhsQueryContext.blockNumber] = true;
             };
 
             return task;
         };
 
         for(auto& blockNums: distancesToCompute){
+            /*
             if(!blockNums) continue;
-            std::unique_ptr<BlockUpdateContext<DistType>> lhsPtr = blocks[*blockNums.first].GetUnique();
+            std::unique_ptr<BlockUpdateContext<DistType>> lhsPtr = blocks[blockNums->first].GetUnique();
             if(!lhsPtr) continue;
-            std::unique_ptr<BlockUpdateContext<DistType>> rhsPtr = blocks[*blockNums.second].GetUnique();
+            std::unique_ptr<BlockUpdateContext<DistType>> rhsPtr = blocks[blockNums->second].GetUnique();
             if(!rhsPtr){
-                blocks[*blockNums.first] = std::move(lhsPtr);
+                blocks[blockNums->first] = std::move(lhsPtr);
                 continue;
             }
+            */
+            if(!blockNums) continue;
+            bool expectTrue = true;
 
+            if(!readyBlocks[blockNums->first].compare_exchange_strong(expectTrue, false)) continue;
+            
+            if(!readyBlocks[blockNums->second].compare_exchange_strong(expectTrue, false)){
+                readyBlocks[blockNums->first] = true;
+                continue;
+            }
+            BlockUpdateContext<DistType>* rhsPtr = &(blocks[blockNums->second]);
+            BlockUpdateContext<DistType>* lhsPtr = &(blocks[blockNums->first]);
             //I have two valid unique_ptrs I can use
-            pool.DelegateTask(nnDistanceTaskGenerator({std::move(lhsPtr), std::move(rhsPtr)}));
+            pool.DelegateTask(nnDistanceTaskGenerator({lhsPtr, rhsPtr}));
             blockNums = std::nullopt;
             ++nullCounter;
         }
@@ -195,16 +220,18 @@ struct NearestNodesGenerator{
     private:
 
     void EraseNulls(){
-        std::erase(std::remove_if(distancesToCompute.begin(), distancesToCompute.end(), std::logical_not()),
+        distancesToCompute.erase(std::remove_if(distancesToCompute.begin(), distancesToCompute.end(), std::logical_not()),
                    distancesToCompute.end());
 
         nullCounter = 0;  
     }
 
 
-    std::span<AtomicUniquePtr<BlockUpdateContext<DistType>>> blocks;
+    //std::span<AtomicUniquePtr<BlockUpdateContext<DistType>>> blocks;
+    std::span<BlockUpdateContext<DistType>> blocks;
+    std::unique_ptr<std::atomic<bool>[]> readyBlocks;
     std::vector<std::optional<ComparisonKey<size_t>>>& distancesToCompute;
-    size_t nullCounter = 0;
+    size_t nullCounter;
 };
 
 template<typename DistType, typename COMExtent>
@@ -212,7 +239,8 @@ struct NearestNodesConsumer{
 
     NearestNodesConsumer() = default;
 
-    NearestNodesConsumer(std::unique_ptr<size_t[]> distanceCounts, const size_t numBlocks, const size_t numNeighbors): distancesPerBlock(std::move(distanceCounts)),
+    NearestNodesConsumer(std::unique_ptr<size_t[]> distanceCounts, const size_t numBlocks, const size_t numNeighbors): 
+                            distancesPerBlock(std::move(distanceCounts)),
                             nnNumNeighbors(numNeighbors),
                             nnGraph(numBlocks, numNeighbors),
                             blocksDone(0) {};
@@ -280,8 +308,8 @@ struct TaskQueuer{
 
     template<typename... GenArgs, typename... ConsArgs>
     TaskQueuer(std::tuple<GenArgs...>&& generatorArgs, std::tuple<ConsArgs...>&& consumerArgs): 
-        generator(std::make_from_tuple<Generator>(std::forward(generatorArgs))),
-        consumer(std::make_from_tuple<Consumer>(std::forward(consumerArgs))){};
+        generator(std::make_from_tuple<Generator>(std::forward<std::tuple<GenArgs...>>(generatorArgs))),
+        consumer(std::make_from_tuple<Consumer>(std::forward<std::tuple<ConsArgs...>>(consumerArgs))){};
 
     TaskQueuer(const TaskQueuer&) = delete;
     TaskQueuer(TaskQueuer&&) = delete;
@@ -406,14 +434,19 @@ int main(){
         sizes.push_back(block.size());
     }
     
-
+    
 
     pool.StartThreads();
 
     auto nnFuture = NearestNodesToDo(metaGraph, pool);
 
-    AtomicPtrArr<BlockUpdateContext<float>> blocks = InitializeBlockContexts(dataBlocks.size(), sizes, parameters, pool);
+    std::unique_ptr<BlockUpdateContext<float>[]> blocks = InitializeBlockContexts(dataBlocks.size(), sizes, parameters, pool);
 
+    auto nnToDo = nnFuture.second.get();
+
+    //NearestNodesGenerator<float, float> gen(std::span<AtomicUniquePtr<BlockUpdateContext<float>>>(blocks.get(), dataBlocks.size()), nnToDo.first);
+
+    //NearestNodesConsumer<float, float> cons(std::move(nnToDo.second), dataBlocks.size(), parameters.indexParams.nearestNodeNeighbors);
 
 
     //auto testRes = futures[sizes.size()-1].second.get();
@@ -421,6 +454,14 @@ int main(){
 
     pool.StopThreads();
 
+    TaskQueuer<NearestNodesGenerator<float, float>, 
+               NearestNodesConsumer<float, float>, std::pair<ComparisonKey<size_t>,
+               std::tuple<size_t, size_t, float>>> testQueuer(std::forward_as_tuple(std::span<BlockUpdateContext<float>>(blocks.get(), dataBlocks.size()), nnToDo.first),
+                                                              std::forward_as_tuple(std::move(nnToDo.second), dataBlocks.size(), parameters.indexParams.nearestNodeNeighbors));
+
+
+    //NearestNodesGenerator test{std::span};
+    /*
     for (size_t i = 0; i<dataBlocks.size(); i+=1){
         //if (!(futures[i])) 
         assert(blocks[i]);
@@ -428,5 +469,6 @@ int main(){
         std::cout << test->currentGraph.size() << std::endl;
     }
     assert(blocks[0] == false);
+    */
     return 0;
 }
