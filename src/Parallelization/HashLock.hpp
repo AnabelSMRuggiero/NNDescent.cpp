@@ -32,6 +32,13 @@ template<typename Locked, typename Hasher = std::hash<size_t>>
 struct HashPtr;
 
 template<typename Locked, typename Hasher = std::hash<size_t>>
+struct HashKeyImpl;
+
+template<typename PtrLike, typename Compose>
+struct HashRelease;
+
+
+template<typename Locked, typename Hasher = std::hash<size_t>>
 class HashLock{
 
     friend HashLocked<Locked, Hasher>;
@@ -47,13 +54,14 @@ class HashLock{
     HashLock(ConstructorArgs args...): lockedValue(args...), lock(), nextLock(reinterpret_cast<size_t>(this)) {}
     
 
-    [[nodiscard]] HashKey GetKey(std::weak_ptr<void> weakPtr){
+    [[nodiscard]] std::optional<HashKey<Locked, Hasher>> GetKey(std::weak_ptr<void> weakPtr){
         size_t expectZero(0);
         if(lock.compare_exchange_strong(expectZero, nextLock)){
-            HashKey retKey{nextLock, this, weakPtr};
+            //std::shared_ptr<HashKeyImpl<Locked, Hasher>, HashRelease<Locked*, std::default_delete<Locked>>> //keyImpl{nextLock, this, weakPtr};
+            HashKey<Locked, Hasher> retKey = MakeHashKey(nextLock, this, weakPtr);
             nextLock = hash(nextLock) | 1;
             return retKey;
-        } else return {0, nullptr, std::weak_ptr<void>()}; 
+        } else return std::nullopt; 
     }
 
     [[nodiscard]] std::optional<HashPtr<Locked,Hasher>> GetAccess(size_t keyVal, std::shared_ptr<void> ownership){
@@ -90,6 +98,17 @@ struct HashRelease{
     [[no_unique_address]] Compose composedFunction;
 };
 
+template<typename PtrLike>
+struct HashRelease<PtrLike,void>{
+
+    using pointer = PtrLike;
+
+    void operator()(PtrLike keyLike){
+        keyLike->Unlock();
+    }
+
+};
+
 template<typename Locked, typename Hasher = std::hash<size_t>>
 struct HashKeyImpl{
 
@@ -111,6 +130,7 @@ struct HashKeyImpl{
     private:
 
     bool Unlock() const {
+        if(weakPtr.expired()) return false;
         return lock->Unlock(key);
     }
 
@@ -131,13 +151,20 @@ struct HashKey{
 };
 
 template<typename Locked, typename Hasher = std::hash<size_t>>
+HashKey<Locked, Hasher> MakeHashKey(const size_t key, HashLock<Locked, Hasher>* lockPtr, std::weak_ptr<void> weakRef){
+    return HashKey<Locked, Hasher>{std::shared_ptr<HashKeyImpl<Locked, Hasher>>(new HashKeyImpl<Locked, Hasher>(key, lockPtr, weakRef),
+                                                                                HashRelease<Locked*, std::default_delete<Locked>>())};
+}
+
+template<typename Locked, typename Hasher = std::hash<size_t>>
 struct HashPtr{
 
-    HashPtr(const HashPtr&) = delete;
-    HashPtr& operator=(const HashPtr&) = delete;
+    explicit HashPtr(std::shared_ptr<HashLock<Locked, Hasher>> lockPtr): lock(lockPtr, HashRelease<std::shared_ptr<HashLock<Locked, Hasher>>, void>);
+    //HashPtr(const HashPtr&) = delete;
+    //HashPtr& operator=(const HashPtr&) = delete;
 
     operator bool(){
-        return bool(accessor);
+        return bool(lock);
     }
 
     Locked* operator->(){
@@ -165,8 +192,11 @@ struct HashPtr{
         return lock->Unlock(unlock);
     }
 
+    using AutoUnlockingPtr = std::unique_ptr<HashLock<Locked, Hasher>, HashRelease<std::shared_ptr<HashLock<Locked, Hasher>>, void>>;
+
     size_t unlock;
-    std::shared_ptr<HashLock<Locked, Hasher>> lock;
+    //This ptr should be always be alliasing the HashLock + locked object/array
+    AutoUnlockingPtr lock;
 };
 //template<typename Locked, typename Hasher = std::hash<size_t>>
 
