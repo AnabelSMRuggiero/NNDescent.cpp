@@ -384,7 +384,7 @@ struct QueryContext{
     }
 
     template<typename QueryFunctor>
-    std::tuple<size_t, size_t, DistType> NearestNodes(const QueryContext& rhs, QueryFunctor distanceFunctor) const{
+    std::tuple<size_t, size_t, DistType> NearestNodes(const QueryContext& rhs, QueryFunctor& distanceFunctor) const{
 
         distanceFunctor.SetBlocks(this->blockNumber, rhs.blockNumber);
 

@@ -103,7 +103,7 @@ Graph<size_t, DistType> GenerateQueryHints(const std::vector<Graph<size_t, DistT
 
 
 template<typename DistType, typename COMExtent>
-std::vector<BlockUpdateContext<DistType>> InitializeBlockContexts(const std::vector<Graph<size_t, DistType>>& blockGraphs,
+std::vector<BlockUpdateContext<DistType>> InitializeBlockContexts(std::vector<Graph<size_t, DistType>>& blockGraphs,
                                                                   const MetaGraph<COMExtent>& metaGraph,
                                                                   Graph<size_t, DistType>& queryHints,
                                                                   const int queryDepth){
