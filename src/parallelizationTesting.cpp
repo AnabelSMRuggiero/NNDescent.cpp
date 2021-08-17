@@ -66,8 +66,11 @@ struct ThreadFunctors{
 };
 
 
-
-
+template<typename Element>
+void EraseNulls(std::vector<std::optional<Element>>& optVector){
+    optVector.erase(std::remove_if(optVector.begin(), optVector.end(), std::logical_not()),
+                             optVector.end());  
+}
 
 template<typename TaskResult>
 using TaskStates = std::unique_ptr<std::pair<std::promise<TaskResult>, std::future<TaskResult>>[]>;
@@ -221,19 +224,15 @@ struct NearestNodesGenerator{
             ++nullCounter;
         }
 
-        if(nullCounter >= distancesToCompute.size()/2) EraseNulls();
-
-        return distancesToCompute.size()==false;
+        if(nullCounter >= distancesToCompute.size()/2){
+            EraseNulls(distancesToCompute);
+            nullCounter = 0;
+        }
+        return distancesToCompute.size()==0;
     }
 
     private:
 
-    void EraseNulls(){
-        distancesToCompute.erase(std::remove_if(distancesToCompute.begin(), distancesToCompute.end(), std::logical_not()),
-                   distancesToCompute.end());
-
-        nullCounter = 0;  
-    }
 
 
     //std::span<AtomicUniquePtr<BlockUpdateContext<DistType>>> blocks;
@@ -265,8 +264,8 @@ struct NearestNodesConsumer{
 
             for(const auto& neighbor: vertex){
                 if(initJoinsQueued.insert({result.first.first, neighbor.first}).second){
-                    initJoinsToDo.push_back(ComparisonKey<size_t>{result.first.first, neighbor.first},
-                                            joinHints[{result.first.first, neighbor.first}]);
+                    initJoinsToDo.push_back(std::make_optional<StitchHint>(ComparisonKey<size_t>{result.first.first, neighbor.first},
+                                            joinHints[{result.first.first, neighbor.first}]));
                 }
             }
 
@@ -282,8 +281,8 @@ struct NearestNodesConsumer{
 
             for(const auto& neighbor: vertex){
                 if(initJoinsQueued.insert({result.first.second, neighbor.first}).second){
-                    initJoinsToDo.push_back(ComparisonKey<size_t>{result.first.second, neighbor.first},
-                                            joinHints[{result.first.second, neighbor.first}]);
+                    initJoinsToDo.push_back(std::make_optional<StitchHint>(ComparisonKey<size_t>{result.first.second, neighbor.first},
+                                            joinHints[{result.first.second, neighbor.first}]));
                 }
             }
 
@@ -373,48 +372,85 @@ struct InitJoinQueuer{
     using InitJoinResult = std::pair<JoinResults<size_t, DistType>, JoinResults<size_t, DistType>>;
 
     bool operator()(ThreadPool<ThreadFunctors<DistType, COMExtent>>& pool, AsyncQueue<std::pair<ComparisonKey<size_t>, InitJoinResult>>& resultsQueue){
-        auto initBlockJoin = [&](const BlockPtrPair blockPtrs, const std::tuple<size_t, size_t, DistType> stitchHint) -> std::pair<JoinResults<size_t, DistType>, JoinResults<size_t, DistType>>{
+        auto joinGenerator = [&](const BlockPtrPair blockPtrs, const std::tuple<size_t, size_t, DistType> stitchHint) -> std::pair<JoinResults<size_t, DistType>, JoinResults<size_t, DistType>>{
         
-            //auto [blockNums, stitchHint] = *(stitchHints.find(blockNumbers));
-            //if (blockNums.first != blockNumbers.first) stitchHint = {std::get<1>(stitchHint), std::get<0>(stitchHint), std::get<2>(stitchHint)};
-            auto blockLHS = blockUpdateContexts[blockNumbers.first];
-            auto blockRHS = blockUpdateContexts[blockNumbers.second];
-            JoinHints<size_t> LHShint;
-            LHShint[std::get<0>(stitchHint)] = {std::get<1>(stitchHint)};
-            JoinHints<size_t> RHShint;
-            RHShint[std::get<1>(stitchHint)] = {std::get<0>(stitchHint)};
-            
-            
-            cachingFunctor.SetBlocks(blockNumbers.first, blockNumbers.second);
+            auto initJoin = [&, blockPtrs, stitchHint](ThreadFunctors<DistType, COMExtent>& threadFunctors){
+                //auto [blockNums, stitchHint] = *(stitchHints.find(blockNumbers));
+                //if (blockNums.first != blockNumbers.first) stitchHint = {std::get<1>(stitchHint), std::get<0>(stitchHint), std::get<2>(stitchHint)};
+                auto& blockLHS = *(blockPtrs.first);
+                auto& blockRHS = *(blockPtrs.second);
+                JoinHints<size_t> LHShint;
+                LHShint[std::get<0>(stitchHint)] = {std::get<1>(stitchHint)};
+                JoinHints<size_t> RHShint;
+                RHShint[std::get<1>(stitchHint)] = {std::get<0>(stitchHint)};
+                
+                
+                threadFunctors.cache.SetBlocks(blockLHS.queryContext.blockNumber, blockRHS.queryContext.blockNumber);
 
-            std::pair<JoinResults<size_t, DistType>, JoinResults<size_t, DistType>> retPair;
-            retPair.first = BlockwiseJoin(LHShint,
-                                        blockLHS.currentGraph,
-                                        blockLHS.joinPropagation,
-                                        blockRHS.queryContext,
-                                        cachingFunctor);
+                std::pair<JoinResults<size_t, DistType>, JoinResults<size_t, DistType>> retPair;
+                retPair.first = BlockwiseJoin(LHShint,
+                                            blockLHS.currentGraph,
+                                            blockLHS.joinPropagation,
+                                            blockRHS.queryContext,
+                                            threadFunctors.cache);
 
-            cachingFunctor.metricFunctor.SetBlocks(blockNumbers.second, blockNumbers.first);
-            ReverseBlockJoin(RHShint,
-                            blockRHS.currentGraph,
-                            blockRHS.joinPropagation,
-                            blockLHS.queryContext,
-                            cachingFunctor,
-                            cachingFunctor.metricFunctor);
+                threadFunctors.dispatchFunctor.SetBlocks(blockRHS.queryContext.blockNumber, blockLHS.queryContext.blockNumber);
+                ReverseBlockJoin(RHShint,
+                                blockRHS.currentGraph,
+                                blockRHS.joinPropagation,
+                                blockLHS.queryContext,
+                                threadFunctors.cache,
+                                threadFunctors.dispatchFunctor);
 
-            for(size_t i = 0; const auto& vertex: cachingFunctor.reverseGraph){
-                if(vertex.size()>0){
-                    retPair.second.push_back({i, vertex});
+                for(size_t i = 0; const auto& vertex: threadFunctors.cache.reverseGraph){
+                    if(vertex.size()>0){
+                        retPair.second.push_back({i, vertex});
+                    }
+                    i++;
                 }
-                i++;
-            }
 
-            
-
-            return retPair;
+                resultsQueue.Put(std::move(retPair));
+                readyBlocks[blockLHS.queryContext.blockNumber] = true;
+                readyBlocks[blockRHS.queryContext.blockNumber] = true;
+            };
         };
+
+        for(auto& stitchHint: initJoinsToDo){
+
+            if(!stitchHint) continue;
+            bool expectTrue = true;
+
+            if(!readyBlocks[stitchHint->first.first].compare_exchange_strong(expectTrue, false)) continue;
+            
+            if(!readyBlocks[stitchHint->first.second].compare_exchange_strong(expectTrue, false)){
+                readyBlocks[stitchHint->first.first] = true;
+                continue;
+            }
+            BlockUpdateContext<DistType>* rhsPtr = &(blocks[stitchHint->first.second]);
+            BlockUpdateContext<DistType>* lhsPtr = &(blocks[stitchHint->first.first]);
+            //I have two valid unique_ptrs I can use
+            pool.DelegateTask(joinGenerator({lhsPtr, rhsPtr}, stitchHint.second));
+            stitchHint = std::nullopt;
+            ++nullCounter;
+        }
+
+        if(nullCounter >= initJoinsToDo.size()/2){
+            EraseNulls(initJoinsToDo);
+            nullCounter = 0;
+        }
+
+        return initJoinsToDo.size()==0;
     }
 
+
+    private:
+
+    std::span<BlockUpdateContext<DistType>> blocks;
+    std::span<std::atomic<bool>> readyBlocks;
+
+    size_t nullCounter;
+    //using StitchHint = std::pair<ComparisonKey<size_t>, std::tuple<size_t, size_t, DistType>>;
+    std::vector<std::optional<StitchHint>>& initJoinsToDo;
 };
 
 /*
