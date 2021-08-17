@@ -129,8 +129,8 @@ struct ThreadPool{
         DelegateTask(std::forward<ThreadTask>(task), [](const size_t count){ return count < 10; });
     }
 
-    //template<typename Predicate>
-    void DelegateTask(ThreadTask&& task, auto pred){
+    template<typename Predicate>
+    void DelegateTask(ThreadTask&& task, Predicate pred){
         //implement something smarter here
         //or maybe I won't need to if/when I implement task stealing
         size_t numQueuesChecked(0);

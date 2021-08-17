@@ -185,7 +185,14 @@ std::vector<float> BatchEuclideanNorm(const std::vector<AlignedSpan<const float>
         }
 
         for (size_t j = 0; j<numPointsTo; j+=1){
+            #ifdef __clang__
             result[j] = accumulators[j][0] + accumulators[j][4];
+            #endif
+            #ifdef _MSC_VER
+            result[j] = accumulators[j].m256_f32[0] + accumulators[j].m256_f32[4];
+            #endif
+
+            //__GNUC__
         }
 
     }

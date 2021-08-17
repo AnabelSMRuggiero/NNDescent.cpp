@@ -20,6 +20,7 @@ https://github.com/AnabelSMRuggiero/NNDescent.cpp
 #include <unordered_map>
 #include <utility>
 #include <span>
+#include <new>
 
 namespace nnd{
 
@@ -56,10 +57,12 @@ struct AlignedArray{
 
     AlignedArray() = default;
 
-    AlignedArray(size_t size): data(new (std::align_val_t(alignment)) ValueType[size]), capacity(size) {};
+    AlignedArray(size_t size): data(static_cast<ValueType*>(operator new[](size*sizeof(ValueType), std::align_val_t(alignment))), AlignedDeleter()), capacity(size) {
+        std::uninitialized_default_construct(this->begin(), this->end());
+    };
 
-    AlignedArray(const AlignedArray& other): data(new (std::align_val_t(alignment)) ValueType[other.capacity]), capacity(other.capacity) {
-        std::copy(other.begin(), other.end(), this->begin());
+    AlignedArray(const AlignedArray& other): data(static_cast<ValueType*>(operator new[](other.capacity*sizeof(ValueType), std::align_val_t(alignment))), AlignedDeleter()), capacity(other.capacity) {
+        std::uninitialized_copy(other.begin(), other.end(), this->begin());
     };
 
     AlignedArray& operator=(AlignedArray&& other) = default;
