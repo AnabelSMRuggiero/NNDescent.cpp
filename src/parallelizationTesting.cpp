@@ -36,6 +36,7 @@ https://github.com/AnabelSMRuggiero/NNDescent.cpp
 #include "Utilities/Metrics/FunctorErasure.hpp"
 
 #include "NND/GraphStructures.hpp"
+#include "NND/BlockwiseAlgorithm.hpp"
 #include "NND/GraphInitialization.hpp"
 
 #include "RPTrees/SplittingScheme.hpp"
@@ -107,7 +108,7 @@ BlocksAndState<DistType> InitializeBlockContexts(const size_t numBlocks,
             //blockLocation = std::make_from_tuple<BlockUpdateContext<DistType>>(std::forward_as_tuple(std::move(blockGraph), std::move(queryContext), numBlocks));
         };
 
-        return std::function(std::move(task));
+        return task;
     };
 
     
@@ -159,6 +160,8 @@ std::future<AsyncNNResults> NearestNodesToDo(const MetaGraph<COMExtent>& metaGra
 
 template<typename DistType, typename COMExtent>
 struct NearestNodesGenerator{
+
+    using TaskResult = std::pair<ComparisonKey<size_t>, std::tuple<size_t, size_t, DistType>>;
 
     using BlockPtrPair = std::pair<BlockUpdateContext<DistType>*, BlockUpdateContext<DistType>*>;
     
@@ -247,11 +250,12 @@ struct NearestNodesConsumer{
 
     NearestNodesConsumer() = default;
 
-    NearestNodesConsumer(std::unique_ptr<size_t[]> distanceCounts, const size_t numBlocks, const size_t numNeighbors): 
+    NearestNodesConsumer(std::unique_ptr<size_t[]>&& distanceCounts, const size_t numBlocks, const size_t numNeighbors): 
                             distancesPerBlock(std::move(distanceCounts)),
                             nnNumNeighbors(numNeighbors),
                             nnGraph(numBlocks, numNeighbors),
-                            blocksDone(0) {};
+                            blocksDone(0),
+                            joinsPerBlock(numBlocks) {};
 
     bool operator()(std::pair<ComparisonKey<size_t>, std::tuple<size_t, size_t, DistType>> result){
         joinHints[result.first] = result.second;
@@ -266,6 +270,8 @@ struct NearestNodesConsumer{
                 if(initJoinsQueued.insert({result.first.first, neighbor.first}).second){
                     initJoinsToDo.push_back(std::make_optional<StitchHint>(ComparisonKey<size_t>{result.first.first, neighbor.first},
                                             joinHints[{result.first.first, neighbor.first}]));
+                    joinsPerBlock[result.first.first] += 1;
+                    joinsPerBlock[neighbor.first] += 1;
                 }
             }
 
@@ -283,6 +289,8 @@ struct NearestNodesConsumer{
                 if(initJoinsQueued.insert({result.first.second, neighbor.first}).second){
                     initJoinsToDo.push_back(std::make_optional<StitchHint>(ComparisonKey<size_t>{result.first.second, neighbor.first},
                                             joinHints[{result.first.second, neighbor.first}]));
+                    joinsPerBlock[result.first.second] += 1;
+                    joinsPerBlock[neighbor.first] += 1;
                 }
             }
 
@@ -311,13 +319,17 @@ struct NearestNodesConsumer{
     using StitchHint = std::pair<ComparisonKey<size_t>, std::tuple<size_t, size_t, DistType>>;
     std::vector<std::optional<StitchHint>> initJoinsToDo;
 
+    std::unique_ptr<size_t[]> joinsPerBlock;
+
 
 };
 
 
 
-template<typename Generator, typename Consumer, typename TaskResult>
+template<typename Generator, typename Consumer>
 struct TaskQueuer{
+
+    using TaskResult = typename Generator::TaskResult;
 
     Generator generator;
     Consumer consumer;
@@ -332,8 +344,8 @@ struct TaskQueuer{
 
     bool ConsumeResults(){
         std::list<TaskResult> newResults = incomingResults.TakeAll();
-        for (const auto& entry: newResults){
-            doneConsuming = consumer(entry);
+        for (auto& entry: newResults){
+            doneConsuming = consumer(std::move(entry));
         }
         return doneConsuming;
     }
@@ -364,17 +376,63 @@ struct TaskQueuer{
 
 };
 
+template<typename Generator>
+struct TaskQueuer<Generator, void>{
+
+    using TaskResult = typename Generator::TaskResult;
+    static_assert(std::is_void_v<TaskResult>);
+
+    Generator generator;
+
+    template<typename... GenArgs, typename... ConsArgs>
+    TaskQueuer(std::tuple<GenArgs...>&& generatorArgs, std::tuple<ConsArgs...>&& consumerArgs): 
+        generator(std::make_from_tuple<Generator>(std::forward<std::tuple<GenArgs...>>(generatorArgs))){};
+
+    TaskQueuer(const TaskQueuer&) = delete;
+    TaskQueuer(TaskQueuer&&) = delete;
+
+
+    template<typename Pool>
+    bool QueueTasks(Pool& pool){
+        doneGenerating = generator(pool, incomingResults);
+        return doneGenerating;
+    }
+
+    bool DoneGenerating(){
+        return doneGenerating;
+    }
+
+    bool DoneConsuming(){
+        return true;
+    }
+
+    bool IsDone(){
+        return DoneGenerating();
+    }
+
+
+    private:
+    bool doneGenerating;
+    bool doneConsuming;
+    AsyncQueue<TaskResult> incomingResults;
+
+};
+
 template<typename DistType, typename COMExtent>
 struct InitJoinQueuer{
+
+    
 
     using BlockPtrPair = std::pair<BlockUpdateContext<DistType>*, BlockUpdateContext<DistType>*>;
     using StitchHint = std::pair<ComparisonKey<size_t>, std::tuple<size_t, size_t, DistType>>;
     using InitJoinResult = std::pair<JoinResults<size_t, DistType>, JoinResults<size_t, DistType>>;
 
+    using TaskResult = std::pair<ComparisonKey<size_t>, InitJoinResult>;
+
     bool operator()(ThreadPool<ThreadFunctors<DistType, COMExtent>>& pool, AsyncQueue<std::pair<ComparisonKey<size_t>, InitJoinResult>>& resultsQueue){
-        auto joinGenerator = [&](const BlockPtrPair blockPtrs, const std::tuple<size_t, size_t, DistType> stitchHint) -> std::pair<JoinResults<size_t, DistType>, JoinResults<size_t, DistType>>{
+        auto joinGenerator = [&](const BlockPtrPair blockPtrs, const std::tuple<size_t, size_t, DistType> stitchHint) -> auto{
         
-            auto initJoin = [&, blockPtrs, stitchHint](ThreadFunctors<DistType, COMExtent>& threadFunctors){
+            auto initJoin = [&, blockPtrs, stitchHint](ThreadFunctors<DistType, COMExtent>& threadFunctors)->void{
                 //auto [blockNums, stitchHint] = *(stitchHints.find(blockNumbers));
                 //if (blockNums.first != blockNumbers.first) stitchHint = {std::get<1>(stitchHint), std::get<0>(stitchHint), std::get<2>(stitchHint)};
                 auto& blockLHS = *(blockPtrs.first);
@@ -409,10 +467,12 @@ struct InitJoinQueuer{
                     i++;
                 }
 
-                resultsQueue.Put(std::move(retPair));
+                resultsQueue.Put({ComparisonKey<size_t>{blockLHS.queryContext.blockNumber, blockRHS.queryContext.blockNumber}, std::move(retPair)});
                 readyBlocks[blockLHS.queryContext.blockNumber] = true;
                 readyBlocks[blockRHS.queryContext.blockNumber] = true;
             };
+
+            return initJoin;
         };
 
         for(auto& stitchHint: initJoinsToDo){
@@ -453,40 +513,121 @@ struct InitJoinQueuer{
     std::vector<std::optional<StitchHint>>& initJoinsToDo;
 };
 
-/*
-template<typename DistType, typename COMExtent>
-void QueueNearestNodes(std::vector<std::optional<ComparisonKey<size_t>>>& distancesToCompute, const AtomicUniquePtr<BlockUpdateContext<DistType>>* blockUpdateContexts){
-    std::unique_ptr<std::optional<std::tuple<BlockIndecies, BlockIndecies, DistType>>[]> nnDistanceResults(distancesToCompute.size());
-    auto nnDistanceTaskGenerator = [&](const ComparisonKey<size_t> blockNumbers, const size_t resultIndex)->auto{
-        auto task = [&, resultIndex, blockNumbers, results=nnDistanceResults.get()](ThreadFunctors<DistType, COMExtent>& functors) mutable-> std::tuple<size_t, size_t, DistType>{
-            const QueryContext<DistType>& lhsQueryContext = blockUpdateContexts[blockNumbers.first].get()->queryContext;
-            const QueryContext<DistType>& rhsQueryContext = blockUpdateContexts[blockNumbers.second].get()->queryContext;
-            std::tuple<size_t, size_t, DistType> nnDistResult = lhsQueryContext.NearestNodes(rhsQueryContext,
-                                                                                             functors.dispatchFunctor);
-            nnDistanceResults[resultIndex].second = {{blockNumbers.first, std::get<0>(nnDistResult)},
-                                              {blockNumbers.second, std::get<1>(nnDistResult)},
-                                              std::get<2>(nnDistResult)};
-        };
+template<typename DistType>
+struct InitJoinConsumer{
 
-        return task;
-    };
+    using BlockUpdates = std::vector<std::pair<size_t, JoinResults<size_t, DistType>>>;
 
+    InitJoinConsumer() = default;
 
+    InitJoinConsumer(const size_t numBlocks): 
+                            graphUpdates(std::make_unique<BlockUpdates[]>(numBlocks)),
+                            numBlocks(numBlocks),
+                            joinsPerBlock(),
+                            blocksDone(0){};
 
-    return std::move(nnDistanceResults);
-}
-*/
+    using InitJoinResult = std::pair<JoinResults<size_t, DistType>, JoinResults<size_t, DistType>>;
 
-/*
-    std::vector<Graph<size_t, DistType>> blockGraphs(0);
-    blockGraphs.reserve(blockSizes.size());
-    for (size_t i =0; i<numBlocks; i+=1){
-        distanceFunctor.SetBlocks(i,i);
-        blockGraphs.push_back(BruteForceBlock<DistType>(numNeighbors, blockSizes[i], distanceFunctor));
+    bool operator()(std::pair<ComparisonKey<size_t>, InitJoinResult>&& result){
+        graphUpdates[result.first.first].push_back(std::move(result.second.first));
+        graphUpdates[result.first.second].push_back(std::move(result.second.second));
+
+        if(joinsPerBlock){
+            if(graphUpdates[result.first.first].size() == joinsPerBlock[result.first.first]){
+                resultsToReduce.push_back(std::make_optional<size_t>(result.first.first));
+                blocksDone++;
+            }
+            if(graphUpdates[result.first.second].size() == joinsPerBlock[result.first.second]){
+                resultsToReduce.push_back(std::make_optional<size_t>(result.first.second));
+                blocksDone++;
+            }
+        }
+        return blocksDone == numBlocks;
     }
 
-    return blockGraphs;
-*/
+    bool CanFeedGenerator(){
+        return resultsToReduce.size() > 0;
+    }
+
+    void UpdateExpectedJoins(std::unique_ptr<size_t[]>&& expectedJoins){
+        this->joinsPerBlock = std::move(expectedJoins);
+
+        for(size_t i = 0; i<numBlocks; i+=1){
+            if(graphUpdates[i].size() == joinsPerBlock[i]){
+                resultsToReduce.push_back(std::make_optional<size_t>(i));
+                blocksDone++;
+            }
+        }
+    }
+
+
+    private:
+    
+    std::unique_ptr<BlockUpdates[]> graphUpdates;
+    const size_t numBlocks;
+
+    std::unique_ptr<size_t[]> joinsPerBlock;
+    size_t blocksDone;
+
+    std::vector<std::optional<size_t>> resultsToReduce;
+
+};
+
+
+
+template<typename DistType, typename COMExtent>
+struct GraphUpateQueuer{
+
+    using BlockUpdates = std::vector<std::pair<size_t, JoinResults<size_t, DistType>>>;
+
+    using TaskResult = std::pair<size_t, ComparisonMap<size_t, size_t>>;
+
+    bool operator()(ThreadPool<ThreadFunctors<DistType, COMExtent>>& pool, AsyncQueue<ComparisonMap<size_t, size_t>>& resultsQueue){
+        auto updateGenerator = [&](const size_t blockToUpdate){
+
+            auto updateTask = [&, blockPtr = &(blocks[blockToUpdate]), updates = std::move(graphUpdates[blockToUpdate])] mutable{
+                for (auto& joinUpdates: updates){
+                    for(auto& vertex: joinUpdates.second){
+                        ConsumeVertex(blockPtr->currentGraph[vertex.first], vertex.second, joinUpdates.first)
+                    }
+                }
+                resultsQueue.put(InitializeComparisonQueues<size_t, size_t, DistType>(blockUpdateContexts[i].currentGraph, i));
+            };
+            return updateTask;
+        };
+
+        for(auto& blockNum: resultsToReduce){
+            if(!blockNum) continue;
+            bool expectTrue = true;
+
+            if(!readyBlocks[*blockNum].compare_exchange_strong(expectTrue, false)) continue;
+            pool.DelegateTask(updateGenerator(*blockNum));
+            blockNum = std::nullopt;
+            ++nullCounter;
+        }
+
+        if(nullCounter >= resultsToReduce.size()/2){
+            EraseNulls(resultsToReduce);
+            nullCounter = 0;
+        }
+
+        return resultsToReduce.size()==0;
+    }
+       
+
+
+    private:
+    std::span<BlockUpdateContext<DistType>> blocks;
+    std::span<std::atomic<bool>> readyBlocks;
+    std::span<BlockUpdates[]> graphUpdates;
+
+
+    std::vector<std::optional<size_t>>& resultsToReduce;
+
+    size_t nullCounter;
+};
+
+
 
 
 int main(){
@@ -532,7 +673,7 @@ int main(){
     MetricFunctor<AlignedArray<float>, EuclideanMetricPair> euclideanFunctor(dataBlocks);
     DataComDistance<AlignedArray<float>, float, EuclideanMetricPair> comFunctor(metaGraph, dataBlocks);
 
-    ThreadPool<ThreadFunctors<float, float>> pool(2, euclideanFunctor, comFunctor, splitParams.maxTreeSize, 10);
+    ThreadPool<ThreadFunctors<float, float>> pool(6, euclideanFunctor, comFunctor, splitParams.maxTreeSize, 10);
 
     std::vector<size_t> sizes;
     sizes.reserve(dataBlocks.size());
@@ -552,8 +693,7 @@ int main(){
 
 
     TaskQueuer<NearestNodesGenerator<float, float>, 
-               NearestNodesConsumer<float>, 
-               std::pair<ComparisonKey<size_t>, std::tuple<size_t, size_t, float>>> testQueuer(std::forward_as_tuple(std::span<BlockUpdateContext<float>>(blocks.blocks.get(), dataBlocks.size()), std::span<std::atomic<bool>>(blocks.isReady.get(), dataBlocks.size()), nnToDo.first),
+               NearestNodesConsumer<float>> testQueuer(std::forward_as_tuple(std::span<BlockUpdateContext<float>>(blocks.blocks.get(), dataBlocks.size()), std::span<std::atomic<bool>>(blocks.isReady.get(), dataBlocks.size()), nnToDo.first),
                                                               std::forward_as_tuple(std::move(nnToDo.second), dataBlocks.size(), parameters.indexParams.nearestNodeNeighbors));
 
     while(!testQueuer.DoneGenerating()){

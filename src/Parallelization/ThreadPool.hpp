@@ -15,6 +15,8 @@ https://github.com/AnabelSMRuggiero/NNDescent.cpp
 #include <functional>
 #include <memory>
 
+#include "../Utilities/UniqueFunction.hpp"
+
 #include "AsyncQueue.hpp"
 
 namespace nnd{

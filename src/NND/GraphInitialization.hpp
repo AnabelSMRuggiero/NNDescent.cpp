@@ -115,18 +115,9 @@ std::vector<BlockUpdateContext<DistType>> InitializeBlockContexts(std::vector<Gr
 
         QueryContext<DistType> queryContext(blockGraphs[i],
                                             std::move(queryHints[i]),
-                                            //DefaultQueryFunctor<DistType, DistanceFunctor>(distanceFunctor),
                                             queryDepth,
                                             i,
                                             blockGraphs[i].size());
-            /*
-            const Graph<size_t, DistType>& subGraph,
-                 const GraphVertex<size_t, DistType> queryHint,
-                 DefaultQueryFunctor<DistType>& defaultQueryFunctor,
-                 const int querySearchDepth,
-                 const size_t blockNumber,
-                 const size_t blockSize
-            */
 
         blockUpdateContexts.emplace_back(std::move(blockGraphs[i]),
                                          std::move(queryContext),
@@ -234,15 +225,7 @@ void StitchBlocks(const Graph<size_t, DistType>& nearestNodeDistances,
         LHShint[std::get<0>(stitchHint)] = {std::get<1>(stitchHint)};
         JoinHints<size_t> RHShint;
         RHShint[std::get<1>(stitchHint)] = {std::get<0>(stitchHint)};
-        /*
-        DistanceCache<DistType> distanceCache;
-        distanceCache.reserve(50*50); //This is a touch janky, but place holder while I get code working again
 
-        
-        blockLHS.queryContext.defaultQueryFunctor.SetBlocks(blockNumbers.first, blockNumbers.second);
-        auto cachingDistanceFunctor = blockLHS.queryContext.defaultQueryFunctor.CachingFunctor(distanceCache);
-        auto cachedDistanceFunctor = blockRHS.queryContext.defaultQueryFunctor.CachedFunctor(distanceCache);
-        */
         cachingFunctor.SetBlocks(blockNumbers.first, blockNumbers.second);
 
         std::pair<JoinResults<size_t, DistType>, JoinResults<size_t, DistType>> retPair;
@@ -294,7 +277,7 @@ void StitchBlocks(const Graph<size_t, DistType>& nearestNodeDistances,
     std::vector<ComparisonMap<size_t, size_t>> queueMaps;
     queueMaps.reserve(blockUpdateContexts.size());
     for (size_t i = 0; i<blockUpdateContexts.size(); i+=1){
-        queueMaps.push_back(InitializeComparisonQueues<size_t, size_t, float>(blockUpdateContexts[i].currentGraph, i));
+        queueMaps.push_back(InitializeComparisonQueues<size_t, size_t, DistType>(blockUpdateContexts[i].currentGraph, i));
     }
     
     //std::vector<JoinMap<size_t, size_t>> joinHints;

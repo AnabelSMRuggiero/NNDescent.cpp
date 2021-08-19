@@ -65,6 +65,14 @@ struct AlignedArray{
         std::uninitialized_copy(other.begin(), other.end(), this->begin());
     };
 
+    ~AlignedArray(){
+        if(data){
+            for(auto& element: *this){
+                ~element();
+            }
+        }
+    }
+
     AlignedArray& operator=(AlignedArray&& other) = default;
 
     AlignedArray& operator=(const AlignedArray& other) = default;
@@ -133,6 +141,10 @@ struct BlockIndecies{
     size_t dataIndex;
 
 };
+
+
+template<typename Type, typename OtherType>
+concept IsNot = !std::same_as<Type, OtherType>;
 
 
 }
