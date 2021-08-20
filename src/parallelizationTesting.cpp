@@ -192,8 +192,7 @@ struct NearestNodesGenerator{
                                                 std::get<2>(nnDistResult)};
                 */
                resultsQueue.Put({{lhsQueryContext.blockNumber, rhsQueryContext.blockNumber}, nnDistResult});
-               readyBlocks[lhsQueryContext.blockNumber] = true;
-               readyBlocks[rhsQueryContext.blockNumber] = true;
+
             };
 
             return task;
@@ -211,14 +210,18 @@ struct NearestNodesGenerator{
             }
             */
             if(!blockNums) continue;
-            bool expectTrue = true;
+            if(!readyBlocks[blockNums->first]) continue;
+            if(!readyBlocks[blockNums->second]) continue;
 
+            /*
+            bool expectTrue = true;
             if(!readyBlocks[blockNums->first].compare_exchange_strong(expectTrue, false)) continue;
             
             if(!readyBlocks[blockNums->second].compare_exchange_strong(expectTrue, false)){
                 readyBlocks[blockNums->first] = true;
                 continue;
             }
+            */
             BlockUpdateContext<DistType>* rhsPtr = &(blocks[blockNums->second]);
             BlockUpdateContext<DistType>* lhsPtr = &(blocks[blockNums->first]);
             //I have two valid unique_ptrs I can use
@@ -305,6 +308,10 @@ struct NearestNodesConsumer{
         return initJoinsToDo.size() > 0;
     }
 
+    std::unique_ptr<size_t[]> PassJoinCounts(){
+        return std::move(joinsPerBlock);
+    }
+
 
     private:
     
@@ -343,7 +350,7 @@ struct TaskQueuer{
     TaskQueuer(TaskQueuer&&) = delete;
 
     bool ConsumeResults(){
-        std::list<TaskResult> newResults = incomingResults.TakeAll();
+        std::list<TaskResult> newResults = incomingResults.TryTakeAll();
         for (auto& entry: newResults){
             doneConsuming = consumer(std::move(entry));
         }
@@ -468,8 +475,6 @@ struct InitJoinQueuer{
                 }
 
                 resultsQueue.Put({ComparisonKey<size_t>{blockLHS.queryContext.blockNumber, blockRHS.queryContext.blockNumber}, std::move(retPair)});
-                readyBlocks[blockLHS.queryContext.blockNumber] = true;
-                readyBlocks[blockRHS.queryContext.blockNumber] = true;
             };
 
             return initJoin;
@@ -478,14 +483,8 @@ struct InitJoinQueuer{
         for(auto& stitchHint: initJoinsToDo){
 
             if(!stitchHint) continue;
-            bool expectTrue = true;
-
-            if(!readyBlocks[stitchHint->first.first].compare_exchange_strong(expectTrue, false)) continue;
-            
-            if(!readyBlocks[stitchHint->first.second].compare_exchange_strong(expectTrue, false)){
-                readyBlocks[stitchHint->first.first] = true;
-                continue;
-            }
+            if(!readyBlocks[blockNums->first]) continue;
+            if(!readyBlocks[blockNums->second]) continue;
             BlockUpdateContext<DistType>* rhsPtr = &(blocks[stitchHint->first.second]);
             BlockUpdateContext<DistType>* lhsPtr = &(blocks[stitchHint->first.first]);
             //I have two valid unique_ptrs I can use
@@ -507,6 +506,7 @@ struct InitJoinQueuer{
 
     std::span<BlockUpdateContext<DistType>> blocks;
     std::span<std::atomic<bool>> readyBlocks;
+    //std::span<size_t> joinsPerBlock;
 
     size_t nullCounter;
     //using StitchHint = std::pair<ComparisonKey<size_t>, std::tuple<size_t, size_t, DistType>>;
@@ -528,7 +528,7 @@ struct InitJoinConsumer{
 
     using InitJoinResult = std::pair<JoinResults<size_t, DistType>, JoinResults<size_t, DistType>>;
 
-    bool operator()(std::pair<ComparisonKey<size_t>, InitJoinResult>&& result){
+    bool operator()(std::pair<ComparisonKey<size_t>, InitJoinResult> result){
         graphUpdates[result.first.first].push_back(std::move(result.second.first));
         graphUpdates[result.first.second].push_back(std::move(result.second.second));
 
@@ -560,7 +560,6 @@ struct InitJoinConsumer{
         }
     }
 
-
     private:
     
     std::unique_ptr<BlockUpdates[]> graphUpdates;
@@ -582,7 +581,7 @@ struct GraphUpateQueuer{
 
     using TaskResult = std::pair<size_t, ComparisonMap<size_t, size_t>>;
 
-    bool operator()(ThreadPool<ThreadFunctors<DistType, COMExtent>>& pool, AsyncQueue<ComparisonMap<size_t, size_t>>& resultsQueue){
+    bool operator()(ThreadPool<ThreadFunctors<DistType, COMExtent>>& pool, AsyncQueue<TaskResult>& resultsQueue){
         auto updateGenerator = [&](const size_t blockToUpdate){
 
             auto updateTask = [&, blockPtr = &(blocks[blockToUpdate]), updates = std::move(graphUpdates[blockToUpdate])] mutable{
@@ -591,7 +590,8 @@ struct GraphUpateQueuer{
                         ConsumeVertex(blockPtr->currentGraph[vertex.first], vertex.second, joinUpdates.first)
                     }
                 }
-                resultsQueue.put(InitializeComparisonQueues<size_t, size_t, DistType>(blockUpdateContexts[i].currentGraph, i));
+                resultsQueue.put({blockPtr->queryContext.blockNum,
+                                  InitializeComparisonQueues<size_t, size_t, DistType>(blockPtr->currentGraph, blockPtr->queryContext.blockNum)});
             };
             return updateTask;
         };
@@ -626,6 +626,143 @@ struct GraphUpateQueuer{
 
     size_t nullCounter;
 };
+
+
+template<typename DistType>
+struct InvertedComparisons{
+
+
+    std::unique_ptr<std::vector<BlockIndecies>[]> comparisonsQueued;
+
+    std::span<const BlockUpdateContext<DistType>> blocks;
+
+    std::vector<BlockIndecies>& operator[](const size_t index){
+        return comparisonsQueued[index];
+    }
+
+    const std::vector<BlockIndecies>& operator[](const size_t index) const {
+        return comparisonsQueued[index];
+    }
+
+
+
+};
+
+template<typename DistType>
+std::unique_ptr<InvertedComparisons<DistType>[]> MakeInvertedComparisonQueues(std::span<const BlockUpdateContext<DistType>> blocks){
+
+    std::unique_ptr retPtr = std::make_unique<InvertedComparisons<DistType>[]>(blocks.size());
+    
+    for (size_t i = 0; i<blocks.size(); i+=1){
+        retptr[i] = {std::make_unique<std::vector<BlockIndecies>[]>(blocks[i].joinPropagation.size()), blocks};
+    }
+
+    return retPtr;
+}
+
+template<typename DistType>
+void InvertComparisonMap(std::span<InvertedComparisons<DistType>> invertedQueues, const size_t sourceBlock, ComparisonMap<size_t, size_t>&& mapToInvert){
+
+    for(const auto& [targetBlock, comparisons]: mapToInvert){
+        for(const auto& [sourceIndex, targetIndex]: comparisons){
+            invertedQueues[targetBlock][targetIndex].push_back({sourceBlock, sourceIndex})
+        }
+    }
+};
+
+
+template<typename DistType>
+struct GraphUpdateConsumer{
+
+    //using BlockUpdates = std::vector<std::pair<size_t, JoinResults<size_t, DistType>>>;
+    using TaskResult = std::pair<size_t, ComparisonMap<size_t, size_t>>;
+
+    GraphUpdateConsumer() = default;
+
+    GraphUpdateConsumer(std::span<const BlockUpdateContext<DistType>> blocks):
+                            numBlocks(blocks.size()),
+                            blocksUpdated(blocks.size()),
+                            blocksDone(0),
+                            comparisonArr(MakeInvertedComparisonQueues(blocks)){};
+
+
+    bool operator()(TaskResult result){
+        blocksUpdated[result.first] = true;
+        InvertComparisonMap({comparisonArr.get(), numBlocks},
+                            result.first,
+                            std::move(result.second));
+        //comparisonsToDo.push_back(std::move(result));
+        blocksDone++;
+        return blocksDone == numBlocks;
+    }
+
+    bool CanFeedGenerator() const{
+        return comparisonsToDo.size() > 0;
+    }
+
+    bool AllBlocksReady() const{
+        return blocksDone == numBlocks;
+    }
+
+
+    private:
+
+    const size_t numBlocks;
+
+    std::vector<bool> blocksUpdated;
+
+    size_t blocksDone;
+
+    std::unique_ptr<InvertedComparisons<DistType>[]> comparisonArr;
+
+};
+
+template<typename DistType, typename COMExtent>
+struct GraphComparisonQueuer{
+
+    using BlockUpdates = std::vector<std::pair<size_t, JoinResults<size_t, DistType>>>;
+
+    bool operator()(ThreadPool<ThreadFunctors<DistType, COMExtent>>& pool, AsyncQueue<TaskResult>& resultsQueue){
+        auto updateGenerator = [&](const size_t blockToUpdate){
+
+            auto updateTask = [&, blockPtr = &(blocks[blockToUpdate])] mutable{
+                
+            };
+            return updateTask;
+        };
+
+        for(auto& blockNum: resultsToReduce){
+            if(!blockNum) continue;
+            bool expectTrue = true;
+
+            if(!readyBlocks[*blockNum].compare_exchange_strong(expectTrue, false)) continue;
+            pool.DelegateTask(updateGenerator(*blockNum));
+            blockNum = std::nullopt;
+            ++nullCounter;
+        }
+
+        if(nullCounter >= resultsToReduce.size()/2){
+            EraseNulls(resultsToReduce);
+            nullCounter = 0;
+        }
+
+        return resultsToReduce.size()==0;
+    }
+       
+
+
+    private:
+
+    std::span<BlockUpdateContext<DistType>> blocks;
+    std::span<std::atomic<bool>> readyBlocks;
+    std::span<BlockUpdates[]> graphUpdates;
+
+
+    std::vector<std::optional<size_t>>& resultsToReduce;
+
+    size_t nullCounter;
+};
+
 
 
 

@@ -68,19 +68,7 @@ std::vector<Graph<size_t, DistType>> InitializeBlockGraphs(const size_t numBlock
     return blockGraphs;
 }
 
-template<typename BlockNumberType, typename DataIndexType, typename DistType>
-Graph<BlockIndecies, DistType> ToBlockIndecies(const Graph<DataIndexType, DistType>& blockGraph, const BlockNumberType blockNum){
-    Graph<BlockIndecies, DistType> newGraph(blockGraph.size(), blockGraph[0].size());
-    for (size_t j = 0; const auto& vertex: blockGraph){
-        newGraph[j].resize(blockGraph[j].size());
-        for(size_t k = 0; const auto& neighbor: vertex){
-            newGraph[j][k] = {{blockNum, neighbor.first}, neighbor.second};
-            k++;
-        }   
-        j++;
-    }
-    return newGraph;
-}
+
 
 template <typename DistType, typename COMExtent>
 Graph<size_t, DistType> GenerateQueryHints(const std::vector<Graph<size_t, DistType>>& blockGraphs,

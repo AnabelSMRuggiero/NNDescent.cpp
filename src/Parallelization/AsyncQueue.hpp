@@ -16,6 +16,7 @@ https://github.com/AnabelSMRuggiero/NNDescent.cpp
 #include <list>
 #include <atomic>
 #include <condition_variable>
+#include <optional>
 
 namespace nnd{
 
@@ -69,12 +70,40 @@ struct AsyncQueue{
         
         return retTask;
     }
+
+    std::optional<Element> TryTake(){
+        if (taskCounter == 0) return std::nullopt;
+        std::unique_lock queueLock(queueMutex);
+        if (taskCounter == 0) return std::nullopt;
+        taskCounter--;
+        Element retTask = std::move(tasks.front());
+        tasks.pop_front();
+
+        queueLock.unlock();
+        queueUpdated.notify_all();
+        
+        return retTask;
+    }
     
     std::list<Element> TakeAll(){
         std::unique_lock queueLock(queueMutex);
         if (taskCounter == 0){
             queueUpdated.wait(queueLock, [&]{return taskCounter != 0;});
         }
+        taskCounter = 0;
+        std::list<Element> retTasks = std::move(tasks);
+        tasks = std::list<Element>();
+
+        queueLock.unlock();
+        queueUpdated.notify_all();
+
+        return retTasks;
+    }
+
+    std::list<Element> TryTakeAll(){
+        if (taskCounter == 0) return std::list<Element>();
+        std::unique_lock queueLock(queueMutex);
+        if (taskCounter == 0) return std::list<Element>();
         taskCounter = 0;
         std::list<Element> retTasks = std::move(tasks);
         tasks = std::list<Element>();
