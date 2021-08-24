@@ -278,10 +278,10 @@ struct BlockUpdateContext {
     }
 };
 
-template<typename DistType>
-JoinMap<size_t, size_t> InitializeJoinMap(const std::vector<BlockUpdateContext<DistType>>& blockUpdateContexts,
-                                                          const ComparisonMap<size_t, size_t>& comparisonMap,
-                                                          const NodeTracker& nodesJoined){
+template<typename DistType, typename BlockContainer>
+JoinMap<size_t, size_t> InitializeJoinMap(const BlockContainer& blockUpdateContexts,
+                                          const ComparisonMap<size_t, size_t>& comparisonMap,
+                                          const NodeTracker& nodesJoined){
     JoinMap<size_t, size_t> joinMap;
     for (auto& [targetBlock, queue]: comparisonMap){
         //std::unordered_map<size_t, std::pair<size_t, std::vector<size_t>>> joinHints;
