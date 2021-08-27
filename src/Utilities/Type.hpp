@@ -68,7 +68,8 @@ struct AlignedArray{
     ~AlignedArray(){
         if(data){
             for(auto& element: *this){
-                ~element();
+                //~element();
+                element.~ValueType();
             }
         }
     }

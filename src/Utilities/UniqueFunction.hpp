@@ -31,14 +31,14 @@ struct UniqueFunction<R(Args...)>{
     UniqueFunction(UniqueFunction&&) = default;
 
     template<IsNot<UniqueFunction> Functor>
-    UniqueFunction(Functor&& target): ptrToFunctor(std::make_unique<ConcreteFunction<Functor>>(std::move(target)))){};
+    UniqueFunction(Functor&& target): ptrToFunctor(std::make_unique<ConcreteFunction<Functor>>(std::move(target))){};
 
     template<IsNot<R(Args...)> WrongSignature>
     UniqueFunction(UniqueFunction<WrongSignature>&&) = delete;
 
     private:
     struct AbstractFunction{
-        virtual ~AbstractFunctor(){};
+        virtual ~AbstractFunction(){};
         virtual R operator()(Args... args) = 0;
     };
 
