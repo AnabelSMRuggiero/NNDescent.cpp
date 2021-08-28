@@ -165,12 +165,14 @@ struct NearestNodesGenerator{
 
     using BlockPtrPair = std::pair<BlockUpdateContext<DistType>*, BlockUpdateContext<DistType>*>;
     
+    using TaskArgs = ComparisonKey<size_t>;
+    
     NearestNodesGenerator(std::span<BlockUpdateContext<DistType>> blockSpan,
-                          std::span<std::atomic<bool>> blockStates,
-                          std::vector<std::optional<ComparisonKey<size_t>>>& nnToDo):
+                          std::span<std::atomic<bool>> blockStates)://,
+                          //std::vector<std::optional<ComparisonKey<size_t>>>& nnToDo):
         blocks(blockSpan),
         readyBlocks(blockStates),
-        distancesToCompute(nnToDo),
+        //distancesToCompute(nnToDo),
         nullCounter(0) {};
     
     /*
@@ -178,7 +180,9 @@ struct NearestNodesGenerator{
     std::vector<std::optional<ComparisonKey<size_t>>>& distancesToCompute;
     size_t nullCounter;
     */
-    bool operator()(ThreadPool<ThreadFunctors<DistType, COMExtent>>& pool, AsyncQueue<std::pair<ComparisonKey<size_t>, std::tuple<size_t, size_t, DistType>>>& resultsQueue){
+    bool operator()(ThreadPool<ThreadFunctors<DistType, COMExtent>>& pool,
+                    AsyncQueue<std::pair<ComparisonKey<size_t>, std::tuple<size_t, size_t, DistType>>>& resultsQueue,
+                    std::vector<std::optional<ComparisonKey<size_t>>>& distancesToCompute){
         auto nnDistanceTaskGenerator = [&](BlockPtrPair blockPtrs)->auto{
 
             auto task = [&, ptrs = blockPtrs, readyBlocks = this->readyBlocks](ThreadFunctors<DistType, COMExtent>& functors) mutable->void{
@@ -244,7 +248,7 @@ struct NearestNodesGenerator{
     //std::span<AtomicUniquePtr<BlockUpdateContext<DistType>>> blocks;
     std::span<BlockUpdateContext<DistType>> blocks;
     std::span<std::atomic<bool>> readyBlocks;
-    std::vector<std::optional<ComparisonKey<size_t>>>& distancesToCompute;
+    //std::vector<std::optional<ComparisonKey<size_t>>>& distancesToCompute;
     size_t nullCounter;
 };
 
@@ -342,12 +346,14 @@ struct NearestNodesConsumer{
 };
 
 //template<typename Generator, typename Consumer>
-auto GenerateTaskBuilder = []<typename... GenArgs, typename... ConsArgs>(std::tuple<GenArgs...>&& generatorArgs, std::tuple<ConsArgs...>&& consumerArgs){
-    auto builder = [generatorArgs, consumerArgs]<typename Generator, typename Consumer>(){
-        return TaskQueuer<Generator, Consumer>(generatorArgs, consumerArgs);
+template<typename Task, typename... GenArgs, typename... ConsArgs>
+auto GenerateTaskBuilder(std::tuple<GenArgs...>&& generatorArgs, std::tuple<ConsArgs...>&& consumerArgs){
+    auto builder = [genArgs = std::move(generatorArgs), consArgs = std::move(consumerArgs)]() mutable ->Task{
+        //Task constructed(std::move(genArgs), std::move(consArgs));
+        return Task(std::move(genArgs), std::move(consArgs));
     };
     return builder;
-};
+}
 
 /*
 template<typename Generator, typename Consumer>
@@ -366,6 +372,8 @@ struct TaskQueuer{
 
     static_assert(std::same_as<typename Generator::TaskResult, typename Consumer::TaskResult>);
     using TaskResult = typename Generator::TaskResult;
+
+    using TasksToDo = std::vector<std::optional<typename Generator::TaskArgs>>;
 
     template<typename NextStepComponent>
     static constexpr bool hasValidOnCompletion = requires(Consumer cons, NextStepComponent& nextGen){
@@ -431,8 +439,8 @@ struct TaskQueuer{
     }
 
     template<typename Pool>
-    bool QueueTasks(Pool& pool){
-        doneGenerating = generator(pool, incomingResults);
+    bool QueueTasks(Pool& pool, TasksToDo& tasks){
+        doneGenerating = generator(pool, incomingResults, tasks);
         return doneGenerating;
     }
 
@@ -950,14 +958,36 @@ int main(){
     BlocksAndState<float> blocks = InitializeBlockContexts(dataBlocks.size(), sizes, parameters, pool);
 
     auto nnToDo = nnFuture.get();
+    /*
+
+    TaskQueuer<InitJoinQueuer<float, float>, InitJoinConsumer<float>>
+    TaskQueuer<GraphUpateQueuer<float, float>, GraphUpateConsumer<float>>
+    TaskQueuer<GraphComparisonQueuer<float, float>, void>
 
 
+    auto GenerateTaskBuilder = []<typename... GenArgs, typename... ConsArgs>(std::tuple<GenArgs...>&& generatorArgs, std::tuple<ConsArgs...>&& consumerArgs){
+        auto builder = [generatorArgs, consumerArgs]<typename Generator, typename Consumer>(){
+            return TaskQueuer<Generator, Consumer>(generatorArgs, consumerArgs);
+        };
+        return builder;
+    };
+    */
+    std::span<BlockUpdateContext<float>> blockSpan(blocks.blocks.get(), dataBlocks.size());
+    std::span<std::atomic<bool>> blockState(blocks.isReady.get(), dataBlocks.size());
+
+    using TestTask = TaskQueuer<NearestNodesGenerator<float, float>, NearestNodesConsumer<float>>;
+
+    auto nnBuilder = GenerateTaskBuilder<TestTask>(std::tuple{blockSpan, blockState},
+                                         std::tuple{std::move(nnToDo.second), dataBlocks.size(), parameters.indexParams.nearestNodeNeighbors});
+    /*
     TaskQueuer<NearestNodesGenerator<float, float>, 
                NearestNodesConsumer<float>> testQueuer(std::forward_as_tuple(std::span<BlockUpdateContext<float>>(blocks.blocks.get(), dataBlocks.size()), std::span<std::atomic<bool>>(blocks.isReady.get(), dataBlocks.size()), nnToDo.first),
                                                               std::forward_as_tuple(std::move(nnToDo.second), dataBlocks.size(), parameters.indexParams.nearestNodeNeighbors));
-
+    */
+    TaskQueuer<NearestNodesGenerator<float, float>, 
+               NearestNodesConsumer<float>> testQueuer = nnBuilder();
     while(!testQueuer.DoneGenerating()){
-        testQueuer.QueueTasks(pool);
+        testQueuer.QueueTasks(pool, nnToDo.first);
         //testQueuer.ConsumeResults();
     }
     //auto testRes = futures[sizes.size()-1].second.get();
