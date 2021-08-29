@@ -11,6 +11,9 @@ https://github.com/AnabelSMRuggiero/NNDescent.cpp
 #ifndef NND_EUCLIDEAN_HPP
 #define NND_EUCLIDEAN_HPP
 
+#include <immintrin.h>
+#include <type_traits>
+
 #include "../Type.hpp"
 
 namespace nnd{
@@ -185,13 +188,19 @@ std::vector<float> BatchEuclideanNorm(const std::vector<AlignedSpan<const float>
         }
 
         for (size_t j = 0; j<numPointsTo; j+=1){
+            /*
             #ifdef __clang__
             result[j] = accumulators[j][0] + accumulators[j][4];
             #endif
             #ifdef _MSC_VER
             result[j] = accumulators[j].m256_f32[0] + accumulators[j].m256_f32[4];
             #endif
-
+            */
+            if constexpr (std::is_union_v<__m256>){
+                result[j] = accumulators[j].m256_f32[0] + accumulators[j].m256_f32[4];
+            } else{
+                result[j] = accumulators[j][0] + accumulators[j][4];
+            }
             //__GNUC__
         }
 
