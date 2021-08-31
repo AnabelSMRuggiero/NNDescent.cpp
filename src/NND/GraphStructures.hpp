@@ -77,9 +77,9 @@ struct GraphVertex{
         neighbors.push_back(value);
     }
 
-    template<typename PairReferenceType>
+    //template<typename PairReferenceType>
     constexpr void push_back(std::pair<IndexType, FloatType>&& value){
-        neighbors.push_back(std::forward<PairReferenceType>(value));
+        neighbors.push_back(std::forward<std::pair<IndexType, FloatType>>(value));
     }
 
     constexpr std::pair<IndexType, FloatType>& operator[](size_t i){
@@ -263,7 +263,11 @@ struct Graph{
     Graph(): verticies(){};
 
     Graph(size_t numVerticies, size_t numNeighbors): 
-        verticies(numVerticies, GraphVertex<IndexType, FloatType>(numNeighbors)){};
+        verticies(numVerticies){
+            for (auto& vertex: verticies){
+                vertex.neighbors.reserve(numNeighbors+1);
+            }
+        };
 
     //Graph(Graph&&) = default;
 

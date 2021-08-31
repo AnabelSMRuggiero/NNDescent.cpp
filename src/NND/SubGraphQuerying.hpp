@@ -71,14 +71,14 @@ template<std::floating_point COMExtent, typename DistType>
 GraphVertex<size_t, DistType> QueryCOMNeighbors(const size_t pointIndex,
                                                      const Graph<size_t, DistType>& subProb, 
                                                      const size_t numCandidates,
-                                                     SinglePointFunctor<COMExtent> distanceFunctor){
+                                                     SinglePointFunctor<COMExtent>& distanceFunctor){
 
-    GraphVertex<size_t, DistType> COMneighbors(numCandidates);
+    GraphVertex<size_t, COMExtent> COMneighbors(numCandidates);
     
     //Just gonna dummy it and select the first few nodes. Since the splitting process is randomized, this is a totally random selection, right? /s
     NodeTracker nodesVisited(subProb.size());
     for (size_t i = 0; i < numCandidates; i+=1){
-        COMneighbors.push_back(std::pair<size_t, DistType>(i,
+        COMneighbors.push_back(std::pair<size_t, COMExtent>(i,
                                 distanceFunctor(pointIndex, i)));
         nodesVisited[i] = true;
     }
@@ -118,7 +118,7 @@ template<typename DistType, typename COMExtent>
 GraphVertex<size_t, DistType> QueryHintFromCOM(const size_t metaPointIndex,
                                                 const Graph<size_t, DistType> subProb,
                                                 const size_t numCandidates,
-                                                SinglePointFunctor<COMExtent> distanceFunctor){
+                                                SinglePointFunctor<COMExtent>& distanceFunctor){
     GraphVertex<size_t, COMExtent> comNeighbors = QueryCOMNeighbors<COMExtent, DistType>(metaPointIndex, subProb, numCandidates, distanceFunctor);
     if constexpr (std::is_same<DistType, COMExtent>()){
         for (auto& neighbor: comNeighbors){
