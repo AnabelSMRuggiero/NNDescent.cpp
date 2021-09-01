@@ -69,7 +69,7 @@ struct HyperParameterValues{
 
 template<typename DataEntry, typename DistType, typename COMExtent>
 std::vector<BlockUpdateContext<float>> BuildGraph(const std::vector<DataBlock<DataEntry>>& dataBlocks,
-                                                                          const MetaGraph<DistType>& metaGraph,
+                                                                          const MetaGraph<COMExtent>& metaGraph,
                                                                           DispatchFunctor<DistType>& dispatch,
                                                                           std::vector<size_t>&& sizes,
                                                                           const HyperParameterValues& hyperParams,
