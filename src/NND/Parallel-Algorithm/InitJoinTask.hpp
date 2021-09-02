@@ -48,7 +48,6 @@ struct InitJoinGenerator{
                 JoinHints<size_t> RHShint;
                 RHShint[std::get<1>(stitchHint)] = {std::get<0>(stitchHint)};
                 
-                
                 threadFunctors.cache.SetBlocks(blockLHS.queryContext.blockNumber, blockRHS.queryContext.blockNumber);
 
                 std::pair<JoinResults<size_t, DistType>, JoinResults<size_t, DistType>> retPair;
@@ -88,8 +87,12 @@ struct InitJoinGenerator{
             }
             if(!readyBlocks[stitchHint->first.first]) continue;
             if(!readyBlocks[stitchHint->first.second]) continue;
-            BlockUpdateContext<DistType>* rhsPtr = &(blocks[stitchHint->first.second]);
+
             BlockUpdateContext<DistType>* lhsPtr = &(blocks[stitchHint->first.first]);
+            BlockUpdateContext<DistType>* rhsPtr = &(blocks[stitchHint->first.second]);
+            
+            lhsPtr->blockJoinTracker[stitchHint->first.second] = true;
+            rhsPtr->blockJoinTracker[stitchHint->first.first] = true;
             //I have two valid unique_ptrs I can use
             pool.DelegateTask(joinGenerator({lhsPtr, rhsPtr}, stitchHint->second));
             stitchHint = std::nullopt;

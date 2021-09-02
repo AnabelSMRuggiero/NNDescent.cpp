@@ -136,6 +136,7 @@ void ParallelBlockJoins(std::span<BlockUpdateContext<DistType>> blocks, std::uni
     };
     
     //Case where we start with 0 joins to do?
+    bool firstLoop = true;
     while(doneBlocks<blocks.size()){
         //doneBlocks = 0;
         for(size_t i = 0; i<blocks.size(); i+=1){
@@ -146,6 +147,7 @@ void ParallelBlockJoins(std::span<BlockUpdateContext<DistType>> blocks, std::uni
             if(blocks[i].joinsToDo.size() == 0){
                 if(blocks[i].newJoins.size() == 0){
                     blockStates[i] = true;
+                    if (firstLoop) doneBlocks++;
                     continue;
                 }
                 blocks[i].SetNextJoins();
@@ -163,6 +165,7 @@ void ParallelBlockJoins(std::span<BlockUpdateContext<DistType>> blocks, std::uni
             }
             if(!queued)blockStates[i] = true;
         }
+        firstLoop = false;
     }
 }
 
