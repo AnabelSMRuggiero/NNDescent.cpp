@@ -11,10 +11,12 @@ https://github.com/AnabelSMRuggiero/NNDescent.cpp
 #ifndef NND_INITJOINTASK_HPP
 #define NND_INITJOINTASK_HPP
 
+#include "Parallelization/TaskQueuer.hpp"
+
 namespace nnd {
 
 template<typename DistType, typename COMExtent>
-struct InitJoinQueuer{
+struct InitJoinGenerator{
 
     
 
@@ -26,7 +28,7 @@ struct InitJoinQueuer{
     using TaskResult = std::pair<ComparisonKey<size_t>, InitJoinResult>;
 
     
-    InitJoinQueuer(std::span<BlockUpdateContext<DistType>> blocks, std::span<std::atomic<bool>> readyBlocks):
+    InitJoinGenerator(std::span<BlockUpdateContext<DistType>> blocks, std::span<std::atomic<bool>> readyBlocks):
         blocks(blocks),
         readyBlocks(readyBlocks) {};
     
@@ -185,6 +187,9 @@ struct InitJoinConsumer{
     std::vector<std::optional<size_t>> resultsToReduce;
 
 };
+
+template<typename DistType, typename COMExtent>
+using InitJoinTask = TaskQueuer<InitJoinGenerator<DistType, COMExtent>, InitJoinConsumer<DistType>>;
 
 }
 

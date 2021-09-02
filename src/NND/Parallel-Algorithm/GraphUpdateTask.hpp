@@ -11,10 +11,20 @@ https://github.com/AnabelSMRuggiero/NNDescent.cpp
 #ifndef NND_GRAPHUPDATETASK_HPP
 #define NND_GRAPHUPDATETASK_HPP
 
+#include <atomic>
+#include <vector>
+#include <span>
+
+#include "Parallelization/TaskQueuer.hpp"
+
+#include "ParallelizationObjects.hpp"
+
+#include "../BlockwiseAlgorithm.hpp"
+
 namespace nnd {
 
 template<typename DistType, typename COMExtent>
-struct GraphUpateQueuer{
+struct GraphUpdateGenerator{
 
     using BlockUpdates = std::vector<std::pair<size_t, JoinResults<size_t, DistType>>>;
 
@@ -25,7 +35,7 @@ struct GraphUpateQueuer{
     std::span<std::atomic<bool>> readyBlocks;
     std::span<BlockUpdates[]> graphUpdates;
     */
-    GraphUpateQueuer(std::span<BlockUpdateContext<DistType>> blocks,
+    GraphUpdateGenerator(std::span<BlockUpdateContext<DistType>> blocks,
                      std::span<std::atomic<bool>> readyBlocks,
                      std::span<BlockUpdates> graphUpdates): 
                         blocks(blocks),
@@ -132,6 +142,9 @@ struct GraphUpdateConsumer{
     //std::unique_ptr<InvertedComparisons<DistType>[]> comparisonArr;
 
 };
+
+template<typename DistType, typename COMExtent>
+using UpdateTask = TaskQueuer<GraphUpdateGenerator<DistType, COMExtent>, GraphUpdateConsumer<DistType>>;
     
 }
 

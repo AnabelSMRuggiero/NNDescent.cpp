@@ -59,7 +59,7 @@ struct AsyncQueue{
     Element Take(){
         std::unique_lock queueLock(queueMutex);
         if (taskCounter == 0){
-            queueUpdated.wait(queueLock, [&]{return taskCounter != 0;});
+            queueUpdated.wait(queueLock, [&]{return this->taskCounter != 0;});
         }
         taskCounter--;
         Element retTask = std::move(tasks.front());
@@ -88,7 +88,7 @@ struct AsyncQueue{
     std::list<Element> TakeAll(){
         std::unique_lock queueLock(queueMutex);
         if (taskCounter == 0){
-            queueUpdated.wait(queueLock, [&]{return taskCounter != 0;});
+            queueUpdated.wait(queueLock, [&]{return this->taskCounter != 0;});
         }
         taskCounter = 0;
         std::list<Element> retTasks = std::move(tasks);

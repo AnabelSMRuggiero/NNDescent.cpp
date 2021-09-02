@@ -11,16 +11,23 @@ https://github.com/AnabelSMRuggiero/NNDescent.cpp
 #ifndef NND_GRAPHCOMPARISONTASK_HPP
 #define NND_GRAPHCOMPARISONTASK_HPP
 
+#include <vector>
+#include <span>
+
+#include "Parallelization/TaskQueuer.hpp"
+
+#include "ParallelizationObjects.hpp"
+
 namespace nnd {
 
 template<typename DistType, typename COMExtent>
-struct GraphComparisonQueuer{
+struct GraphComparisonGenerator{
 
     using TaskArgs = std::pair<size_t, ComparisonMap<size_t, size_t>>;
     using TaskResult = void;
     using BlockUpdates = std::vector<std::pair<size_t, JoinResults<size_t, DistType>>>;
 
-    GraphComparisonQueuer(std::span<BlockUpdateContext<DistType>> blocks,
+    GraphComparisonGenerator(std::span<BlockUpdateContext<DistType>> blocks,
                           std::vector<bool>& updatedBlocks,
                           std::span<std::atomic<bool>> initializedBlocks):
                           blocks(blocks),
@@ -82,6 +89,8 @@ struct GraphComparisonQueuer{
     //size_t nullCounter;
 };
 
+template<typename DistType, typename COMExtent>
+using ComparisonTask = TaskQueuer<GraphComparisonGenerator<DistType, COMExtent>, void>;
 
 }
 

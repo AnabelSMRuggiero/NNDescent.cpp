@@ -9,13 +9,15 @@
 
 - Fix my I/O. My I/O is bad. (I spend so much time in the stream operator).
   - I/O works okay when compiled on linux with Clang (??)
-  - Pretty sure the way I do it might be UB
 
 - An actual, good, pair hashing func that's not from a library.
 
 - Template out the manually vectorized functions. I should be able to make them generic enough that I don't need too many specializations.
   - AVX512 can use more registers
   - Implement some way to set the maxBatching parameter more elegantly
+
+- With parallel index building, I have almost 66% more loads from cache. Why?
+  - 
 
 #RPTrees
 - Move forest building outside of constructor.
@@ -26,8 +28,11 @@
 #NNDescent
 - This will be forever out from now, but test builing data array inside of the control structure itself to see if it reduces cache misses.
 - Try spinning up branchless block bruteforcing.
+  - Almost irrelevant at this point.
+
 - Template MetaGraph stuff
   - Partially done
+
 - Rethink verticies. There should be some way to set up making operations on them more efficient.
   - Also set it up so NearestPair calculations can update neighbor lists.
   - Prototyped CacheLineVertex
@@ -38,15 +43,11 @@
 
 - Most of my run time is in distance calcs. While optimizing the calculation will be important, I need to squeeze as much as I can out of every call.
 
-
 - On QueryHotPath: I want copies when I use the queryHint member, but not really when I'm passing in hints.
 
 - UndirectedGraph BlockIndices template specialization.
 
-- I convert the initial directed block graphs into an directed graph using block indecies and an undirected graph without the neighbors. Don't think I use the initial graph after that.
-  - I can sink the memory into the undirected graph constructor.
 
-- Refactor blockwise algos to pass in BlockUpdateContext (really feel like Closure is better than context /shrug) to simplify function declaration and so I alway have the appropriate info to call .SetBlocks() before computing distances.
 
 - Add in search bailout
 
@@ -55,9 +56,4 @@
 - Points of caution for parallelization
   - Splitting schemes
     - Making sure only one thread creates a splitting vector
-  - QueryContexts
-    - Checking to avoid double calculating.
 
-- When parallelizing: BE SURE TO REMOVE THE REFERENCE IN CONCRETEFUNCTOR 
-
-- I think I'll end up doing a tasking model where a producer wraps the work and resources in a functor and passes the functor to the thread.

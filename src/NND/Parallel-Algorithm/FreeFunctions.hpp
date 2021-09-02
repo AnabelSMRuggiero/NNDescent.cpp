@@ -22,34 +22,15 @@ https://github.com/AnabelSMRuggiero/NNDescent.cpp
 
 #include "Parallelization/ThreadPool.hpp"
 
+#include "ParallelizationObjects.hpp"
+#include "NearestNodesTask.hpp"
+#include "InitJoinTask.hpp"
+#include "GraphUpdateTask.hpp"
+#include "GraphComparisonTask.hpp"
+
 
 namespace nnd {
 
-template<typename DistType, typename COMExtent>
-struct ThreadFunctors{
-    DispatchFunctor<DistType> dispatchFunctor;
-    CachingFunctor<DistType> cache;
-    SinglePointFunctor<COMExtent> comDistFunctor;
-
-    ThreadFunctors() = default;
-
-    ThreadFunctors(const ThreadFunctors&) = default;
-
-    ThreadFunctors& operator=(const ThreadFunctors&) = default;
-
-    template<typename DistanceFunctor, typename COMFunctor>
-    ThreadFunctors(DistanceFunctor distanceFunctor, COMFunctor comFunctor, size_t maxBlockSize, size_t numNeighbors):
-        dispatchFunctor(distanceFunctor),
-        cache(dispatchFunctor, maxBlockSize, numNeighbors),
-        comDistFunctor(comFunctor) {};
-
-};
-
-template<typename DistType>
-struct BlocksAndState{
-    std::unique_ptr<BlockUpdateContext<DistType>[]> blocks;
-    std::unique_ptr<std::atomic<bool>[]> isReady;
-};
 
 template<typename DistType, typename COMExtent>
 BlocksAndState<DistType> InitializeBlockContexts(const size_t numBlocks,
@@ -93,7 +74,7 @@ using AsyncNNResults = std::pair<std::vector<std::optional<ComparisonKey<size_t>
 
 template<typename DistType, typename COMExtent>
 std::future<AsyncNNResults> NearestNodesToDo(const MetaGraph<COMExtent>& metaGraph,
-                                                                                                         ThreadPool<ThreadFunctors<DistType, COMExtent>>& threadPool){
+                                             ThreadPool<ThreadFunctors<DistType, COMExtent>>& threadPool){
     
     std::shared_ptr<std::promise<AsyncNNResults>> promise = std::make_shared<std::promise<AsyncNNResults>>();
     
@@ -189,7 +170,10 @@ template<typename DistType, typename COMExtent>
 using NNDPool = ThreadPool<ThreadFunctors<DistType, COMExtent>>;
 
 template<typename DistType, typename COMExtent>
-void BuildGraph(NNDPool<DistType, COMExtent>& pool, std::vector<size_t>&& blockSizes, const MetaGraph<COMExtent>& metaGraph, HyperParameterValues& parameters){
+using GraphInitTasks = std::tuple<NNTask<DistType, COMExtent>, InitJoinTask<DistType, COMExtent>, UpdateTask<DistType, COMExtent>, ComparisonTask<DistType, COMExtent>>;
+
+template<typename DistType, typename COMExtent>
+std::unique_ptr<BlockUpdateContext<DistType>[]> BuildGraph(std::vector<size_t>&& blockSizes, const MetaGraph<COMExtent>& metaGraph, HyperParameterValues& parameters, NNDPool<DistType, COMExtent>& pool){
     //ThreadPool<ThreadFunctors<float, float>> pool(12, euclideanFunctor, comFunctor, splitParams.maxTreeSize, 10);
     /*
     std::vector<size_t> sizes;
@@ -200,48 +184,42 @@ void BuildGraph(NNDPool<DistType, COMExtent>& pool, std::vector<size_t>&& blockS
     */
     
 
-    pool.StartThreads();
+    //pool.StartThreads();
 
     auto nnFuture = NearestNodesToDo(metaGraph, pool);
 
-    BlocksAndState<float> blocks = InitializeBlockContexts(dataBlocks.size(), blockSizes, parameters, pool);
+    BlocksAndState<DistType> blocks = InitializeBlockContexts(blockSizes.size(), blockSizes, parameters, pool);
 
     auto nnToDo = nnFuture.get();
 
-    std::span<BlockUpdateContext<float>> blockSpan(blocks.blocks.get(), dataBlocks.size());
-    std::span<std::atomic<bool>> blockState(blocks.isReady.get(), dataBlocks.size());
+    std::span<BlockUpdateContext<DistType>> blockSpan(blocks.blocks.get(), blockSizes.size());
+    std::span<std::atomic<bool>> blockState(blocks.isReady.get(), blockSizes.size());
 
-    using FirstTask = TaskQueuer<NearestNodesGenerator<float, float>, NearestNodesConsumer<float>>;
+    
 
-    auto nnBuilder = GenerateTaskBuilder<FirstTask>(std::tuple{blockSpan, blockState},
-                                         std::tuple{std::move(nnToDo.second), dataBlocks.size(), parameters.indexParams.nearestNodeNeighbors});
-
-
-    using BlockUpdates = std::vector<std::pair<size_t, JoinResults<size_t, float>>>;
-
-    std::unique_ptr<BlockUpdates[]> updateStorage = std::make_unique<BlockUpdates[]>(blockSpan.size());
-    std::span<BlockUpdates> updateSpan{updateStorage.get(), blockSpan.size()};
-    using SecondTask = TaskQueuer<InitJoinQueuer<float, float>, InitJoinConsumer<float>>;
-    auto initJoinBuilder = GenerateTaskBuilder<SecondTask>(std::tuple{blockSpan, blockState},
-                                                           std::tuple{updateSpan});
     
 
 
-    using ThirdTask = TaskQueuer<GraphUpateQueuer<float, float>, GraphUpdateConsumer<float>>;
+    using BlockUpdates = std::vector<std::pair<size_t, JoinResults<size_t, DistType>>>;
+
+    std::unique_ptr<BlockUpdates[]> updateStorage = std::make_unique<BlockUpdates[]>(blockSpan.size());
+    std::span<BlockUpdates> updateSpan{updateStorage.get(), blockSpan.size()};
 
     std::vector<bool> blocksUpdated(blockSpan.size());
-    auto updateBuilder = GenerateTaskBuilder<ThirdTask>(std::tuple{blockSpan, blockState, updateSpan},
-                                                        std::tuple{blockSpan.size(), std::reference_wrapper(blocksUpdated)});
-
+    
 
 
     std::unique_ptr<std::atomic<bool>[]> blocksFinalized = std::make_unique<std::atomic<bool>[]>(blockSpan.size());
 
-    using FourthTask = TaskQueuer<GraphComparisonQueuer<float, float>, void>;
+    auto nnBuilder = GenerateTaskBuilder<NNTask<DistType, COMExtent>>(std::tuple{blockSpan, blockState},
+                                         std::tuple{std::move(nnToDo.second), blockSizes.size(), parameters.indexParams.nearestNodeNeighbors});
+    auto initJoinBuilder = GenerateTaskBuilder<InitJoinTask<DistType, COMExtent>>(std::tuple{blockSpan, blockState},
+                                                           std::tuple{updateSpan});
+    auto updateBuilder = GenerateTaskBuilder<UpdateTask<DistType, COMExtent>>(std::tuple{blockSpan, blockState, updateSpan},
+                                                        std::tuple{blockSpan.size(), std::reference_wrapper(blocksUpdated)});
+    auto comparisonBuilder = GenerateTaskBuilder<ComparisonTask<DistType, COMExtent>>(std::tuple{blockSpan, std::reference_wrapper(blocksUpdated), std::span{blocksFinalized.get(), blockSpan.size()}});
 
-    auto comparisonBuilder = GenerateTaskBuilder<FourthTask>(std::tuple{blockSpan, std::reference_wrapper(blocksUpdated), std::span{blocksFinalized.get(), blockSpan.size()}});
-
-    std::tuple<FirstTask, SecondTask, ThirdTask, FourthTask> tasks{nnBuilder, initJoinBuilder, updateBuilder, comparisonBuilder};
+    GraphInitTasks<DistType, COMExtent> tasks{nnBuilder, initJoinBuilder, updateBuilder, comparisonBuilder};
 
     std::tuple taskArgs = std::tie(nnToDo.first, std::get<0>(tasks).GetTaskArgs(), std::get<1>(tasks).GetTaskArgs(), std::get<2>(tasks).GetTaskArgs());
     
@@ -269,9 +247,7 @@ void BuildGraph(NNDPool<DistType, COMExtent>& pool, std::vector<size_t>&& blockS
 
     ParallelBlockJoins(blockSpan, std::move(blocksFinalized), pool);
     
-    //End parallel build
-
-    pool.StopThreads();
+    return std::move(blocks.blocks);
 }
 
 }

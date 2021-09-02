@@ -76,7 +76,9 @@ struct TaskQueuer{
     template<typename... GenArgs, typename... ConsArgs>
     TaskQueuer(std::tuple<GenArgs...>&& generatorArgs, std::tuple<ConsArgs...>&& consumerArgs): 
         generator(std::make_from_tuple<Generator>(std::forward<std::tuple<GenArgs...>>(generatorArgs))),
-        consumer(std::make_from_tuple<Consumer>(std::forward<std::tuple<ConsArgs...>>(consumerArgs))){};
+        consumer(std::make_from_tuple<Consumer>(std::forward<std::tuple<ConsArgs...>>(consumerArgs))),
+        doneGenerating(false),
+        doneConsuming(false){};
 
     TaskQueuer(const TaskQueuer&) = delete;
     TaskQueuer(TaskQueuer&&) = delete;

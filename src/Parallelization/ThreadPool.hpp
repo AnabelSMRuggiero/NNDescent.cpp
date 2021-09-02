@@ -152,9 +152,15 @@ struct ThreadPool{
     //I hate that I have to write this, but should be a temporary crutch
     void Latch(){
         auto latcher = [](const size_t count){return count == 0; };
+        auto noopTask = [](ThreadState&)->void{return;};
+        for (size_t i = 0; i<numThreads; i+=1){
+            threadStates[i].workQueue.Put(noopTask);
+        }
         for (size_t i = 0; i<numThreads; i+=1){
             while(!latcher(threadStates[i].workQueue.WaitOnCount()));
         }
+        
+        
     }
 
     private:

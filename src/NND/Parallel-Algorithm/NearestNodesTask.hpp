@@ -11,6 +11,16 @@ https://github.com/AnabelSMRuggiero/NNDescent.cpp
 #ifndef NND_NEARESTNODETASK_HPP
 #define NND_NEARESTNODETASK_HPP
 
+#include <unordered_map>
+#include <unordered_set>
+#include <vector>
+#include <utility>
+#include <optional>
+#include <atomic>
+
+#include "Parallelization/TaskQueuer.hpp"
+
+
 namespace nnd {
 
 template<typename DistType, typename COMExtent>
@@ -182,11 +192,7 @@ struct NearestNodesConsumer{
     void OnCompletion(InitJoinConsumer<DistType>& nextStep){
         if(joinsPerBlock) nextStep.UpdateExpectedJoins(std::move(joinsPerBlock));
     }
-    /*
-    std::unique_ptr<size_t[]> PassJoinCounts(){
-        return std::move(joinsPerBlock);
-    }
-    */
+
 
     private:
     
@@ -205,6 +211,9 @@ struct NearestNodesConsumer{
 
 
 };
+
+template<typename DistType, typename COMExtent>
+using NNTask = TaskQueuer<NearestNodesGenerator<DistType, COMExtent>, NearestNodesConsumer<DistType>>;
 
 }
 

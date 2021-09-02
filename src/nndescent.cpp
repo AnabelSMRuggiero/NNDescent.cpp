@@ -39,6 +39,8 @@ https://github.com/AnabelSMRuggiero/NNDescent.cpp
 #include "NND/GraphInitialization.hpp"
 #include "NND/Search.hpp"
 
+#include "NND/Parallel-Algorithm/FreeFunctions.hpp"
+
 #include "RPTrees/SplittingScheme.hpp"
 #include "RPTrees/Forest.hpp"
 
@@ -60,7 +62,7 @@ struct SearchParameters{
     size_t maxSearchesQueued;
 };
 
-struct HyperParameterValues{
+struct OptionsValues{
     SplittingHeurisitcs splitParams;
     IndexParamters indexParams;
     SearchParameters searchParams;
@@ -119,7 +121,7 @@ std::vector<BlockUpdateContext<float>> BuildGraph(const std::vector<DataBlock<Da
 
 
 
-enum class HyperParameter{
+enum class Options{
     blockGraphNeighbors,
     COMNeighbors,
     nearestNodeNeighbors,
@@ -129,22 +131,24 @@ enum class HyperParameter{
     maxSplitSize,
     searchNeighbors,
     searchDepth,
-    maxSearchesQueued
+    maxSearchesQueued,
+    parallelIndexBuild
 };
 
 
 using std::operator""s;
-static const std::unordered_map<std::string, HyperParameter> optionNumber = {
-    {"-blockGraphNeighbors"s,   HyperParameter::blockGraphNeighbors},
-    {"-COMNeighbors"s,          HyperParameter::COMNeighbors},
-    {"-nearestNodeNeighbors"s,  HyperParameter::nearestNodeNeighbors},
-    {"-queryDepth"s,            HyperParameter::queryDepth},
-    {"-targetSplitSize"s,       HyperParameter::targetSplitSize},
-    {"-minSplitSize"s,          HyperParameter::minSplitSize},
-    {"-maxSplitSize"s,          HyperParameter::maxSplitSize},
-    {"-searchNeighbors"s,       HyperParameter::searchNeighbors},
-    {"-searchDepth"s,           HyperParameter::searchDepth},
-    {"-maxSearchesQueued"s,     HyperParameter::maxSearchesQueued}
+static const std::unordered_map<std::string, Options> optionNumber = {
+    {"-blockGraphNeighbors"s,   Options::blockGraphNeighbors},
+    {"-COMNeighbors"s,          Options::COMNeighbors},
+    {"-nearestNodeNeighbors"s,  Options::nearestNodeNeighbors},
+    {"-queryDepth"s,            Options::queryDepth},
+    {"-targetSplitSize"s,       Options::targetSplitSize},
+    {"-minSplitSize"s,          Options::minSplitSize},
+    {"-maxSplitSize"s,          Options::maxSplitSize},
+    {"-searchNeighbors"s,       Options::searchNeighbors},
+    {"-searchDepth"s,           Options::searchDepth},
+    {"-maxSearchesQueued"s,     Options::maxSearchesQueued},
+    {"-parallelIndexBuild"s,    Options::parallelIndexBuild}
 };
 
 
@@ -153,6 +157,7 @@ int main(int argc, char *argv[]){
     
     static const std::endian dataEndianness = std::endian::big;
 
+    /*
     IndexParamters indexParams{5, 10, 3, 2};
 
     size_t numBlockGraphNeighbors = 5;
@@ -166,6 +171,23 @@ int main(int argc, char *argv[]){
     size_t maxNewSearches = 10;
 
     SplittingHeurisitcs splitParams= {16, 140, 60, 180};
+    */
+
+    IndexParamters indexParams{12, 40, 35, 4};
+
+    size_t numBlockGraphNeighbors = 12;
+    size_t numCOMNeighbors = 40;
+    size_t maxNearestNodes = 35;
+    size_t queryDepth = 5;
+
+    SearchParameters searchParams{15, 5, 10};
+    size_t numberSearchNeighbors = 15;
+    size_t searchQueryDepth = 5;
+    size_t maxNewSearches = 10;
+
+    SplittingHeurisitcs splitParams= {16, 205, 123, 287};
+
+    bool parallelIndexBuild = true;
 
 
     std::vector<std::string> options;
@@ -180,7 +202,7 @@ int main(int argc, char *argv[]){
             std::cout << "Could not split option from value; no '=' in: " << option << std::endl;
             return EXIT_FAILURE;
         }
-        HyperParameter optionEnum;
+        Options optionEnum;
         try {
             optionEnum = optionNumber.at(option.substr(0,nameEnd));
         } catch (...){
@@ -190,45 +212,54 @@ int main(int argc, char *argv[]){
 
         switch (optionEnum){
             
-            case HyperParameter::blockGraphNeighbors:
+            case Options::blockGraphNeighbors:
                 indexParams.blockGraphNeighbors = numBlockGraphNeighbors = stoul(std::string(option.substr(nameEnd+1)));
                 break;
 
-            case HyperParameter::COMNeighbors:
+            case Options::COMNeighbors:
                 indexParams.COMNeighbors = numCOMNeighbors = stoul(std::string(option.substr(nameEnd+1)));
                 break;
 
-            case HyperParameter::nearestNodeNeighbors:
+            case Options::nearestNodeNeighbors:
                 indexParams.nearestNodeNeighbors = maxNearestNodes = stoul(std::string(option.substr(nameEnd+1)));
                 break;
 
-            case HyperParameter::queryDepth:
+            case Options::queryDepth:
                 indexParams.queryDepth = queryDepth = stoul(std::string(option.substr(nameEnd+1)));
                 break;
 
-            case HyperParameter::targetSplitSize:
+            case Options::targetSplitSize:
                 splitParams.splitThreshold = stoul(std::string(option.substr(nameEnd+1)));
                 break;
 
-            case HyperParameter::minSplitSize:
+            case Options::minSplitSize:
                 splitParams.childThreshold = stoul(std::string(option.substr(nameEnd+1)));
                 break;
 
-            case HyperParameter::maxSplitSize:
+            case Options::maxSplitSize:
                 splitParams.maxTreeSize = stoul(std::string(option.substr(nameEnd+1)));
                 break;
 
-            case HyperParameter::searchNeighbors:
+            case Options::searchNeighbors:
                 searchParams.searchNeighbors = numberSearchNeighbors = stoul(std::string(option.substr(nameEnd+1)));
                 break;
                 
-            case HyperParameter::searchDepth:
+            case Options::searchDepth:
                 searchParams.searchDepth = searchQueryDepth = stoul(std::string(option.substr(nameEnd+1)));
                 break;
 
-            case HyperParameter::maxSearchesQueued:
+            case Options::maxSearchesQueued:
                 searchParams.maxSearchesQueued = maxNewSearches = stoul(std::string(option.substr(nameEnd+1)));
                 break;
+
+            case Options::parallelIndexBuild:
+                if (option.substr(nameEnd+1) == "true"){
+                    parallelIndexBuild = true;
+                } else if (option.substr(nameEnd+1) == "false"){
+                    parallelIndexBuild = false;
+                } else{
+                    std::cout << "parallelIndexBuild input (" << option.substr(nameEnd+1) << ") does not evaluate to 'true' or 'false'" << std::endl;
+                }
                 /*
                     searchNeighbors,
                     searchDepth,
@@ -287,25 +318,44 @@ int main(int argc, char *argv[]){
     auto [indexMappings, dataBlocks] = PartitionData<AlignedArray<float>>(rpTreesTrain, mnistFashionTrain);
 
     
-    MetricFunctor<AlignedArray<float>, EuclideanMetricPair> testFunctor(dataBlocks);
-    DispatchFunctor<float> testDispatch(testFunctor);
+    MetricFunctor<AlignedArray<float>, EuclideanMetricPair> euclideanFunctor(dataBlocks);
+    DispatchFunctor<float> testDispatch(euclideanFunctor);
 
     std::vector<size_t> sizes;
     sizes.reserve(dataBlocks.size());
     for(const auto& block: dataBlocks){
         sizes.push_back(block.size());
     }
+
+    
+    //MetricFunctor<AlignedArray<float>, EuclideanMetricPair> euclideanFunctor(dataBlocks);
+    
+    
     
     
     MetaGraph<float> metaGraph(dataBlocks, parameters.indexParams.COMNeighbors, EuclideanMetricPair());
+    DataComDistance<AlignedArray<float>, float, EuclideanMetricPair> comFunctor(metaGraph, dataBlocks);
+    
+    //hacky but not a long term thing
+    std::vector<BlockUpdateContext<float>> blockContextVec;
+    std::unique_ptr<BlockUpdateContext<float>[]> blockContextArr;
+    std::span<BlockUpdateContext<float>> blockUpdateContexts;
 
-    std::vector<BlockUpdateContext<float>> blockUpdateContexts = BuildGraph<AlignedArray<float>, float, float>(dataBlocks, metaGraph, testDispatch, std::move(sizes), parameters, std::execution::seq);
-
+    if (parallelIndexBuild){
+        ThreadPool<ThreadFunctors<float, float>> pool(12, euclideanFunctor, comFunctor, splitParams.maxTreeSize, parameters.indexParams.blockGraphNeighbors);
+        pool.StartThreads();
+        blockContextArr = BuildGraph(std::move(sizes), metaGraph, parameters, pool);
+        blockUpdateContexts = {blockContextArr.get(), dataBlocks.size()};
+        pool.StopThreads();
+    } else {
+        blockContextVec = BuildGraph<AlignedArray<float>, float, float>(dataBlocks, metaGraph, testDispatch, std::move(sizes), parameters, std::execution::seq);
+        blockUpdateContexts = {blockContextVec.data(), blockContextVec.size()};
+    }
     
     
     std::chrono::time_point<std::chrono::steady_clock> runEnd = std::chrono::steady_clock::now();
-    //std::cout << std::chrono::duration_cast<std::chrono::duration<float>>(runEnd - runStart).count() << "s total for index building " << std::endl;
-    std::cout << std::chrono::duration_cast<std::chrono::duration<float>>(runEnd - runStart).count() << std::endl;
+    std::cout << std::chrono::duration_cast<std::chrono::duration<float>>(runEnd - runStart).count() << "s total for index building " << std::endl;
+    //std::cout << std::chrono::duration_cast<std::chrono::duration<float>>(runEnd - runStart).count() << std::endl;
 
     std::chrono::time_point<std::chrono::steady_clock> runStart2 = std::chrono::steady_clock::now();
 
@@ -429,8 +479,8 @@ int main(int argc, char *argv[]){
         }
     }
     std::chrono::time_point<std::chrono::steady_clock> runEnd2 = std::chrono::steady_clock::now();
-    //std::cout << std::chrono::duration_cast<std::chrono::duration<float>>(runEnd2 - runStart2).count() << "s test set search " << std::endl;
-    std::cout << std::chrono::duration_cast<std::chrono::duration<float>>(runEnd2 - runStart2).count() << std::endl;
+    std::cout << std::chrono::duration_cast<std::chrono::duration<float>>(runEnd2 - runStart2).count() << "s test set search " << std::endl;
+    //std::cout << std::chrono::duration_cast<std::chrono::duration<float>>(runEnd2 - runStart2).count() << std::endl;
 
 
     
@@ -471,8 +521,8 @@ int main(int argc, char *argv[]){
         correctPerBlockFloat[i] = float(correctNeighborsPerBlock[i]*10)/float(searchContexts[i].size());
     }
     double recall = double(numNeighborsCorrect)/ double(10*mnistFashionTestNeighbors.samples.size());
-    std::cout << (recall * 100) << std::endl;
-    //std::cout << "Recall: " << (recall * 100) << "%" << std::endl;
+    //std::cout << (recall * 100) << std::endl;
+    std::cout << "Recall: " << (recall * 100) << "%" << std::endl;
     
     //WeightedGraphEdges graphEdges = NeighborsOutOfBlock(mnistFashionTestNeighbors, trainMapper.sourceToBlockIndex, testClassifications);
 
