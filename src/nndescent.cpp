@@ -24,6 +24,7 @@ https://github.com/AnabelSMRuggiero/NNDescent.cpp
 #include <execution>
 #include <string_view>
 #include <cstdlib>
+#include <cstdint>
 
 //#include <type_traits>
 
@@ -378,7 +379,7 @@ int main(int argc, char *argv[]){
 
     GraphVertex<BlockIndecies, float> nullVertex;
     for(size_t i = 0; i<numberSearchNeighbors; i+=1){
-        nullVertex.push_back({{0,0}, std::numeric_limits<float>::max()});
+        nullVertex.push_back({{size_t(0),size_t(0)}, std::numeric_limits<float>::max()});
     }
 
     for (auto& context: blockUpdateContexts){
@@ -489,7 +490,7 @@ int main(int argc, char *argv[]){
     for (size_t i = 0; auto& testBlock: searchContexts){
         for (size_t j = 0; auto& context: testBlock){
             GraphVertex<BlockIndecies, float>& result = context.currentNeighbors;
-            size_t testIndex = testMappings.blockIndexToSource[{i,j}];
+            size_t testIndex = testMappings.blockIndexToSource[{i, j}];
             std::sort_heap(result.begin(), result.end(), NeighborDistanceComparison<BlockIndecies, float>);
             for (const auto& neighbor: result){
                 results[testIndex].push_back(indexMappings.blockIndexToSource[neighbor.first]);

@@ -21,6 +21,7 @@ https://github.com/AnabelSMRuggiero/NNDescent.cpp
 #include <utility>
 #include <span>
 #include <new>
+#include <cstdint>
 
 namespace nnd{
 
@@ -39,9 +40,10 @@ template<typename DistType>
 using DistanceCache = std::unordered_map<std::pair<size_t, size_t>, DistType, IntegralPairHasher<size_t>>;
 
 
-template<typename ValueType, size_t alignment=32>
+template<typename ValueType, size_t align=32>
 struct AlignedArray{
     using value_type = ValueType;
+    static const size_t alignment = align;
     private:
 
     struct AlignedDeleter{
@@ -95,10 +97,11 @@ struct AlignedArray{
 
 };
 
-template<typename ElementType, size_t alignment=32>
+template<typename ElementType, size_t align=32>
 struct AlignedSpan{
 
     using value_type = std::remove_cv_t<ElementType>;
+    static const size_t alignment = align;
     private:
     ElementType* data;
     size_t extent;
@@ -125,8 +128,17 @@ struct AlignedSpan{
 template<std::ranges::contiguous_range Container>
 struct DefaultDataView{ using ViewType = std::span<const typename Container::value_type>; };
 
-template<typename ElementType>
-struct DefaultDataView<AlignedArray<ElementType>>{ using ViewType = AlignedSpan<const ElementType>; };
+template<typename ElementType, size_t align>
+struct DefaultDataView<AlignedArray<ElementType, align>>{ using ViewType = AlignedSpan<const ElementType, align>; };
+
+template<typename Type>
+struct IsAlignedArray : std::false_type {};
+
+template<typename ElementType, size_t align>
+struct IsAlignedArray<AlignedArray<ElementType, align>> : std::true_type {};
+
+template<typename Type>
+static constexpr bool isAlignedArray_v = IsAlignedArray<Type>::value;
 
 template<typename DataTypeA, typename DataTypeB, typename RetType=double>
 using SpaceMetric = RetType (*)(const DataTypeA&, const DataTypeB&);
@@ -141,11 +153,19 @@ struct BlockIndecies{
     // The index within that block
     size_t dataIndex;
 
+
 };
 
 
 template<typename Type, typename OtherType>
 concept IsNot = !std::same_as<Type, OtherType>;
+
+struct SplittingHeurisitcs{
+    int splits = 16;
+    int splitThreshold = 80;
+    int childThreshold = 32;
+    int maxTreeSize = 130;
+};
 
 
 }

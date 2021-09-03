@@ -33,12 +33,6 @@ This seems out of place here. The utility functions header under NND is mainly f
 related to NND, and didn't want to tuck this there. This is a super general function though.
 */
 
-struct SplittingHeurisitcs{
-    int splits = 16;
-    int splitThreshold = 80;
-    int childThreshold = 32;
-    int maxTreeSize = 130;
-};
 
 template<typename Iterator, typename rIterator, typename SplittingFunction>
 int Split(Iterator fromBegin, Iterator fromEnd, Iterator toBegin, rIterator toRev, SplittingFunction splitter){
@@ -155,10 +149,10 @@ struct RandomProjectionForest{
         std::vector<size_t> indexVector1(numberOfSamples);
         std::iota(indexVector1.begin(), indexVector1.end(), 0);
 
-        #ifdef _DEBUG
+        
         size_t sum = std::accumulate(indexVector1.begin(), indexVector1.end(), 0);
         size_t tmpSum(sum);
-        #endif
+        
 
         std::vector<size_t> indexVector2(numberOfSamples);
 
@@ -269,12 +263,12 @@ struct RandomProjectionForest{
             
             std::swap(indexVector1, indexVector2);
             std::swap(splitQueue1, splitQueue2);
-            #ifdef _DEBUG
+            
             tmpSum = std::accumulate(indexVector1.begin(), indexVector1.end(), 0);
             if (sum != tmpSum){
                 throw std::logic_error("Sum of indicies should be invariant.");
             };
-            #endif
+            
 
         } //end for
         indexArray = std::move(indexVector1);

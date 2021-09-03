@@ -28,7 +28,7 @@ https://github.com/AnabelSMRuggiero/NNDescent.cpp
 
 #include "../Utilities/Type.hpp"
 #include "../Utilities/Data.hpp"
-#include "../Utilities/Metrics/SpaceMetrics.hpp"
+#include "../Utilities/Metrics/FunctorErasure.hpp"
 
 #include "Utilities/DataDeserialization.hpp"
 

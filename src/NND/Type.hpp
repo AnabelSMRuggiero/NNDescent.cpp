@@ -69,12 +69,8 @@ struct SearchParameters{
     size_t maxSearchesQueued;
 };
 
-struct SplittingHeurisitcs{
-    int splits = 16;
-    int splitThreshold = 80;
-    int childThreshold = 32;
-    int maxTreeSize = 130;
-};
+
+
 
 struct HyperParameterValues{
     SplittingHeurisitcs splitParams;
