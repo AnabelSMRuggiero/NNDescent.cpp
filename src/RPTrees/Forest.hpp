@@ -32,6 +32,14 @@ namespace nnd{
 This seems out of place here. The utility functions header under NND is mainly for functions
 related to NND, and didn't want to tuck this there. This is a super general function though.
 */
+
+struct SplittingHeurisitcs{
+    int splits = 16;
+    int splitThreshold = 80;
+    int childThreshold = 32;
+    int maxTreeSize = 130;
+};
+
 template<typename Iterator, typename rIterator, typename SplittingFunction>
 int Split(Iterator fromBegin, Iterator fromEnd, Iterator toBegin, rIterator toRev, SplittingFunction splitter){
     int numTrue = 0;
