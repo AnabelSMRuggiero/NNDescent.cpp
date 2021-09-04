@@ -48,6 +48,11 @@ std::pair<IndexMaps<size_t>, std::vector<DataBlock<DataEntry>>> PartitionData(co
     return {retMaps, std::move(retBlocks)};
 }
 
+template<typename Sinkee>
+void Sink(Sinkee&& objToSink){
+    Sinkee consume(std::move(objToSink));
+};
+
 int main(int argc, char *argv[]){
 
     static const std::endian dataEndianness = std::endian::big;
@@ -64,19 +69,17 @@ int main(int argc, char *argv[]){
     EuclidianScheme<AlignedArray<float>, AlignedArray<float>> splittingScheme(mnistFashionTrain);
 
     std::unique_ptr<size_t[]> indecies = std::make_unique<size_t[]>(mnistFashionTrain.size());
-    std::unique_ptr<size_t[]> workSpace = std::make_unique<size_t[]>(mnistFashionTrain.size());
     std::iota(indecies.get(), indecies.get()+mnistFashionTrain.size(), 0);
 
-    std::span<size_t> indexView = {indecies.get(), mnistFashionTrain.size()};
-    std::span<size_t> workView = {workSpace.get(), mnistFashionTrain.size()};
 
     ForestBuilder builder{std::move(rngFunctor), splitParams, splittingScheme};
 
-    std::pmr::synchronized_pool_resource treePool;
 
-    RandomProjectionForest rpTrees = builder(indexView, workView, &treePool);
+    RandomProjectionForest rpTrees = builder(std::move(indecies), mnistFashionTrain.size());
 
     auto [indexMappings, dataBlocks] = PartitionData<AlignedArray<float>>(rpTrees, mnistFashionTrain);
+
+    Sink(std::move(rpTrees));
 
     return 0;
 }

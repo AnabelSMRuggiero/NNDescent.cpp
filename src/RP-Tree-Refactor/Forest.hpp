@@ -82,15 +82,43 @@ struct TreeLeaf{
 
 struct RandomProjectionForest{
 
-    //std::pmr::synchronized_pool_resource treeBuffer;
+    friend struct TreeRef;
+
+    std::unique_ptr<size_t[]> indecies;
+    const size_t numIndecies;
     std::pmr::polymorphic_allocator<std::byte> alloc;
-    TreeLeaf* topNode;
-    std::span<size_t> indecies;
+    TreeLeaf topNode;
 
-    RandomProjectionForest(std::pmr::memory_resource* upstream, std::pair<size_t, size_t> topIndexRange):
-        alloc(upstream), topNode(alloc.new_object<TreeLeaf>(topIndexRange, 0, nullptr)){};
-
+    RandomProjectionForest(RandomProjectionForest&& other):indecies(std::move(other.indecies)),
+        numIndecies(other.numIndecies),
+        alloc(std::move(other.alloc)),
+        topNode(std::move(other.topNode)),
+        memManager(std::move(other.memManager)){
+            topNode.children.first->parent = &topNode;
+            topNode.children.second->parent = &topNode;
+        }
     
+
+    RandomProjectionForest(std::unique_ptr<size_t[]>&& indecies, const size_t numIndecies, std::pmr::memory_resource* upstream = std::pmr::get_default_resource()):
+        indecies(std::move(indecies)),
+        numIndecies(numIndecies),
+        alloc(upstream),
+        topNode(0, numIndecies-1, 0, nullptr),
+        memManager(alloc){};
+
+    std::span<size_t> GetView() const{
+        return {indecies.get(), numIndecies};
+    }
+    
+    ~RandomProjectionForest(){
+        for(auto ptr: memManager){
+            if(ptr != nullptr) alloc.deallocate_object(ptr, chunkSize);
+        }
+    }
+
+    private:
+    constexpr static size_t chunkSize = 32;
+    std::pmr::vector<TreeLeaf*> memManager;
 };
 
 struct TreeRef{
@@ -98,7 +126,7 @@ struct TreeRef{
     TreeLeaf* refNode;
 
 
-    TreeRef(RandomProjectionForest& forest): alloc(forest.alloc), refNode(forest.topNode){
+    TreeRef(RandomProjectionForest& forest): alloc(forest.alloc), refNode(&forest.topNode), forestTop(forest){
         GetChunk();
     };
     
@@ -121,13 +149,14 @@ struct TreeRef{
     private:
 
     void GetChunk(){
-        buildMemory = alloc.allocate_object<TreeLeaf>(chunkSize);
+        buildMemory = alloc.allocate_object<TreeLeaf>(RandomProjectionForest::chunkSize);
         buildEnd = buildMemory + 32;
+        forestTop.memManager.push_back(buildMemory);
     }
 
     TreeLeaf* buildMemory;
     TreeLeaf* buildEnd;
-    constexpr static size_t chunkSize = 32;
+    RandomProjectionForest& forestTop;
 
 };
 
@@ -147,20 +176,26 @@ struct ForestBuilder{
         getSplitComponents(scheme) {};
 
     // Training operator()
-    RandomProjectionForest operator()(std::span<size_t> samples, std::span<size_t> workSpace, std::pmr::memory_resource* upstream){
+    RandomProjectionForest operator()(std::unique_ptr<size_t[]>&& indecies, const size_t numIndecies, std::pmr::memory_resource* upstream = std::pmr::get_default_resource()){
 
         //splittingVectors.reserve((1<<numberOfSplits) - 1);
-        
+        RandomProjectionForest forest(std::move(indecies), numIndecies, upstream);
+
+        std::span<size_t> samples = forest.GetView();
+
+        std::unique_ptr<size_t[]> workSpaceArr = std::make_unique<size_t[]>(numIndecies);
+        std::span<size_t> workSpace = {workSpaceArr.get(), numIndecies};
+
         #ifdef _DEBUG
         size_t sum = std::accumulate(samples.begin(), samples.end(), 0);
         size_t tmpSum(sum);
         #endif
 
-        RandomProjectionForest forest(upstream, {samples.front(), samples.back()});
+        
 
         TreeRef builder(forest);
 
-        std::vector<TreeLeaf*> splitQueue1 = {forest.topNode};
+        std::vector<TreeLeaf*> splitQueue1 = {&forest.topNode};
         std::vector<TreeLeaf*> splitQueue2;
         //auto splittingFunction;
 
@@ -258,24 +293,30 @@ struct ForestBuilder{
             #endif
 
         } //end for
-        forest.indecies = samples;
-        return forest;
+        if (samples.data() == workSpaceArr.get()){
+            std::swap(forest.indecies, workSpaceArr);
+        }
+        return std::move(forest);
     } //end operator()
     
-    RandomProjectionForest operator()(std::span<size_t> samples, std::span<size_t> workSpace, std::pmr::memory_resource* upstream, std::unordered_set<size_t> splitsToDo);
+    RandomProjectionForest operator()(std::unique_ptr<size_t[]>&& indecies, const size_t numIndecies, std::unordered_set<size_t> splitIndicies, std::pmr::memory_resource* upstream = std::pmr::get_default_resource());
 
 };
 
 //Transforming Constructor
 template<typename SplittingScheme>
-RandomProjectionForest ForestBuilder<SplittingScheme>::operator()(std::span<size_t> samples, std::span<size_t> workSpace, std::pmr::memory_resource* upstream, std::unordered_set<size_t> splitIndicies){
+RandomProjectionForest ForestBuilder<SplittingScheme>::operator()(std::unique_ptr<size_t[]>&& indecies, const size_t numIndecies, std::unordered_set<size_t> splitIndicies, std::pmr::memory_resource* upstream){
 
 
-    RandomProjectionForest forest(upstream, {samples.front(), samples.back()});
+    RandomProjectionForest forest(std::move(indecies), numIndecies, upstream);
 
+    std::span<size_t> samples = forest.GetView();
+
+    std::unique_ptr<size_t[]> workSpaceArr = std::make_unique<size_t[]>(numIndecies);
+    std::span<size_t> workSpace = {workSpaceArr.get(), numIndecies};
     TreeRef builder(forest);
 
-    std::vector<TreeLeaf*> splitQueue1 = {forest.topNode};
+    std::vector<TreeLeaf*> splitQueue1 = {&forest.topNode};
     std::vector<TreeLeaf*> splitQueue2;
     //auto splittingFunction;
 
@@ -350,8 +391,10 @@ RandomProjectionForest ForestBuilder<SplittingScheme>::operator()(std::span<size
         //if (splitQueue2.size() == 0) break;
         std::swap(splitQueue1, splitQueue2);
     } //end while
-    forest.indecies = samples;
-    return forest;
+    if (samples.data() == workSpaceArr.get()){
+        std::swap(forest.indecies, workSpaceArr);
+    }
+    return std::move(forest);
     //indexArray = std::move(indexVector1);
 } //end operator()
     
@@ -367,9 +410,9 @@ void CrawlTerminalLeaves(const RandomProjectionForest& forest, Functor& terminal
     size_t highestIndex = 0;
     size_t counter = 0;
     
-    std::span<const size_t> indecies = forest.indecies;
+    std::span<const size_t> indecies = forest.GetView();
     
-    TreeLeaf* currentNode = forest.topNode;
+    const TreeLeaf* currentNode = &forest.topNode;
 
     
 
@@ -398,7 +441,7 @@ void CrawlTerminalLeaves(const RandomProjectionForest& forest, Functor& terminal
             
             throw std::logic_error("Invalid Crawl State");
             
-        } else if (currentNode->children.first == 0 && currentNode->children.second == 0){
+        } else if (currentNode->children.first == nullptr && currentNode->children.second == nullptr){
             highestIndex = std::max(highestIndex, currentNode->splittingIndex);
             counter += 1;
             std::span indexSpan(&(indecies[currentNode->splitRange.first]),

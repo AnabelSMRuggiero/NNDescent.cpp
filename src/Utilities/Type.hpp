@@ -153,7 +153,6 @@ struct BlockIndecies{
     // The index within that block
     size_t dataIndex;
 
-
 };
 
 
