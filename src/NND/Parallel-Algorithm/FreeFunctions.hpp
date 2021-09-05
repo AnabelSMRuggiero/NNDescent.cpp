@@ -134,7 +134,9 @@ void ParallelBlockJoins(std::span<BlockUpdateContext<DistType>> blocks, std::uni
         };
         return updateTask;
     };
-    
+    for (size_t i = 0; i<blocks.size(); i +=1){
+        if(blocks[i].joinsToDo.size()==0) doneBlocks++;
+    }
     //Case where we start with 0 joins to do?
     bool firstLoop = true;
     while(doneBlocks<blocks.size()){
@@ -147,7 +149,7 @@ void ParallelBlockJoins(std::span<BlockUpdateContext<DistType>> blocks, std::uni
             if(blocks[i].joinsToDo.size() == 0){
                 if(blocks[i].newJoins.size() == 0){
                     blockStates[i] = true;
-                    if (firstLoop) doneBlocks++;
+                    //if (firstLoop) doneBlocks++;
                     continue;
                 }
                 blocks[i].SetNextJoins();
@@ -159,6 +161,7 @@ void ParallelBlockJoins(std::span<BlockUpdateContext<DistType>> blocks, std::uni
                     continue;
                 }
                 queued = true;
+                //if (firstLoop && blocks[joinList.first].joinsToDo.size() == 0 && blocks[joinList.first].newJoins.size() == 0) doneBlocks++;
                 pool.DelegateTask(updateGenerator(i, joinList.first));
                 break;
                 

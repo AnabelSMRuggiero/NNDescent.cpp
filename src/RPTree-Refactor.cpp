@@ -15,10 +15,12 @@ https://github.com/AnabelSMRuggiero/NNDescent.cpp
 #include "Utilities/Type.hpp"
 #include "Utilities/Data.hpp"
 
+#include "Parallelization/ThreadPool.hpp"
+
 #include "NND/RNG.hpp"
 
-#include "RP-Tree-Refactor/Forest.hpp"
-#include "RP-Tree-Refactor/SplittingScheme.hpp"
+#include "RPTrees/Forest.hpp"
+#include "RPTrees/SplittingScheme.hpp"
 #include "NND/MetaGraph.hpp"
 
 using namespace nnd;
@@ -57,14 +59,24 @@ int main(int argc, char *argv[]){
 
     static const std::endian dataEndianness = std::endian::big;
 
+    static const size_t numThreads = 12;
+
     SplittingHeurisitcs splitParams= {16, 205, 123, 287};
 
     std::string trainDataFilePath("./TestData/MNIST-Fashion-Train.bin");
     DataSet<AlignedArray<float>> mnistFashionTrain(trainDataFilePath, 28*28, 60'000, &ExtractNumericArray<AlignedArray<float>,dataEndianness>);
 
-    std::mt19937_64 rngEngine(0);
-    std::uniform_int_distribution<size_t> rngDist(size_t(0), mnistFashionTrain.numberOfSamples - 1);
-    StlRngFunctor<std::mt19937_64, std::uniform_int_distribution, size_t> rngFunctor(std::move(rngEngine), std::move(rngDist));
+    // rngEngine(0);
+    //std::uniform_int_distribution<size_t> rngDist(size_t(0), mnistFashionTrain.numberOfSamples - 1);
+    RngFunctor rngFunctor(0, mnistFashionTrain.size()-1);
+
+    std::unique_ptr<size_t[]> indecies = std::make_unique<size_t[]>(mnistFashionTrain.size());
+    
+    ThreadPool<void> pool(numThreads);
+        pool.StartThreads();
+    
+
+    /*
 
     EuclidianScheme<AlignedArray<float>, AlignedArray<float>> splittingScheme(mnistFashionTrain);
 
@@ -78,8 +90,8 @@ int main(int argc, char *argv[]){
     RandomProjectionForest rpTrees = builder(std::move(indecies), mnistFashionTrain.size());
 
     auto [indexMappings, dataBlocks] = PartitionData<AlignedArray<float>>(rpTrees, mnistFashionTrain);
-
-    Sink(std::move(rpTrees));
+    */
+    //Sink(std::move(rpTrees));
 
     return 0;
 }

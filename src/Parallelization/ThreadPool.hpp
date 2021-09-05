@@ -84,6 +84,66 @@ struct TaskThread{
 
 };
 
+template<>
+struct TaskThread<void>{
+
+    using ThreadTask = std::function<void(void)>;
+
+    friend ThreadPool<void>;
+
+    AsyncQueue<ThreadTask> workQueue;
+
+    TaskThread() = default;
+
+    
+
+    TaskThread(TaskThread&& other) = default;
+
+
+    
+    template<typename ...ThreadStateArgs>
+    TaskThread(ThreadStateArgs... args): state(args...), workQueue(), running(false) {};
+
+    auto GetThreadLoop(){
+        auto threadLoop = [&](std::stop_token stopToken)->void{
+
+            assert(!(this->running));
+
+            auto queueTerminator = [&]() mutable {
+                this->workQueue.Put(this->GetTerminator());
+            };
+
+
+            std::stop_callback stopQueuer(stopToken, queueTerminator);
+
+            this->running = true;
+            while(running){
+
+                ThreadTask taskToDo = this->workQueue.Take();
+                taskToDo();
+
+            }
+
+        };
+
+        return threadLoop;
+    }
+
+    ThreadTask GetTerminator(){
+        return [&](void){
+            running = false;
+        };
+    }
+
+
+    private:
+    TaskThread(const TaskThread&) = default;
+    TaskThread& operator=(const TaskThread&) = default;
+    bool running;
+
+};
+
+
 
 template<typename ThreadState>
 struct ThreadPool{
@@ -149,6 +209,10 @@ struct ThreadPool{
 
     }
 
+    size_t ThreadCount(){
+        return numThreads;
+    }
+
     //I hate that I have to write this, but should be a temporary crutch
     void Latch(){
         auto latcher = [](const size_t count){return count == 0; };
@@ -168,6 +232,88 @@ struct ThreadPool{
     const size_t numThreads;
     size_t delegationCounter;
     std::unique_ptr<TaskThread<ThreadState>[]> threadStates; 
+    std::unique_ptr<std::jthread[]> threadHandles;
+    
+};
+
+template<>
+struct ThreadPool<void>{
+
+
+    using ThreadTask = std::function<void(void)>;
+
+    ThreadPool(): numThreads(std::jthread::hardware_concurrency()),
+                  delegationCounter(0),
+                  threadStates(std::make_unique<TaskThread<void>[]>(numThreads)), 
+                  threadHandles(std::make_unique<std::jthread[]>(numThreads)) {};
+
+    ThreadPool(const size_t numThreads): numThreads(numThreads),
+                                         delegationCounter(0),
+                                         threadStates(std::make_unique<TaskThread<void>[]>(numThreads)), 
+                                         threadHandles(std::make_unique<std::jthread[]>(numThreads)) {};
+
+
+    void StartThreads(){
+        for(size_t i = 0; i<numThreads; i+=1){
+            threadHandles[i] = std::jthread(threadStates[i].GetThreadLoop());
+        }
+
+    };
+
+    void StopThreads(){
+        for(size_t i = 0; i<numThreads; i+=1){
+            threadHandles[i].request_stop();
+        } 
+        for(size_t i = 0; i<numThreads; i+=1){
+            threadHandles[i].join();
+        } 
+    };
+
+    void DelegateTask(ThreadTask&& task){
+        DelegateTask(std::forward<ThreadTask>(task), [](const size_t count){ return count < 10; });
+    }
+
+    template<typename Predicate>
+    void DelegateTask(ThreadTask&& task, Predicate pred){
+        //implement something smarter here
+        //or maybe I won't need to if/when I implement task stealing
+        size_t numQueuesChecked(0);
+        while(numQueuesChecked<numThreads){
+            if (pred(threadStates[delegationCounter].workQueue.GetCount())) break;
+            numQueuesChecked += 1;
+            delegationCounter = (delegationCounter+1)%numThreads;
+        }
+        if (numQueuesChecked == numThreads){
+            while(!pred(threadStates[delegationCounter].workQueue.WaitOnCount()));
+        }
+        threadStates[delegationCounter].workQueue.Put(std::move(task));
+        delegationCounter = (delegationCounter+1)%numThreads;
+
+    }
+
+    size_t ThreadCount(){
+        return numThreads;
+    }
+
+    //I hate that I have to write this, but should be a temporary crutch
+    void Latch(){
+        auto latcher = [](const size_t count){return count == 0; };
+        auto noopTask = [](void)->void{return;};
+        for (size_t i = 0; i<numThreads; i+=1){
+            threadStates[i].workQueue.Put(noopTask);
+        }
+        for (size_t i = 0; i<numThreads; i+=1){
+            while(!latcher(threadStates[i].workQueue.WaitOnCount()));
+        }
+        
+        
+    }
+
+    private:
+    
+    const size_t numThreads;
+    size_t delegationCounter;
+    std::unique_ptr<TaskThread<void>[]> threadStates; 
     std::unique_ptr<std::jthread[]> threadHandles;
     
 };

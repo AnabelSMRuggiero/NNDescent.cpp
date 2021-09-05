@@ -8,8 +8,8 @@ Please refer to the project repo for any updates regarding liscensing.
 https://github.com/AnabelSMRuggiero/NNDescent.cpp
 */
 
-#ifndef RPT_FOREST_HPP
-#define RPT_FOREST_HPP
+#ifndef RPT_FORESTRF_HPP
+#define RPT_FORESTRF_HPP
 
 #include <utility>
 #include <vector>
@@ -20,22 +20,30 @@ https://github.com/AnabelSMRuggiero/NNDescent.cpp
 #include <cstddef>
 #include <iostream>
 #include <span>
+#include <execution>
+#include <bit>
+#include <future>
 
 #include "../Utilities/Type.hpp"
-
+#include "Parallelization/ThreadPool.hpp"
 #include "../NND/RNG.hpp"
-#include "SplittingScheme.hpp"
+#include "./SplittingScheme.hpp"
+
+#include <memory_resource>
 
 namespace nnd{
+
+
+
+
 
 /*
 This seems out of place here. The utility functions header under NND is mainly for functions
 related to NND, and didn't want to tuck this there. This is a super general function though.
 */
 
-
-template<typename Iterator, typename rIterator, typename SplittingFunction>
-int Split(Iterator fromBegin, Iterator fromEnd, Iterator toBegin, rIterator toRev, SplittingFunction splitter){
+template<typename Iterator, typename rIterator, typename Predicate>
+size_t Split(Iterator fromBegin, Iterator fromEnd, Iterator toBegin, rIterator toRev, Predicate splitter){
     int numTrue = 0;
     for ( ; fromBegin != fromEnd; fromBegin++){
         if (splitter(*fromBegin)){
@@ -50,396 +58,553 @@ int Split(Iterator fromBegin, Iterator fromEnd, Iterator toBegin, rIterator toRe
     return numTrue;
 }
 
+struct SplitState{
+    std::atomic<size_t> numTrue;
+    std::atomic<size_t*> atoBegin;
+    std::atomic<size_t*> atoEnd;
+    std::atomic<size_t> threadsDone;
+    std::promise<size_t> result;
+};
+
+template<typename Predicate, typename Pool>
+std::unique_ptr<SplitState> Split(size_t* fromBegin, const size_t* fromEnd, size_t* toBegin, size_t* toEnd, Predicate splitter, Pool& threadPool){
 
 
-SplittingHeurisitcs test = {8, 64, 8};
+    std::unique_ptr<SplitState> ptrToState = std::make_unique<SplitState>(0, toBegin, toEnd, 0);
 
-//TODO: add some way to track best splits
+    auto splitTaskGenerator = [&](size_t* taskBegin, const size_t* taskEnd)->auto{
+        auto splitTask = [&state = *ptrToState, splitter, taskBegin, taskEnd](auto&)mutable->void{
+            for ( ; taskBegin != taskEnd; taskBegin++){
+                if (splitter(*taskBegin)){
+                    size_t* toBegin = state.atoBegin.fetch_add(1);
+                    *toBegin = *taskBegin;
+                    taskBegin++;
+                    state.numTrue++;
+                } else {
+                    size_t* toRev = state.atoBegin.fetch_sub(1)-1;
+                    *toRev = *taskBegin;
+                }
+            }
+            if(state.threadsDone.fetch_add(1)+1 == threadPool.ThreadCount()) state.result.set_value(state.numTrue);
+        };
+
+        return splitTask;
+    };
+    size_t* taskPtr = fromBegin;
+    for (size_t i = 0; i<threadPool.ThreadCount()-1; i+=1){
+        threadPool.DelegateTask(splitTaskGenerator(taskPtr, taskPtr + (fromEnd-fromBegin)/threadPool.ThreadCount()));
+        taskPtr += (fromEnd-fromBegin)/threadPool.ThreadCount();
+    }
+    threadPool.DelegateTask(splitTaskGenerator(taskPtr, fromEnd));
+    
+
+    
+    return std::move(ptrToState);
+}
+
+struct TreeLeaf{
+    
+    //This is for the split that produced the children
+    size_t splittingIndex;
+    std::pair<size_t, size_t> splitRange;
+    TreeLeaf* parent;
+    std::pair<TreeLeaf*, TreeLeaf*> children;
+    
+    
+    TreeLeaf() : splitRange(0,0), splittingIndex(-1), children(nullptr, nullptr), parent(nullptr){};
+
+    TreeLeaf(size_t index1, size_t index2, size_t splittingIndex, TreeLeaf* parent) : splitRange(index1, index2),
+                                                                            splittingIndex(splittingIndex), 
+                                                                            parent(parent),
+                                                                            children(nullptr, nullptr) {};
+
+    TreeLeaf(std::pair<size_t, size_t> indecies, size_t splittingIndex, TreeLeaf* parent) : splitRange(indecies),
+                                                                                splittingIndex(splittingIndex), 
+                                                                                parent(parent),
+                                                                                children(nullptr, nullptr){};
+    
+};
+
+//std::pmr::synchronized_pool_resource;
+
 struct RandomProjectionForest{
 
-    std::vector<size_t> indexArray;
-    int numberOfSplits;
+    friend struct TreeRef;
 
+    std::unique_ptr<size_t[]> indecies;
+    const size_t numIndecies;
+    std::pmr::polymorphic_allocator<std::byte> alloc;
+    TreeLeaf topNode;
 
-    struct TreeLeaf{
+    RandomProjectionForest(RandomProjectionForest&& other):indecies(std::move(other.indecies)),
+        numIndecies(other.numIndecies),
+        alloc(std::move(other.alloc)),
+        topNode(std::move(other.topNode)),
+        memManager(std::move(other.memManager)){
+            topNode.children.first->parent = &topNode;
+            topNode.children.second->parent = &topNode;
+        }
     
-        //This is for the split that produced the children
-        size_t splittingIndex;
-        std::pair<size_t,size_t> splitRange;
-        //Pretty sure the Leaves can be refs. Either way, non of these pointers own the underlying objects
-        //All of the leaves of the tree are owned by the enclosing Vector.
-        //This needs to be copied because std::vector moves when you don't expect it to.
-        std::pair<size_t, size_t> children;
-        size_t parent;
-        size_t thisIndex;
-        //std::vector<TreeLeaf>* enclosingVector;
-        /*
-        This structure probably can be condensed back down to just a tuple of {bool, size_t, size_t}
-        (or two arrays, bool[] and std::pair/std::range[]).
-        That'd remove 4 pointers (4/7s) of the struct at this point, add a literal bit, and require
-        alocating enough memory for the entire theoretical max tree.
-        That assumption may not be a good one in the parallel case (although I am already reserving an agressive amount of space.)
-        I'll leave as is for now in case this makes some other piece easier to work on
-        
-        */
-        TreeLeaf() : splitRange(0,0), splittingIndex(-1), children(0, 0), parent(0){};
 
-        TreeLeaf(size_t index1, size_t index2, size_t splittingIndex, size_t thisIndex) : splitRange(index1, index2),
-                                                                                splittingIndex(splittingIndex), 
-                                                                                children(0,0),
-                                                                                parent(0), 
-                                                                                thisIndex(thisIndex){};
+    RandomProjectionForest(std::unique_ptr<size_t[]>&& indecies, const size_t numIndecies, std::pmr::memory_resource* upstream = std::pmr::get_default_resource()):
+        indecies(std::move(indecies)),
+        numIndecies(numIndecies),
+        alloc(upstream),
+        topNode(0, numIndecies, 0, nullptr),
+        memManager(alloc){};
 
-        TreeLeaf(std::pair<size_t, size_t> indecies, size_t splittingIndex, size_t thisIndex) : splitRange(indecies),
-                                                                                    splittingIndex(splittingIndex), 
-                                                                                    children(0,0),
-                                                                                    parent(0), 
-                                                                                    thisIndex(thisIndex){};
+    std::span<size_t> GetView() const{
+        return {indecies.get(), numIndecies};
+    }
+    
+    ~RandomProjectionForest(){
+        for(auto ptr: memManager){
+            if(ptr != nullptr) alloc.deallocate_object(ptr, chunkSize);
+        }
+    }
 
-        TreeLeaf AddLeftLeaf(size_t index1, size_t index2, size_t splittingIndex, std::vector<TreeLeaf>& enclosingVector){
-            this->children.first = enclosingVector.size();
-            size_t indexToWrite = thisIndex;
-            TreeLeaf& newLeaf = enclosingVector.emplace_back(index1, index2, splittingIndex, enclosingVector.size());
-            newLeaf.parent = indexToWrite;
-            
-            return newLeaf;
-        };
+    private:
+    constexpr static size_t chunkSize = 32;
+    std::pmr::vector<TreeLeaf*> memManager;
+};
 
-        TreeLeaf AddLeftLeaf(std::pair<size_t, size_t> indecies, size_t splittingIndex, std::vector<TreeLeaf>& enclosingVector){
-            this->children.first = enclosingVector.size();
-            size_t indexToWrite = thisIndex;
-            TreeLeaf& newLeaf = enclosingVector.emplace_back(indecies, splittingIndex, enclosingVector.size());
-            newLeaf.parent = indexToWrite;
+struct TreeRef{
+    std::pmr::polymorphic_allocator<std::byte> alloc;
+    TreeLeaf* refNode;
 
-            return newLeaf;
-        };
 
-        TreeLeaf AddRightLeaf(size_t index1, size_t index2, size_t splittingIndex, std::ptrdiff_t parentDiff, std::vector<TreeLeaf>& enclosingVector){
-            this->children.second = enclosingVector.size();
-            size_t indexToWrite = thisIndex;
-            TreeLeaf& newLeaf = enclosingVector.emplace_back(index1, index2, splittingIndex, enclosingVector.size());
-            newLeaf.parent = indexToWrite;
-
-            return newLeaf;
-        };
-
-        TreeLeaf AddRightLeaf(std::pair<size_t, size_t> indecies, size_t splittingIndex, std::vector<TreeLeaf>& enclosingVector){
-            this->children.second = enclosingVector.size();
-            size_t indexToWrite = thisIndex;
-            TreeLeaf& newLeaf = enclosingVector.emplace_back(indecies, splittingIndex, enclosingVector.size());
-            newLeaf.parent = indexToWrite;
-            return newLeaf;
-        };
-
+    TreeRef(RandomProjectionForest& forest): alloc(forest.alloc), refNode(&forest.topNode), forestTop(forest){
+        GetChunk();
     };
     
-    std::vector<TreeLeaf> treeLeaves;
-
-    // Training Constructor
-    RandomProjectionForest(size_t numberOfSamples, StlRngFunctor<> rngFunctor, TrainingSplittingScheme& getSplitComponents, const SplittingHeurisitcs heurisitics = SplittingHeurisitcs()) : 
-        numberOfSplits(heurisitics.splits), treeLeaves(0){
-
-        //splittingVectors.reserve((1<<numberOfSplits) - 1);
-        treeLeaves.reserve(std::min(size_t(1<<(numberOfSplits+1)), 2*numberOfSamples/size_t(heurisitics.splitThreshold)));
-        treeLeaves.emplace_back(std::pair<size_t, size_t>(0, numberOfSamples), 0, 0);
-
-        std::vector<size_t> splitQueue1(1, 0);
-        std::vector<size_t> splitQueue2(0);
-
-        std::vector<size_t> indexVector1(numberOfSamples);
-        std::iota(indexVector1.begin(), indexVector1.end(), 0);
-
-        
-        size_t sum = std::accumulate(indexVector1.begin(), indexVector1.end(), 0);
-        size_t tmpSum(sum);
-        
-
-        std::vector<size_t> indexVector2(numberOfSamples);
-
-        std::function<bool(size_t)> splittingFunction;
-
-        //size_t beginIndex(0), endIndex(numberOfSamples - 1);
-
-        while (splitQueue1.size() > 0){
-            
-            while(splitQueue1.size() > 0){
-                
-                size_t currentIndex = splitQueue1.back();
-
-                retry:
-                //This is bootleg af, need to refactor how I do rng.
-                decltype(rngFunctor.functorDistribution)::param_type newRange(treeLeaves[currentIndex].splitRange.first, treeLeaves[currentIndex].splitRange.second - 1);
-                rngFunctor.functorDistribution.param(newRange);
-
-                size_t index1(rngFunctor());
-                size_t index2(rngFunctor());
-                while (index2 == index1){
-                    index2 = rngFunctor();
-                }
-                
-                index1 = indexVector1[index1];
-                index2 = indexVector1[index2];
-
-                // Get the splitting vector, this can be fed into this function in the parallel/distributed case.
-                splittingFunction = getSplitComponents(treeLeaves[currentIndex].splittingIndex, std::pair<size_t, size_t>(index1, index2));
-
-
-                auto beginIt = indexVector1.begin();
-                std::advance(beginIt, treeLeaves[currentIndex].splitRange.first);
-                auto endIt = indexVector1.end();
-                std::advance(endIt, treeLeaves[currentIndex].splitRange.second - numberOfSamples);
-                auto toBegin = indexVector2.begin();
-                std::advance(toBegin, treeLeaves[currentIndex].splitRange.first);
-                auto toRev = indexVector2.rbegin();
-                std::advance(toRev, numberOfSamples - treeLeaves[currentIndex].splitRange.second);
-
-                int numSplit = Split(beginIt, endIt, toBegin, toRev, splittingFunction);
-
-                if (numSplit>heurisitics.childThreshold &&
-                    (treeLeaves[currentIndex].splitRange.second - treeLeaves[currentIndex].splitRange.first - numSplit)>heurisitics.childThreshold){
-
-                    TreeLeaf leftSplit = treeLeaves[currentIndex].AddLeftLeaf(std::pair<size_t, size_t>(treeLeaves[currentIndex].splitRange.first, treeLeaves[currentIndex].splitRange.first + numSplit),
-                                                                    treeLeaves[currentIndex].splittingIndex * 2 + 1, treeLeaves);
-                    
-
-                    if (leftSplit.splitRange.second - leftSplit.splitRange.first > heurisitics.splitThreshold) splitQueue2.push_back(leftSplit.thisIndex);
-                    else{
-                        //copy section of vec2 back to vec 1;
-                        /*
-                        auto fromIt = indexVector2.begin();
-                        std::advance(fromIt, leftSplit->splitRange.first);
-                        auto endFrom = indexVector2.end();
-                        std::advance(endFrom, leftSplit->splitRange.second - numberOfSamples);
-
-                        auto toIt = indexVector1.begin();
-                        std::advance(toIt, leftSplit->splitRange.first);
-                        */
-                        auto fromIt = indexVector2.begin()+leftSplit.splitRange.first;
-                        auto endFrom = indexVector2.begin()+leftSplit.splitRange.second;
-                        auto toIt = indexVector1.begin()+leftSplit.splitRange.first;
-
-                        std::copy(fromIt, endFrom, toIt);
-                    }
-
-                    TreeLeaf rightSplit = treeLeaves[currentIndex].AddRightLeaf(std::pair<size_t, size_t>(treeLeaves[currentIndex].splitRange.first + numSplit, treeLeaves[currentIndex].splitRange.second),
-                        treeLeaves[currentIndex].splittingIndex * 2 + 2, treeLeaves);
-
-                    if (rightSplit.splitRange.second - rightSplit.splitRange.first > heurisitics.splitThreshold) splitQueue2.push_back(rightSplit.thisIndex);
-                    else{
-                        //copy section of vec2 back to vec 1;
-                        /*
-                        auto fromIt = indexVector2.begin();
-                        std::advance(fromIt, rightSplit->splitRange.first);
-                        auto endFrom = indexVector2.end();
-                        std::advance(endFrom, rightSplit->splitRange.second - numberOfSamples);
-
-                        auto toIt = indexVector1.begin();
-                        std::advance(toIt, rightSplit->splitRange.first);
-                        */
-
-                        auto fromIt = indexVector2.begin() + rightSplit.splitRange.first;
-                        auto endFrom = indexVector2.begin() + rightSplit.splitRange.second;
-                        auto toIt = indexVector1.begin() + rightSplit.splitRange.first;
-
-
-                        std::copy(fromIt, endFrom, toIt);
-                    }
-                } else if ((treeLeaves[currentIndex].splitRange.second - treeLeaves[currentIndex].splitRange.first) > heurisitics.maxTreeSize){
-                    // I know, gross. This is a (hopefully) a place holder for a more robust way to handle rejected splits.
-                    goto retry;
-                }else{
-                    // Undo the attempted split. This may be unneeded, but I want to be safe for now.
-                    // TODO: Check to see if omitting this copy violates the invariance of sum
-                    auto fromIt = indexVector1.begin() + treeLeaves[currentIndex].splitRange.first;
-                    auto endFrom = indexVector1.begin() + treeLeaves[currentIndex].splitRange.second;
-                    auto toIt = indexVector2.begin() + treeLeaves[currentIndex].splitRange.first;
-
-
-                    //std::copy(fromIt, endFrom, toIt);
-                }
-                splitQueue1.pop_back();
-
-            } //end while
-            
-            std::swap(indexVector1, indexVector2);
-            std::swap(splitQueue1, splitQueue2);
-            
-            tmpSum = std::accumulate(indexVector1.begin(), indexVector1.end(), 0);
-            if (sum != tmpSum){
-                throw std::logic_error("Sum of indicies should be invariant.");
-            };
-            
-
-        } //end for
-        indexArray = std::move(indexVector1);
-    } //end constructor
+    TreeLeaf* AddLeftLeaf(std::pair<size_t, size_t> indecies, size_t splittingIndex){
+        if (buildMemory == buildEnd) GetChunk();
+        alloc.construct<TreeLeaf>(buildMemory, indecies, splittingIndex, refNode);
+        refNode->children.first = buildMemory;
+        buildMemory++;
+        return buildMemory-1;
+    }
     
-    RandomProjectionForest(size_t numberOfSamples, TransformingSplittingScheme& getSplitComponents, std::unordered_set<size_t> splitsToDo);
+    TreeLeaf* AddRightLeaf(std::pair<size_t, size_t> indecies, size_t splittingIndex){
+        if (buildMemory == buildEnd) GetChunk();
+        alloc.construct<TreeLeaf>(buildMemory, indecies, splittingIndex, refNode);
+        refNode->children.second = buildMemory;
+        buildMemory++;
+        return buildMemory-1;
+    }
+    
+    private:
+
+    void GetChunk(){
+        buildMemory = alloc.allocate_object<TreeLeaf>(RandomProjectionForest::chunkSize);
+        buildEnd = buildMemory + 32;
+        forestTop.memManager.push_back(buildMemory);
+    }
+
+    TreeLeaf* buildMemory;
+    TreeLeaf* buildEnd;
+    RandomProjectionForest& forestTop;
 
 };
 
-//Transforming Constructor
-RandomProjectionForest::RandomProjectionForest(size_t numberOfSamples, TransformingSplittingScheme& getSplitComponents, std::unordered_set<size_t> splitIndicies) : 
-    numberOfSplits(8), treeLeaves(0){
+//SplittingHeurisitcs test = {8, 64, 8};
+template<typename SplittingScheme>
+struct ForestBuilder{
 
-        //splittingVectors.reserve((1<<numberOfSplits) - 1);
-        treeLeaves.reserve(1<<(numberOfSplits+1));
-        treeLeaves.emplace_back(std::pair<size_t, size_t>(0, numberOfSamples), 0, 0);
+    //std::vector<size_t> indexArray;
+    RngFunctor rngFunctor;
+    const SplittingHeurisitcs heurisitics;
+    SplittingScheme& getSplitComponents;
+    
 
-        std::vector<size_t> splitQueue1(1, 0);
-        std::vector<size_t> splitQueue2(0);
+    ForestBuilder(RngFunctor&& rngFunctor, const SplittingHeurisitcs heurisitics, SplittingScheme& scheme):
+        rngFunctor(std::move(rngFunctor)),
+        heurisitics(heurisitics),
+        getSplitComponents(scheme) {};
 
-        std::vector<size_t> indexVector1(numberOfSamples);
-        std::iota(indexVector1.begin(), indexVector1.end(), 0);
-        size_t sum = std::accumulate(indexVector1.begin(), indexVector1.end(), 0);
-        size_t tmpSum(sum);
-        std::vector<size_t> indexVector2(numberOfSamples);
+    // Training operator()
+    RandomProjectionForest operator()(std::unique_ptr<size_t[]>&& indecies, 
+                                      const size_t numIndecies, 
+                                      std::pmr::memory_resource* upstream = std::pmr::get_default_resource());
 
-        std::function<bool(size_t)> splittingFunction;
+    RandomProjectionForest operator()(std::execution::parallel_unsequenced_policy,
+                                      std::unique_ptr<size_t[]>&& indecies, 
+                                      const size_t numIndecies, 
+                                      ThreadPool<void>& threadPool,
+                                      std::pmr::memory_resource* upstream = std::pmr::get_default_resource());
+    
+    RandomProjectionForest operator()(std::unique_ptr<size_t[]>&& indecies, 
+                                      const size_t numIndecies, 
+                                      const std::unordered_set<size_t>& splitIndicies, 
+                                      std::pmr::memory_resource* upstream = std::pmr::get_default_resource());
 
-        //size_t beginIndex(0), endIndex(numberOfSamples - 1);
+    private:
 
+    //auto SplitTask(std::span<size_t> indecies, LeafNode* splitToDo)
+
+};
+
+template<typename RNG>
+std::pair<size_t, size_t> UnequalIndecies(RNG& rng){
+
+    size_t index1(rng());
+    size_t index2(rng());
+    while (index2 == index1){
+        index2 = rng();
+    }
+    return {index1, index2};
+
+}
+
+template<typename SplittingScheme>
+RandomProjectionForest ForestBuilder<SplittingScheme>::operator()(std::unique_ptr<size_t[]>&& indecies, const size_t numIndecies, std::pmr::memory_resource* upstream){
+
+    //splittingVectors.reserve((1<<numberOfSplits) - 1);
+    RandomProjectionForest forest(std::move(indecies), numIndecies, upstream);
+
+    std::span<size_t> samples = forest.GetView();
+
+    std::unique_ptr<size_t[]> workSpaceArr = std::make_unique<size_t[]>(numIndecies);
+    std::span<size_t> workSpace = {workSpaceArr.get(), numIndecies};
+
+    #ifdef _DEBUG
+    size_t sum = std::accumulate(samples.begin(), samples.end(), 0);
+    size_t tmpSum(sum);
+    #endif
+
+    TreeRef builder(forest);
+
+    std::vector<TreeLeaf*> splitQueue1 = {&forest.topNode};
+    std::vector<TreeLeaf*> splitQueue2;
+    //auto splittingFunction;
+
+    //size_t beginIndex(0), endIndex(samples.size() - 1);
+
+    while (splitQueue1.size() > 0){
+        
         while(splitQueue1.size() > 0){
             
-            while(splitQueue1.size() > 0){
+            builder.refNode = splitQueue1.back();
+
+            retry:
+            //This is bootleg af, need to refactor how I do rng.
+            
+            rngFunctor.SetRange(builder.refNode->splitRange.first, builder.refNode->splitRange.second - 1);
+
+            auto [index1, index2] = UnequalIndecies(rngFunctor);
+            index1 = samples[index1];
+            index2 = samples[index2];
+
+            // Get the splitting vector, this can be fed into this function in the parallel/distributed case.
+            auto splittingFunction = getSplitComponents(builder.refNode->splittingIndex, std::pair<size_t, size_t>(index1, index2));
+
+
+            auto beginIt = samples.begin() + builder.refNode->splitRange.first;
+            auto endIt = samples.begin() + builder.refNode->splitRange.second;
+            auto toBegin = workSpace.begin() + builder.refNode->splitRange.first;
+            auto toRev = workSpace.rbegin() + workSpace.size()-builder.refNode->splitRange.second;
+            
+
+            size_t numSplit = Split(beginIt, endIt, toBegin, toRev, splittingFunction);
+
+            if (numSplit>heurisitics.childThreshold &&
+                (builder.refNode->splitRange.second - builder.refNode->splitRange.first - numSplit)>heurisitics.childThreshold){
+
+                TreeLeaf* leftSplit = builder.AddLeftLeaf(std::pair<size_t, size_t>(builder.refNode->splitRange.first, builder.refNode->splitRange.first + numSplit),
+                                                                builder.refNode->splittingIndex * 2 + 1);
                 
-                size_t currentIndex = splitQueue1.back();
 
-                
-                // Get the splitting vector, this can be fed into this function in the parallel/distributed case.
-                splittingFunction = getSplitComponents(treeLeaves[currentIndex].splittingIndex);
-
-
-                auto beginIt = indexVector1.begin();
-                std::advance(beginIt, treeLeaves[currentIndex].splitRange.first);
-                auto endIt = indexVector1.end();
-                std::advance(endIt, treeLeaves[currentIndex].splitRange.second - numberOfSamples);
-                auto toBegin = indexVector2.begin();
-                std::advance(toBegin, treeLeaves[currentIndex].splitRange.first);
-                auto toRev = indexVector2.rbegin();
-                std::advance(toRev, numberOfSamples - treeLeaves[currentIndex].splitRange.second);
-
-                int numSplit = Split(beginIt, endIt, toBegin, toRev, splittingFunction);
-
-
-                TreeLeaf leftSplit = treeLeaves[currentIndex].AddLeftLeaf(std::pair<size_t, size_t>(treeLeaves[currentIndex].splitRange.first, treeLeaves[currentIndex].splitRange.first + numSplit),
-                                                                 treeLeaves[currentIndex].splittingIndex * 2 + 1, treeLeaves);
-                TreeLeaf rightSplit = treeLeaves[currentIndex].AddRightLeaf(std::pair<size_t, size_t>(treeLeaves[currentIndex].splitRange.first + numSplit, treeLeaves[currentIndex].splitRange.second),
-                                                                   treeLeaves[currentIndex].splittingIndex * 2 + 2, treeLeaves);
-                auto result = std::find(splitIndicies.begin(),splitIndicies.end(), leftSplit.splittingIndex);
-                if ((result != splitIndicies.end()) && (leftSplit.splitRange.second - leftSplit.splitRange.first > 1)) splitQueue2.push_back(leftSplit.thisIndex);
-                else {
-                    //copy section of vec2 back to vec 1;
-                    /*
-                    auto fromIt = indexVector2.begin();
-                    std::advance(fromIt, leftSplit->splitRange.first);
-                    auto endFrom = indexVector2.end();
-                    std::advance(endFrom, leftSplit->splitRange.second - numberOfSamples);
-
-                    auto toIt = indexVector1.begin();
-                    std::advance(toIt, leftSplit->splitRange.first);
-                    */
-                    auto fromIt = &(indexVector2[leftSplit.splitRange.first]);
-                    auto endFrom = &(indexVector2[leftSplit.splitRange.second]);
-                    auto toIt = &(indexVector1[leftSplit.splitRange.first]);
-
-                    std::copy(fromIt, endFrom, toIt);
-                }
-
-                result = std::find(splitIndicies.begin(),splitIndicies.end(), rightSplit.splittingIndex);
-                if ((result != splitIndicies.end())&&(rightSplit.splitRange.second - rightSplit.splitRange.first > 1)) splitQueue2.push_back(rightSplit.thisIndex);
+                if (leftSplit->splitRange.second - leftSplit->splitRange.first > heurisitics.splitThreshold) splitQueue2.push_back(leftSplit);
                 else{
                     //copy section of vec2 back to vec 1;
-                    /*
-                    auto fromIt = indexVector2.begin();
-                    std::advance(fromIt, rightSplit->splitRange.first);
-                    auto endFrom = indexVector2.end();
-                    std::advance(endFrom, rightSplit->splitRange.second - numberOfSamples);
-
-                    auto toIt = indexVector1.begin();
-                    std::advance(toIt, rightSplit->splitRange.first);
-                    */
-
-                    auto fromIt = &(indexVector2[rightSplit.splitRange.first]);
-                    auto endFrom = &(indexVector2[rightSplit.splitRange.second]);
-                    auto toIt = &(indexVector1[rightSplit.splitRange.first]);
-
+                    
+                    auto fromIt = workSpace.begin()+leftSplit->splitRange.first;
+                    auto endFrom = workSpace.begin()+leftSplit->splitRange.second;
+                    auto toIt = samples.begin()+leftSplit->splitRange.first;
 
                     std::copy(fromIt, endFrom, toIt);
                 }
-                splitQueue1.pop_back();
 
-            } //end while
-            
-            std::swap(indexVector1, indexVector2);
-            
-            tmpSum = std::accumulate(indexVector1.begin(), indexVector1.end(), 0);
-            if (sum != tmpSum){
-                throw std::logic_error("Sum of indicies should be invariant.");
-            };
-            //if (splitQueue2.size() == 0) break;
-            std::swap(splitQueue1, splitQueue2);
+                TreeLeaf* rightSplit = builder.AddRightLeaf(std::pair<size_t, size_t>(builder.refNode->splitRange.first + numSplit, builder.refNode->splitRange.second),
+                    builder.refNode->splittingIndex * 2 + 2);
+
+                if (rightSplit->splitRange.second - rightSplit->splitRange.first > heurisitics.splitThreshold) splitQueue2.push_back(rightSplit);
+                else{
+                    //copy section of vec2 back to vec 1;
+
+                    auto fromIt = workSpace.begin() + rightSplit->splitRange.first;
+                    auto endFrom = workSpace.begin() + rightSplit->splitRange.second;
+                    auto toIt = samples.begin() + rightSplit->splitRange.first;
+
+                    std::copy(fromIt, endFrom, toIt);
+                }
+            } else if ((builder.refNode->splitRange.second - builder.refNode->splitRange.first) > heurisitics.maxTreeSize){
+                // I know, gross. This is a (hopefully) a place holder for a more robust way to handle rejected splits.
+                goto retry;
+            }
+            splitQueue1.pop_back();
+
         } //end while
-        indexArray = std::move(indexVector1);
-} //end constructor
+        
+        std::swap(samples, workSpace);
+        std::swap(splitQueue1, splitQueue2);
+        #ifdef _DEBUG
+        tmpSum = std::accumulate(samples.begin(), samples.end(), 0);
+        if (sum != tmpSum){
+            throw std::logic_error("Sum of indicies should be invariant.");
+        };
+        #endif
+
+    } //end for
+    if (samples.data() == workSpaceArr.get()){
+        std::swap(forest.indecies, workSpaceArr);
+    }
+    return std::move(forest);
+} //end operator()
+
+template<typename SplittingScheme>
+RandomProjectionForest ForestBuilder<SplittingScheme>::operator()(std::execution::parallel_unsequenced_policy,
+                                      std::unique_ptr<size_t[]>&& indecies, 
+                                      const size_t numIndecies, 
+                                      ThreadPool<void>& threadPool,
+                                      std::pmr::memory_resource* upstream){
+    RandomProjectionForest forest(std::move(indecies), numIndecies, upstream);
+
+    std::span<size_t> samples = forest.GetView();
+
+    std::unique_ptr<size_t[]> workSpaceArr = std::make_unique<size_t[]>(numIndecies);
+    std::span<size_t> workSpace = {workSpaceArr.get(), numIndecies};
+
+    #ifdef _DEBUG
+    size_t sum = std::accumulate(samples.begin(), samples.end(), 0);
+    size_t tmpSum(sum);
+    #endif
+
+    TreeRef builder(forest);
+
+    std::vector<TreeLeaf*> splitQueue1 = {&forest.topNode};
+    std::vector<TreeLeaf*> splitQueue2;
+
+    size_t topIters = std::bit_width(std::bit_ceil(threadPool.ThreadCount()));
+
+    for (size_t i = 0; i < topIters; i+=1){
+        std::vector<std::pair<TreeLeaf*, std::unique_ptr<SplitState>>> pendingResults;
+        for (auto ptr: splitQueue1){
+            builder.refNode = ptr;
+
+            rngFunctor.SetRange(builder.refNode->splitRange.first, builder.refNode->splitRange.second - 1);
+
+            auto [index1, index2] = UnequalIndecies(rngFunctor);
+            index1 = samples[index1];
+            index2 = samples[index2];
+            
+
+            auto splittingFunction = getSplitComponents(builder.refNode->splittingIndex, std::pair<size_t, size_t>(index1, index2));
+
+
+            size_t* beginIt = samples.data() + builder.refNode->splitRange.first;
+            size_t* endIt = samples.data() + builder.refNode->splitRange.second;
+            size_t* toBegin = workSpace.data() + builder.refNode->splitRange.first;
+            size_t* toEnd = workSpace.data() + builder.refNode->splitRange.second;
+
+            pendingResults.push_back({ptr, Split(beginIt, endIt, toBegin, toEnd, splittingFunction, threadPool)});
+        }
+        
+
+        for (auto& [nodePtr, splitState]: pendingResults){
+            std::future<size_t> result = splitState->result.get_future();
+            size_t numSplit = result.get();
+            builder.refNode = nodePtr;
+            TreeLeaf* leftSplit = builder.AddLeftLeaf(std::pair<size_t, size_t>(builder.refNode->splitRange.first, builder.refNode->splitRange.first + numSplit),
+                                                        builder.refNode->splittingIndex * 2 + 1);
+            
+
+            if (leftSplit->splitRange.second - leftSplit->splitRange.first > heurisitics.splitThreshold) splitQueue2.push_back(leftSplit);
+            else{
+                //copy section of vec2 back to vec 1;
+                
+                auto fromIt = workSpace.begin()+leftSplit->splitRange.first;
+                auto endFrom = workSpace.begin()+leftSplit->splitRange.second;
+                auto toIt = samples.begin()+leftSplit->splitRange.first;
+
+                std::copy(fromIt, endFrom, toIt);
+            }
+
+            TreeLeaf* rightSplit = builder.AddRightLeaf(std::pair<size_t, size_t>(builder.refNode->splitRange.first + numSplit, builder.refNode->splitRange.second),
+                builder.refNode->splittingIndex * 2 + 2);
+
+            if (rightSplit->splitRange.second - rightSplit->splitRange.first > heurisitics.splitThreshold) splitQueue2.push_back(rightSplit);
+            else{
+                //copy section of vec2 back to vec 1;
+
+                auto fromIt = workSpace.begin() + rightSplit->splitRange.first;
+                auto endFrom = workSpace.begin() + rightSplit->splitRange.second;
+                auto toIt = samples.begin() + rightSplit->splitRange.first;
+
+                std::copy(fromIt, endFrom, toIt);
+            }
+        }
+        std::swap(samples, workSpace);
+        std::swap(splitQueue1, splitQueue2);
+    }
+    for (auto ptr: splitQueue1){
+        [builder = TreeRef(forest), ]
+    }
+
+}
+
+
+
+
+//Transforming Constructor
+template<typename SplittingScheme>
+RandomProjectionForest ForestBuilder<SplittingScheme>::operator()(std::unique_ptr<size_t[]>&& indecies, const size_t numIndecies, const std::unordered_set<size_t>& splitIndicies, std::pmr::memory_resource* upstream){
+
+
+    RandomProjectionForest forest(std::move(indecies), numIndecies, upstream);
+
+    std::span<size_t> samples = forest.GetView();
+
+    std::unique_ptr<size_t[]> workSpaceArr = std::make_unique<size_t[]>(numIndecies);
+    std::span<size_t> workSpace = {workSpaceArr.get(), numIndecies};
+    TreeRef builder(forest);
+
+    std::vector<TreeLeaf*> splitQueue1 = {&forest.topNode};
+    std::vector<TreeLeaf*> splitQueue2;
+    //auto splittingFunction;
+
+    size_t sum = std::accumulate(samples.begin(), samples.end(), 0);
+    size_t tmpSum(sum);
+
+    //size_t beginIndex(0), endIndex(samples.size() - 1);
+
+    while(splitQueue1.size() > 0){
+        
+        while(splitQueue1.size() > 0){
+            
+
+
+            builder.refNode = splitQueue1.back();
+
+
+            // Get the splitting vector, this can be fed into this function in the parallel/distributed case.
+            auto splittingFunction = getSplitComponents(builder.refNode->splittingIndex, transformTag);
+
+
+            auto beginIt = samples.begin() + builder.refNode->splitRange.first;
+            auto endIt = samples.begin() + builder.refNode->splitRange.second;
+            auto toBegin = workSpace.begin() + builder.refNode->splitRange.first;
+            auto toRev = workSpace.rbegin() + workSpace.size()-builder.refNode->splitRange.second;
+            
+
+            size_t numSplit = Split(beginIt, endIt, toBegin, toRev, splittingFunction);
+
+
+
+            TreeLeaf* leftSplit = builder.AddLeftLeaf(std::pair<size_t, size_t>(builder.refNode->splitRange.first, builder.refNode->splitRange.first + numSplit),
+                                                                builder.refNode->splittingIndex * 2 + 1);
+            TreeLeaf* rightSplit = builder.AddRightLeaf(std::pair<size_t, size_t>(builder.refNode->splitRange.first + numSplit, builder.refNode->splitRange.second),
+                    builder.refNode->splittingIndex * 2 + 2);
+            auto result = splitIndicies.find(leftSplit->splittingIndex);
+            if ((result != splitIndicies.end()) && (leftSplit->splitRange.second - leftSplit->splitRange.first > 1)) splitQueue2.push_back(leftSplit);
+            else {
+                //copy section of vec2 back to vec 1;
+                
+                auto fromIt = &(workSpace[leftSplit->splitRange.first]);
+                auto endFrom = &(workSpace[leftSplit->splitRange.second]);
+                auto toIt = &(samples[leftSplit->splitRange.first]);
+
+                std::copy(fromIt, endFrom, toIt);
+            }
+
+            result = splitIndicies.find(rightSplit->splittingIndex);
+            if ((result != splitIndicies.end())&&(rightSplit->splitRange.second - rightSplit->splitRange.first > 1)) splitQueue2.push_back(rightSplit);
+            else{
+                //copy section of vec2 back to vec 1;
+                
+
+                auto fromIt = &(workSpace[rightSplit->splitRange.first]);
+                auto endFrom = &(workSpace[rightSplit->splitRange.second]);
+                auto toIt = &(samples[rightSplit->splitRange.first]);
+
+
+                std::copy(fromIt, endFrom, toIt);
+            }
+            splitQueue1.pop_back();
+
+        } //end while
+        
+        std::swap(samples, workSpace);
+        
+        tmpSum = std::accumulate(samples.begin(), samples.end(), 0);
+        if (sum != tmpSum){
+            throw std::logic_error("Sum of indicies should be invariant.");
+        };
+        
+        //if (splitQueue2.size() == 0) break;
+        std::swap(splitQueue1, splitQueue2);
+    } //end while
+    if (samples.data() == workSpaceArr.get()){
+        std::swap(forest.indecies, workSpaceArr);
+    }
+    return std::move(forest);
+    //indexArray = std::move(indexVector1);
+} //end operator()
     
 
 template<typename Functor>
 void CrawlTerminalLeaves(const RandomProjectionForest& forest, Functor& terminalFunctor){
 
-    //std::vector<size_t> classifications(forest.indexArray.size());
-
-    std::vector<size_t> treePath;
+    //std::vector<size_t> treePath;
     std::vector<char> pathState;
-    treePath.push_back(0);
+    //treePath.push_back(0);
     pathState.push_back(0);
 
     size_t highestIndex = 0;
     size_t counter = 0;
-    size_t currentIndex = 0;
+    
+    std::span<const size_t> indecies = forest.GetView();
+    
+    const TreeLeaf* currentNode = &forest.topNode;
 
-    //Fix this
-    auto leafAccesor = [&] (size_t index) -> const RandomProjectionForest::TreeLeaf{
-        return *(forest.treeLeaves.begin()+index);
-    };
-    //const RandomProjectionForest::TreeLeaf* currentLeaf = &(forest.treeLeaves[0]);
+    
 
 
-    while (treePath.size() != 0){
+    while (pathState.size() != 0){
 
-        if(forest.treeLeaves[currentIndex].children.first != 0 && forest.treeLeaves[currentIndex].children.second != 0){
+        if(currentNode->children.first != nullptr && currentNode->children.second != nullptr){
             if (pathState.back() == 0){
                 pathState.back() = 1;
-                currentIndex = forest.treeLeaves[currentIndex].children.first;
-                treePath.push_back(forest.treeLeaves[currentIndex].splittingIndex);
+                currentNode = currentNode->children.first;
+                //treePath.push_back(currentNode->splittingIndex);
                 pathState.push_back(0);
                 continue;    
             } else if (pathState.back() == 1) {
                 pathState.back() = 2;
-                currentIndex = forest.treeLeaves[currentIndex].children.second;
-                treePath.push_back(forest.treeLeaves[currentIndex].splittingIndex);
+                currentNode = currentNode->children.second;
+                //treePath.push_back(currentNode->splittingIndex);
                 pathState.push_back(0);
                 continue;
             } else if (pathState.back() == 2) {
-                currentIndex = forest.treeLeaves[currentIndex].parent;
+                currentNode = currentNode->parent;
                 pathState.pop_back();
-                treePath.pop_back();
+                //treePath.pop_back();
                 continue;
             }
             
             throw std::logic_error("Invalid Crawl State");
             
-        } else if (forest.treeLeaves[currentIndex].children.first == 0 && forest.treeLeaves[currentIndex].children.second == 0){
-            highestIndex = std::max(highestIndex, forest.treeLeaves[currentIndex].splittingIndex);
+        } else if (currentNode->children.first == nullptr && currentNode->children.second == nullptr){
+            highestIndex = std::max(highestIndex, currentNode->splittingIndex);
             counter += 1;
-            std::span indexSpan(&(forest.indexArray[forest.treeLeaves[currentIndex].splitRange.first]),
-                              size_t(forest.treeLeaves[currentIndex].splitRange.second - forest.treeLeaves[currentIndex].splitRange.first));
+            std::span indexSpan(&(indecies[currentNode->splitRange.first]),
+                              size_t(currentNode->splitRange.second - currentNode->splitRange.first));
 
-            terminalFunctor(forest.treeLeaves[currentIndex].splittingIndex, indexSpan);
+            terminalFunctor(currentNode->splittingIndex, indexSpan);
 
-            currentIndex = forest.treeLeaves[currentIndex].parent;
+            currentNode = currentNode->parent;
             pathState.pop_back();
-            treePath.pop_back();
+            //treePath.pop_back();
             
             
             continue;
@@ -448,7 +613,80 @@ void CrawlTerminalLeaves(const RandomProjectionForest& forest, Functor& terminal
         //size_t currentIndex = treePath.back();
 
     }
+    
+    return;
 
+};
+
+template<typename Functor>
+void CrawlLeaves(const RandomProjectionForest& forest, Functor& nodeFunctor){
+
+    //std::vector<size_t> treePath;
+    std::vector<char> pathState;
+    //treePath.push_back(0);
+    pathState.push_back(0);
+
+    size_t highestIndex = 0;
+    size_t counter = 0;
+    
+    std::span<const size_t> indecies = forest.GetView();
+    
+    const TreeLeaf* currentNode = &forest.topNode;
+
+    nodeFunctor(*currentNode, indecies);
+
+
+    while (pathState.size() != 0){
+        
+        if(currentNode->children.first != nullptr && currentNode->children.second != nullptr){
+            if (pathState.back() == 0){
+                pathState.back() = 1;
+                currentNode = currentNode->children.first;
+                std::span indexSpan(&(indecies[currentNode->splitRange.first]),
+                              size_t(currentNode->splitRange.second - currentNode->splitRange.first));
+
+                nodeFunctor(*currentNode, indexSpan);
+                //treePath.push_back(currentNode->splittingIndex);
+                pathState.push_back(0);
+                continue;    
+            } else if (pathState.back() == 1) {
+                pathState.back() = 2;
+                currentNode = currentNode->children.second;
+                std::span indexSpan(&(indecies[currentNode->splitRange.first]),
+                              size_t(currentNode->splitRange.second - currentNode->splitRange.first));
+                nodeFunctor(*currentNode, indexSpan);
+                //treePath.push_back(currentNode->splittingIndex);
+                pathState.push_back(0);
+                continue;
+            } else if (pathState.back() == 2) {
+                currentNode = currentNode->parent;
+                pathState.pop_back();
+                //treePath.pop_back();
+                continue;
+            }
+            
+            throw std::logic_error("Invalid Crawl State");
+            
+        } else if (currentNode->children.first == nullptr && currentNode->children.second == nullptr){
+            //highestIndex = std::max(highestIndex, currentNode->splittingIndex);
+            //counter += 1;
+            std::span indexSpan(&(indecies[currentNode->splitRange.first]),
+                              size_t(currentNode->splitRange.second - currentNode->splitRange.first));
+
+            nodeFunctor(*currentNode, indexSpan);
+
+            currentNode = currentNode->parent;
+            pathState.pop_back();
+            //treePath.pop_back();
+            
+            
+            continue;
+        }
+        throw std::logic_error("Invalid Tree State");
+        //size_t currentIndex = treePath.back();
+
+    }
+    
     return;
 
 };

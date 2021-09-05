@@ -118,11 +118,11 @@ struct AsyncQueue{
         return taskCounter != 0;
     }
 
-    size_t GetCount(){
+    size_t GetCount() const{
         return taskCounter.load();
     }
     
-    size_t WaitOnCount(){
+    size_t WaitOnCount() const{
         std::unique_lock lock(queueMutex);
         if(GetCount() == 0) return 0;  
         queueUpdated.wait(lock);

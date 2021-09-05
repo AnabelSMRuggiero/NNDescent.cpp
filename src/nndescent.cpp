@@ -302,21 +302,27 @@ int main(int argc, char *argv[]){
 
     std::chrono::time_point<std::chrono::steady_clock> runStart = std::chrono::steady_clock::now();
 
-    std::mt19937_64 rngEngine(0);
-    std::uniform_int_distribution<size_t> rngDist(size_t(0), mnistFashionTrain.numberOfSamples - 1);
-    StlRngFunctor<std::mt19937_64, std::uniform_int_distribution, size_t> rngFunctor(std::move(rngEngine), std::move(rngDist));
+    //std::mt19937_64 rngEngine(0);
+    //td::uniform_int_distribution<size_t> rngDist(size_t(0), mnistFashionTrain.numberOfSamples - 1);
+    RngFunctor rngFunctor(0, mnistFashionTrain.size() - 1);
 
-    EuclidianTrain<AlignedArray<float>, AlignedArray<float>> splittingScheme(mnistFashionTrain);
-    TrainingSplittingScheme splitterFunc(splittingScheme);
-    
-    RandomProjectionForest rpTreesTrain(size_t(mnistFashionTrain.numberOfSamples), rngFunctor, splitterFunc, parameters.splitParams);
+    EuclidianScheme<AlignedArray<float>, AlignedArray<float>> splittingScheme(mnistFashionTrain);
+
+    std::unique_ptr<size_t[]> indecies = std::make_unique<size_t[]>(mnistFashionTrain.size());
+    std::iota(indecies.get(), indecies.get()+mnistFashionTrain.size(), 0);
+
+
+    ForestBuilder builder{std::move(rngFunctor), splitParams, splittingScheme};
+
+
+    RandomProjectionForest rpTrees = builder(std::move(indecies), mnistFashionTrain.size());
 
 
     //std::vector<size_t> trainClassifications(mnistFashionTrain.numberOfSamples);
     
 
 
-    auto [indexMappings, dataBlocks] = PartitionData<AlignedArray<float>>(rpTreesTrain, mnistFashionTrain);
+    auto [indexMappings, dataBlocks] = PartitionData<AlignedArray<float>>(rpTrees, mnistFashionTrain);
 
     
     MetricFunctor<AlignedArray<float>, EuclideanMetricPair> euclideanFunctor(dataBlocks);
@@ -360,17 +366,41 @@ int main(int argc, char *argv[]){
 
     std::chrono::time_point<std::chrono::steady_clock> runStart2 = std::chrono::steady_clock::now();
 
-    EuclidianTransform<AlignedArray<float>, AlignedArray<float>> transformingScheme(mnistFashionTest, splitterFunc.target<decltype(splittingScheme)>()->splittingVectors);
-    
+    EuclidianScheme<AlignedArray<float>, AlignedArray<float>> transformingScheme(mnistFashionTest);
+
+    transformingScheme.splittingVectors = std::move(splittingScheme.splittingVectors);
+
+    std::unique_ptr<size_t[]> testIndecies = std::make_unique<size_t[]>(mnistFashionTest.size());
+    std::iota(testIndecies.get(), testIndecies.get()+mnistFashionTest.size(), 0);
+
     std::unordered_set<size_t> splittingIndicies;
+    auto accumulateSplits = [&](const TreeLeaf& node, std::span<const size_t> indicies){
+        if(node.children.first != nullptr && node.children.second != nullptr) splittingIndicies.insert(node.splittingIndex);
+    };
+    CrawlLeaves(rpTrees, accumulateSplits);
+    /*
     for (auto& leaf: rpTreesTrain.treeLeaves){
         if(leaf.children.first == 0 && leaf.children.second == 0) continue;
         splittingIndicies.insert(leaf.splittingIndex);
     }
+    */
 
-    TransformingSplittingScheme transformingFunc(transformingScheme);
+    //TransformingSplittingScheme transformingFunc(transformingScheme);
 
-    RandomProjectionForest rpTreesTest(mnistFashionTest.numberOfSamples, transformingFunc, splittingIndicies);
+    //std::mt19937_64 testRngEngine(0);
+    //std::uniform_int_distribution<size_t> testDist(size_t(0), mnistFashionTest.size() - 1);
+    RngFunctor testFunctor(size_t(0), mnistFashionTest.size() - 1);
+
+    ForestBuilder testBuilder{std::move(testFunctor), splitParams, transformingScheme};
+
+
+    RandomProjectionForest rpTreesTest = testBuilder(std::move(testIndecies), mnistFashionTest.size(), splittingIndicies);
+
+
+    std::chrono::time_point<std::chrono::steady_clock> rpTestEnd = std::chrono::steady_clock::now();
+    std::cout << std::chrono::duration_cast<std::chrono::duration<float>>(rpTestEnd - runStart2).count() << "s total for test set rpTrees " << std::endl;
+
+    //RandomProjectionForest rpTreesTest(mnistFashionTest.numberOfSamples, transformingFunc, splittingIndicies);
 
     
 

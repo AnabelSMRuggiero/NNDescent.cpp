@@ -51,16 +51,20 @@ struct RNGFunctor{
 
 
 
-template<typename Engine = std::mt19937_64, template<typename> typename Distribution = std::uniform_int_distribution, typename RetType = size_t>
-struct StlRngFunctor{
-    Engine functorEngine;
-    Distribution<RetType> functorDistribution;
+//template<typename Engine, typename Distribution, typename RetType = size_t>
+struct RngFunctor{
+    std::mt19937_64 functorEngine;
+    std::uniform_int_distribution<size_t> functorDistribution;
+    // (size_t{0}, mnistFashionTrain.size()-1)
+   
+    RngFunctor(size_t min, size_t max): functorEngine(0), functorDistribution(min, max){};
+    //    functorEngine(std::move(engine)), functorDistribution(std::move(distribution)){};
+    
+    void SetRange(size_t min, size_t max){
+        functorDistribution.param(std::uniform_int_distribution<size_t>::param_type{min, max});
+    }
 
-    //Takes ownership of engine and distribution
-    StlRngFunctor(Engine&& engine = std::mt19937_64(0), Distribution<RetType>&& distribution = std::uniform_int_distribution<RetType>(0)):
-        functorEngine(std::move(engine)), functorDistribution(std::move(distribution)){};
-        
-    RetType operator()(){
+    size_t operator()(){
         return functorDistribution(functorEngine);
     }
 
