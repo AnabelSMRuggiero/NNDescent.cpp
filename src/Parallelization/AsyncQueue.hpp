@@ -17,13 +17,21 @@ https://github.com/AnabelSMRuggiero/NNDescent.cpp
 #include <atomic>
 #include <condition_variable>
 #include <optional>
+#include <memory>
+
 
 namespace nnd{
 
-template<typename Element>
+template<typename Element, typename Allocator = std::allocator<Element>>
 struct AsyncQueue{
 
     using ElementType = Element;
+    using allocator_type = Allocator;
+
+    AsyncQueue() = default;
+    AsyncQueue(AsyncQueue&) = default;
+    
+    AsyncQueue(Allocator alloc): tasks(alloc){};
 
     AsyncQueue& operator=(AsyncQueue&& rhs) = default;
 
@@ -122,15 +130,25 @@ struct AsyncQueue{
         return taskCounter.load();
     }
     
-    size_t WaitOnCount() const{
+    size_t WaitOnCount(){
         std::unique_lock lock(queueMutex);
         if(GetCount() == 0) return 0;  
         queueUpdated.wait(lock);
         return GetCount();
     }
+
+    template<typename Predicate>
+    size_t WaitOnCount(Predicate pred){
+        std::unique_lock lock(queueMutex);
+        if(GetCount() == 0) return 0;
+        while(!pred(taskCounter)){
+            queueUpdated.wait(lock);
+        }
+        return GetCount();
+    }
     
     private:
-    std::list<Element> tasks;
+    std::list<Element, Allocator> tasks;
     std::mutex queueMutex;
     std::atomic<size_t> taskCounter; //Leaving this in for now for expanding functionality
     std::condition_variable queueUpdated;

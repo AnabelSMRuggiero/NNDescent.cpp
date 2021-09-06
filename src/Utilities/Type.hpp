@@ -67,6 +67,8 @@ struct AlignedArray{
         std::uninitialized_copy(other.begin(), other.end(), this->begin());
     };
 
+    AlignedArray(AlignedArray&& rhs) = default;
+
     ~AlignedArray(){
         if(data){
             for(auto& element: *this){

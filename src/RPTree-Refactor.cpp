@@ -11,6 +11,8 @@ https://github.com/AnabelSMRuggiero/NNDescent.cpp
 #include <bit>
 #include <memory>
 #include <memory_resource>
+#include <execution>
+#include <functional>
 
 #include "Utilities/Type.hpp"
 #include "Utilities/Data.hpp"
@@ -69,16 +71,10 @@ int main(int argc, char *argv[]){
     // rngEngine(0);
     //std::uniform_int_distribution<size_t> rngDist(size_t(0), mnistFashionTrain.numberOfSamples - 1);
     RngFunctor rngFunctor(0, mnistFashionTrain.size()-1);
-
-    std::unique_ptr<size_t[]> indecies = std::make_unique<size_t[]>(mnistFashionTrain.size());
     
-    ThreadPool<void> pool(numThreads);
-        pool.StartThreads();
     
-
-    /*
-
-    EuclidianScheme<AlignedArray<float>, AlignedArray<float>> splittingScheme(mnistFashionTrain);
+    
+    ParallelEuclidianScheme<AlignedArray<float>, AlignedArray<float>> splittingScheme(mnistFashionTrain);
 
     std::unique_ptr<size_t[]> indecies = std::make_unique<size_t[]>(mnistFashionTrain.size());
     std::iota(indecies.get(), indecies.get()+mnistFashionTrain.size(), 0);
@@ -86,11 +82,28 @@ int main(int argc, char *argv[]){
 
     ForestBuilder builder{std::move(rngFunctor), splitParams, splittingScheme};
 
-
-    RandomProjectionForest rpTrees = builder(std::move(indecies), mnistFashionTrain.size());
-
-    auto [indexMappings, dataBlocks] = PartitionData<AlignedArray<float>>(rpTrees, mnistFashionTrain);
+    /*
+    std::execution::parallel_unsequenced_policy,
+                                      std::unique_ptr<size_t[]>&& indecies, 
+                                      const size_t numIndecies, 
+                                      ThreadPool<void>& threadPool,
+                                      std::pmr::memory_resource* upstream = std::pmr::get_default_resource()
     */
+    std::pmr::synchronized_pool_resource memory;
+    ThreadPool<void> pool(numThreads);
+    pool.StartThreads();
+    RandomProjectionForest rpTrees = builder(std::execution::par_unseq,
+                                             std::move(indecies), 
+                                             mnistFashionTrain.size(),
+                                             pool,
+                                             &memory);
+
+    pool.StopThreads();
+
+    ThreadPool<TreeRef> builderPool(numThreads, std::reference_wrapper(rpTrees));
+
+    //auto [indexMappings, dataBlocks] = PartitionData<AlignedArray<float>>(rpTrees, mnistFashionTrain);
+    
     //Sink(std::move(rpTrees));
 
     return 0;

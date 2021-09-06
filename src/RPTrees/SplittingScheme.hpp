@@ -38,7 +38,7 @@ AlignedArray<DistType> EuclidianSplittingPlaneNormal(const DataEntry& pointA, co
 
 
 struct TransformTag {};
- static const TransformTag transformTag;
+static const TransformTag transformTag;
 
 //The serial case
 template<typename DataEntry, typename SplittingVector>
@@ -117,6 +117,106 @@ struct EuclidianScheme{
     };
     
 };
+
+template<typename DataEntry, typename SplittingVector>
+struct ParallelEuclidianScheme{
+    using OffSetType = typename SplittingVector::value_type;
+    using SplittingView = typename DefaultDataView<SplittingVector>::ViewType;
+    
+    const DataSet<DataEntry>& dataSource;
+    std::unordered_map<size_t, std::pair<SplittingVector, OffSetType>> splittingVectors;
+
+    AsyncQueue<std::tuple<size_t, SplittingVector, OffSetType>> generatedVectors;
+    //DistType projectionOffset;
+
+    ParallelEuclidianScheme(const DataSet<DataEntry>& data) : dataSource(data), splittingVectors(){};
+
+    auto operator()(size_t splitIndex, std::pair<size_t, size_t> splittingPoints){
+        
+        
+        // For right now at least, in the serial case I want to be able to get a new splitting vector
+        //if (splittingVectors.find(splitIndex) == splittingVectors.end()){
+        SplittingVector splittingVector = EuclidianSplittingPlaneNormal<DataEntry, OffSetType>(dataSource[splittingPoints.first], dataSource[splittingPoints.second]);
+
+
+        OffSetType projectionOffset = 0;
+        for (size_t i = 0; i<dataSource[splittingPoints.first].size(); i+=1){
+            projectionOffset -= splittingVector[i] * OffSetType(dataSource[splittingPoints.first][i] + dataSource[splittingPoints.second][i])/2.0;
+        };
+
+        //splittingVectors[splitIndex] = std::pair<SplittingVector, OffSetType>(std::move(splittingVector), projectionOffset);
+
+        //};
+        if constexpr(isAlignedArray_v<SplittingVector>){
+            auto comparisonFunction = [=, 
+                                    &data = std::as_const(this->dataSource), 
+                                    splitter = SplittingView(splittingVector),
+                                    offset = projectionOffset]
+                                    (size_t comparisonIndex) -> bool{
+                    return 0.0 < (Dot(data[comparisonIndex], splitter) + offset);
+            };
+
+            generatedVectors.Put({splitIndex, std::move(splittingVector), projectionOffset});
+
+            return comparisonFunction;
+        } else {
+            auto comparisonFunction = [=, 
+                                    &data = std::as_const(this->dataSource), 
+                                    splitter = SplittingView(splittingVector.begin(), splittingVector.end()),
+                                    offset = projectionOffset]
+                                    (size_t comparisonIndex) -> bool{
+                    return 0.0 < (Dot(data[comparisonIndex], splitter) + offset);
+            };
+
+            generatedVectors.Put({splitIndex, std::move(splittingVector), projectionOffset});
+            return comparisonFunction;
+        }
+
+        
+    };
+
+    auto operator()(size_t splitIndex, TransformTag){
+        std::pair<SplittingVector, OffSetType>& splitPair = splittingVectors.at(splitIndex);
+        if constexpr(isAlignedArray_v<SplittingVector>){
+            auto comparisonFunction = [=, 
+                                    &data = std::as_const(this->dataSource), 
+                                    splitter = SplittingView(splitPair.first),
+                                    offset = splitPair.second]
+                                    (size_t comparisonIndex) -> bool{
+                    return 0.0 < (Dot(data[comparisonIndex], splitter) + offset);
+            };
+            return comparisonFunction;
+        } else {
+            auto comparisonFunction = [=, 
+                                    &data = std::as_const(this->dataSource), 
+                                    splitter = SplittingView(splitPair.first.begin(), splitPair.first.size()),
+                                    offset = splitPair.second]
+                                    (size_t comparisonIndex) -> bool{
+                    return 0.0 < (Dot(data[comparisonIndex], splitter) + offset);
+            };
+            return comparisonFunction;
+        }
+
+        
+    };
+    
+    void ComsumeNewVectors(){
+        std::list<std::tuple<size_t, SplittingVector, OffSetType>> newVecs = generatedVectors.TakeAll();
+        for (auto& newVec: newVecs){
+            splittingVectors[std::get<0>(newVec)] = {std::move(std::get<1>(newVec)), std::get<2>(newVec)};
+        }
+    }
+
+    template<typename Predicate>
+    void ComsumeNewVectors(Predicate pred){
+        if (!pred(generatedVectors.GetCount())) return;
+        std::list<std::tuple<size_t, SplittingVector, OffSetType>> newVecs = generatedVectors.TakeAll();
+        for (auto& newVec: newVecs){
+            splittingVectors[std::get<0>(newVec)] = {std::move(std::get<1>(newVec)), std::get<2>(newVec)};
+        }
+    }
+};
+
 
 /*
 template<typename DataEntry, typename SplittingVector>

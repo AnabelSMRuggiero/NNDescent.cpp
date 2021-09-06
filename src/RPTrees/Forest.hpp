@@ -59,6 +59,9 @@ size_t Split(Iterator fromBegin, Iterator fromEnd, Iterator toBegin, rIterator t
 }
 
 struct SplitState{
+
+    SplitState(size_t* toBegin, size_t* toEnd): atoBegin(toBegin), atoEnd(toEnd) {};
+
     std::atomic<size_t> numTrue;
     std::atomic<size_t*> atoBegin;
     std::atomic<size_t*> atoEnd;
@@ -70,22 +73,22 @@ template<typename Predicate, typename Pool>
 std::unique_ptr<SplitState> Split(size_t* fromBegin, const size_t* fromEnd, size_t* toBegin, size_t* toEnd, Predicate splitter, Pool& threadPool){
 
 
-    std::unique_ptr<SplitState> ptrToState = std::make_unique<SplitState>(0, toBegin, toEnd, 0);
+    std::unique_ptr<SplitState> ptrToState = std::make_unique<SplitState>(toBegin, toEnd);
 
     auto splitTaskGenerator = [&](size_t* taskBegin, const size_t* taskEnd)->auto{
-        auto splitTask = [&state = *ptrToState, splitter, taskBegin, taskEnd](auto&)mutable->void{
+        auto splitTask = [&state = *ptrToState, splitter, taskBegin, taskEnd, numThreads = threadPool.ThreadCount()]()mutable->void{
             for ( ; taskBegin != taskEnd; taskBegin++){
                 if (splitter(*taskBegin)){
                     size_t* toBegin = state.atoBegin.fetch_add(1);
                     *toBegin = *taskBegin;
-                    taskBegin++;
+                    //taskBegin++;
                     state.numTrue++;
                 } else {
-                    size_t* toRev = state.atoBegin.fetch_sub(1)-1;
+                    size_t* toRev = state.atoEnd.fetch_sub(1)-1;
                     *toRev = *taskBegin;
                 }
             }
-            if(state.threadsDone.fetch_add(1)+1 == threadPool.ThreadCount()) state.result.set_value(state.numTrue);
+            if(state.threadsDone.fetch_add(1)+1 == numThreads) state.result.set_value(state.numTrue);
         };
 
         return splitTask;
@@ -154,7 +157,7 @@ struct RandomProjectionForest{
         memManager(alloc){};
 
     std::span<size_t> GetView() const{
-        return {indecies.get(), numIndecies};
+        return std::span{indecies.get(), numIndecies};
     }
     
     ~RandomProjectionForest(){
@@ -172,8 +175,20 @@ struct TreeRef{
     std::pmr::polymorphic_allocator<std::byte> alloc;
     TreeLeaf* refNode;
 
+    TreeRef() = default;
 
-    TreeRef(RandomProjectionForest& forest): alloc(forest.alloc), refNode(&forest.topNode), forestTop(forest){
+    TreeRef(TreeRef&& rhs): alloc(rhs.alloc), 
+        refNode(rhs.refNode), 
+        buildMemory(rhs.buildMemory),
+        buildEnd(rhs.buildEnd),
+        forestTop(rhs.forestTop){
+            rhs.refNode = nullptr;
+            rhs.buildMemory = nullptr;
+            rhs.buildEnd = nullptr;
+            rhs.forestTop = nullptr;
+    }
+
+    TreeRef(RandomProjectionForest& forest): alloc(forest.alloc), refNode(&forest.topNode), forestTop(&forest){
         GetChunk();
     };
     
@@ -198,12 +213,12 @@ struct TreeRef{
     void GetChunk(){
         buildMemory = alloc.allocate_object<TreeLeaf>(RandomProjectionForest::chunkSize);
         buildEnd = buildMemory + 32;
-        forestTop.memManager.push_back(buildMemory);
+        forestTop->memManager.push_back(buildMemory);
     }
 
     TreeLeaf* buildMemory;
     TreeLeaf* buildEnd;
-    RandomProjectionForest& forestTop;
+    RandomProjectionForest* forestTop;
 
 };
 
@@ -375,10 +390,10 @@ RandomProjectionForest ForestBuilder<SplittingScheme>::operator()(std::execution
     std::unique_ptr<size_t[]> workSpaceArr = std::make_unique<size_t[]>(numIndecies);
     std::span<size_t> workSpace = {workSpaceArr.get(), numIndecies};
 
-    #ifdef _DEBUG
+    //#ifdef _DEBUG
     size_t sum = std::accumulate(samples.begin(), samples.end(), 0);
     size_t tmpSum(sum);
-    #endif
+    //#endif
 
     TreeRef builder(forest);
 
@@ -445,12 +460,16 @@ RandomProjectionForest ForestBuilder<SplittingScheme>::operator()(std::execution
             }
         }
         std::swap(samples, workSpace);
+        splitQueue1.clear();
         std::swap(splitQueue1, splitQueue2);
-    }
-    for (auto ptr: splitQueue1){
-        [builder = TreeRef(forest), ]
-    }
 
+        tmpSum = std::accumulate(samples.begin(), samples.end(), 0);
+        if (sum != tmpSum){
+            throw std::logic_error("Sum of indicies should be invariant.");
+        };
+        
+    }
+    return std::move(forest);
 }
 
 

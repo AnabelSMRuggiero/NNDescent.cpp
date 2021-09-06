@@ -14,6 +14,8 @@ https://github.com/AnabelSMRuggiero/NNDescent.cpp
 #include <thread>
 #include <functional>
 #include <memory>
+#include <cassert>
+#include <type_traits>
 
 #include "../Utilities/UniqueFunction.hpp"
 
@@ -102,7 +104,7 @@ struct TaskThread<void>{
 
     
     template<typename ...ThreadStateArgs>
-    TaskThread(ThreadStateArgs... args): state(args...), workQueue(), running(false) {};
+    TaskThread(ThreadStateArgs... args): workQueue(), running(false) {};
 
     auto GetThreadLoop(){
         auto threadLoop = [&](std::stop_token stopToken)->void{
@@ -143,6 +145,21 @@ struct TaskThread<void>{
 
 };
 
+template<typename Element>
+    requires std::negation_v<std::is_array<Element>>
+std::unique_ptr<Element> MakeUninitialized(){
+    return std::unique_ptr<Element>(static_cast<Element*>(operator new(sizeof(Element))));
+}
+
+template<typename Element>
+    requires std::is_unbounded_array_v<Element>
+std::unique_ptr<Element> MakeUninitialized(const size_t numElem){
+    return std::unique_ptr<Element>(static_cast<std::remove_extent_t<Element>*>(operator new[](sizeof(std::remove_extent_t<Element>)*numElem)));
+}
+
+template<typename Element, typename... Args>
+    requires std::is_bounded_array_v<Element>
+void MakeUninitialized(Args&&... ) = delete;
 
 
 template<typename ThreadState>
@@ -167,7 +184,10 @@ struct ThreadPool{
                                          threadStates(std::make_unique<TaskThread<ThreadState>[]>(numThreads)), 
                                          threadHandles(std::make_unique<std::jthread[]>(numThreads)){
         for (size_t i = 0; i<numThreads; i += 1){
-            threadStates[i].state = ThreadState(args...);
+            ThreadState* statePtr = &(threadStates[i].state);
+            statePtr->~ThreadState();
+            new (statePtr) ThreadState(args...);
+            //*statePtr = std::make_from_tuple<ThreadState>(std::tuple<ThreadStateArgs...>{args...});
         }
     }
 
