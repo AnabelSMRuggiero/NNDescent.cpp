@@ -225,7 +225,7 @@ std::unique_ptr<BlockUpdateContext<DistType>[]> BuildGraph(std::vector<size_t>&&
                                                         std::tuple{blockSpan.size(), std::reference_wrapper(blocksUpdated)});
     auto comparisonBuilder = GenerateTaskBuilder<ComparisonTask<DistType, COMExtent>>(std::tuple{blockSpan, std::reference_wrapper(blocksUpdated), std::span{blocksFinalized.get(), blockSpan.size()}});
 
-    GraphInitTasks<DistType, COMExtent> tasks{nnBuilder, initJoinBuilder, updateBuilder, comparisonBuilder};
+    GraphInitTasks<DistType, COMExtent> tasks(std::move(nnBuilder), std::move(initJoinBuilder), std::move(updateBuilder), std::move(comparisonBuilder));
 
     std::tuple taskArgs = std::tie(nnToDo.first, std::get<0>(tasks).GetTaskArgs(), std::get<1>(tasks).GetTaskArgs(), std::get<2>(tasks).GetTaskArgs());
     

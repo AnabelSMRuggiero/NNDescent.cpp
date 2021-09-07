@@ -24,6 +24,17 @@ void EraseNulls(std::vector<std::optional<Element>>& optVector){
                              optVector.end());  
 }
 
+template<typename Task, typename GenArgs, typename ConsArgs>
+struct TaskBuilder {
+    GenArgs genArgs;
+    ConsArgs consArgs;
+};
+
+template<typename Task, typename GenArgs>
+struct TaskBuilder<Task, GenArgs, void> {
+    GenArgs genArgs;
+};
+
 template<typename GenType, typename ConsType>
 struct TaskQueuer{
     using Generator = GenType;
@@ -66,6 +77,11 @@ struct TaskQueuer{
         public:
         using type = typename Arg<hasValidOnCompletion<NextGenerator>, hasValidOnCompletion<NextConsumer>>::type;
     };
+
+    template<typename NextTask>
+    constexpr static bool consumeWithNext = requires(TaskQueuer cons, NextTask & nextGen) {
+        cons.ConsumeResults(nextGen);
+    };
     
 
     Generator generator;
@@ -79,6 +95,9 @@ struct TaskQueuer{
         consumer(std::make_from_tuple<Consumer>(std::forward<std::tuple<ConsArgs...>>(consumerArgs))),
         doneGenerating(false),
         doneConsuming(false){};
+
+    template<typename... GenArgs, typename... ConsArgs>
+    TaskQueuer(TaskBuilder<TaskQueuer, std::tuple<GenArgs...>, std::tuple<ConsArgs...>>&& builder) : TaskQueuer(std::move(builder.genArgs), std::move(builder.consArgs)) {};
 
     TaskQueuer(const TaskQueuer&) = delete;
     TaskQueuer(TaskQueuer&&) = delete;
@@ -153,6 +172,9 @@ struct TaskQueuer<GenType, void>{
     TaskQueuer(std::tuple<GenArgs...>&& generatorArgs): 
         generator(std::make_from_tuple<Generator>(std::forward<std::tuple<GenArgs...>>(generatorArgs))){};
 
+    template<typename... GenArgs>
+    TaskQueuer(TaskBuilder<TaskQueuer, std::tuple<GenArgs...>, void>&& builder) : TaskQueuer(std::move(builder.genArgs)) {};
+
     TaskQueuer(const TaskQueuer&) = delete;
     TaskQueuer(TaskQueuer&&) = delete;
 
@@ -181,8 +203,11 @@ struct TaskQueuer<GenType, void>{
 
 };
 
+
+
 template<typename Task, typename... GenArgs, typename... ConsArgs>
 auto GenerateTaskBuilder(std::tuple<GenArgs...>&& generatorArgs, std::tuple<ConsArgs...>&& consumerArgs){
+    /*
     struct {
         std::tuple<GenArgs...> genArgs;
         std::tuple<ConsArgs...> consArgs;
@@ -190,35 +215,57 @@ auto GenerateTaskBuilder(std::tuple<GenArgs...>&& generatorArgs, std::tuple<Cons
         operator Task(){
             return Task(std::move(genArgs), std::move(consArgs));
         }
-    } builder{std::move(generatorArgs), std::move(consumerArgs)};
+    } 
+    */
+    TaskBuilder<Task, std::tuple<GenArgs...>, std::tuple<ConsArgs...>> builder{std::move(generatorArgs), std::move(consumerArgs)};
     return builder;
 }
 
 template<typename Task, typename... GenArgs>
 auto GenerateTaskBuilder(std::tuple<GenArgs...>&& generatorArgs){
     static_assert(std::is_void_v<typename Task::Consumer>);
-
+    /*
     struct {
         std::tuple<GenArgs...> genArgs;
 
         operator Task(){
             return Task(std::move(genArgs));
         }
-    } builder{std::move(generatorArgs)};
+    } 
+    */
+    TaskBuilder<Task, std::tuple<GenArgs...>, void> builder{std::move(generatorArgs)};
 
     return builder;
 }
 
 //Pipeline code
+
 template<typename Task, typename NextTask>
-constexpr static bool consumeWithNext = requires(Task cons, NextTask& nextGen){
+constexpr static bool consumeWithNext = requires (Task cons, NextTask& nextGen) {
+    cons.ConsumeResults(nextGen);
+};
+/*
+template<typename Task, typename NextTask>
+concept CanConsumeWithNext = requires (Task cons, NextTask& nextGen) {
     cons.ConsumeResults(nextGen);
 };
 
+template<typename Task, typename NextTask>
+struct ConsumeWithNext : std::false_type {};
+
+template<typename Task, CanConsumeWithNext<Task> NextTask>
+struct ConsumeWithNext<Task, NextTask> : std::true_type {};
+
+template<size_t idx, typename TaskTuple>
+using CurrentTask = typename std::tuple_element<idx, TaskTuple>::type;
+*/
 template<size_t idx, typename TaskTuple>
 consteval bool ConsumeHelper(){
+    //return CurrentTask<idx, TaskTuple>::template consumeWithNext<typename std::tuple_element<idx + 1, TaskTuple>::type>;
+    
     return consumeWithNext<typename std::tuple_element<idx, TaskTuple>::type,
-                           typename std::tuple_element<idx+1, TaskTuple>::type>;
+                           typename std::tuple_element<idx+1, TaskTuple>::type>::value;
+    
 }
 
 template<size_t idx, typename... Tasks, typename... TaskArgs, typename TaskPool>
