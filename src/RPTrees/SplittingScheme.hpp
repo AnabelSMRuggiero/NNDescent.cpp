@@ -11,8 +11,10 @@ https://github.com/AnabelSMRuggiero/NNDescent.cpp
 #ifndef RPT_SPLITTINGSCHEMERF_HPP
 #define RPT_SPLITTINGSCHEMERF_HPP
 
-#include <valarray>
+#include <type_traits>
 #include <functional>
+#include <thread>
+
 #include "Utilities/Metrics/SpaceMetrics.hpp"
 #include "Utilities/Data.hpp"
 
@@ -45,6 +47,10 @@ template<typename DataEntry, typename SplittingVector>
 struct EuclidianScheme{
     using OffSetType = typename SplittingVector::value_type;
     using SplittingView = typename DefaultDataView<SplittingVector>::ViewType;
+    using SplittingVectors = std::unordered_map<size_t, std::pair<SplittingVector, OffSetType>>;
+
+    using ParallelScheme = std::false_type;
+    using SerialScheme = std::true_type;
     
     const DataSet<DataEntry>& dataSource;
     std::unordered_map<size_t, std::pair<SplittingVector, OffSetType>> splittingVectors;
@@ -122,6 +128,10 @@ template<typename DataEntry, typename SplittingVector>
 struct ParallelEuclidianScheme{
     using OffSetType = typename SplittingVector::value_type;
     using SplittingView = typename DefaultDataView<SplittingVector>::ViewType;
+    using SplittingVectors = std::unordered_map<size_t, std::pair<SplittingVector, OffSetType>>;
+
+    using ParallelScheme = std::true_type;
+    using SerialScheme = std::false_type;
     
     const DataSet<DataEntry>& dataSource;
     std::unordered_map<size_t, std::pair<SplittingVector, OffSetType>> splittingVectors;
@@ -200,17 +210,17 @@ struct ParallelEuclidianScheme{
         
     };
     
-    void ComsumeNewVectors(){
-        std::list<std::tuple<size_t, SplittingVector, OffSetType>> newVecs = generatedVectors.TakeAll();
+    void ConsumeNewVectors(){
+        std::list<std::tuple<size_t, SplittingVector, OffSetType>> newVecs = generatedVectors.TryTakeAll();
         for (auto& newVec: newVecs){
             splittingVectors[std::get<0>(newVec)] = {std::move(std::get<1>(newVec)), std::get<2>(newVec)};
         }
     }
 
     template<typename Predicate>
-    void ComsumeNewVectors(Predicate pred){
+    void ConsumeNewVectors(Predicate pred){
         if (!pred(generatedVectors.GetCount())) return;
-        std::list<std::tuple<size_t, SplittingVector, OffSetType>> newVecs = generatedVectors.TakeAll();
+        std::list<std::tuple<size_t, SplittingVector, OffSetType>> newVecs = generatedVectors.TryTakeAll();
         for (auto& newVec: newVecs){
             splittingVectors[std::get<0>(newVec)] = {std::move(std::get<1>(newVec)), std::get<2>(newVec)};
         }

@@ -59,6 +59,8 @@ struct RngFunctor{
    
     RngFunctor(size_t min, size_t max): functorEngine(0), functorDistribution(min, max){};
     //    functorEngine(std::move(engine)), functorDistribution(std::move(distribution)){};
+
+    RngFunctor(const RngFunctor&) = default;
     
     void SetRange(size_t min, size_t max){
         functorDistribution.param(std::uniform_int_distribution<size_t>::param_type{min, max});

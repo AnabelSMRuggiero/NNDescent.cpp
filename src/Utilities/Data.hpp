@@ -37,11 +37,13 @@ struct DataSet{
     std::vector<DataEntry> samples;
     size_t sampleLength;
     size_t numberOfSamples;
+    size_t indexStart;
 
     DataSet(std::string& dataLocation, size_t entryLength, size_t numSamples, DataExtractor<DataEntry> extractionFunction):
-        samples(0),
+        samples(),
         sampleLength(entryLength),
-        numberOfSamples(numSamples){
+        numberOfSamples(numSamples),
+        indexStart(0){
             std::ifstream dataStream;
             dataStream.open(dataLocation, std::ios_base::binary);        
             samples.reserve(numberOfSamples);
@@ -49,6 +51,10 @@ struct DataSet{
                 samples.push_back(extractionFunction(dataStream, entryLength));
                 //dataStream.read(reinterpret_cast<char *>(&(samples[i][0])), vectorLength);
             };
+    }
+
+    size_t IndexStart() const{
+        return indexStart;
     }
 
     DataEntry& operator[](size_t i){

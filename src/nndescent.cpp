@@ -272,50 +272,37 @@ int main(int argc, char *argv[]){
 
     HyperParameterValues parameters{splitParams, indexParams, searchParams};
 
-    //std::string trainDataFilePath("./TestData/train-images.idx3-ubyte");
-
     
-
-    //DataSet<std::valarray<unsigned char>> mnistDigitsTrain(trainDataFilePath, 28*28, 60'000, &ExtractNumericArray<unsigned char,dataEndianness>);
-
-    //std::chrono::time_point<std::chrono::steady_clock> runStart = std::chrono::steady_clock::now();
-
-    //std::string uint8FashionPath("./TestData/MNIST-Train-Images-UInt8.bin");
-    //DataSet<std::valarray<uint8_t>> uint8FashionData(uint8FashionPath, 28*28, 60'000, &ExtractNumericArray<uint8_t,dataEndianness>);
 
     std::string trainDataFilePath("./TestData/MNIST-Fashion-Train.bin");
     DataSet<AlignedArray<float>> mnistFashionTrain(trainDataFilePath, 28*28, 60'000, &ExtractNumericArray<AlignedArray<float>,dataEndianness>);
 
-    //std::string reserializedTrainFilePath("./TestData/MNIST-Fashion-Train-Uint8.bin");
-    //SerializeDataSet<std::valarray<float>, uint8_t, dataEndianness>(mnistFashionTrain, reserializedTrainFilePath);
 
     std::string testDataFilePath("./TestData/MNIST-Fashion-Data.bin");
     std::string testNeighborsFilePath("./TestData/MNIST-Fashion-Neighbors.bin");
     DataSet<AlignedArray<float>> mnistFashionTest(testDataFilePath, 28*28, 10'000, &ExtractNumericArray<AlignedArray<float>,dataEndianness>);
     DataSet<AlignedArray<uint32_t>> mnistFashionTestNeighbors(testNeighborsFilePath, 100, 10'000, &ExtractNumericArray<AlignedArray<uint32_t>,dataEndianness>);
     
-    //std::chrono::time_point<std::chrono::steady_clock> runEnd = std::chrono::steady_clock::now();
-    //std::cout << std::chrono::duration_cast<std::chrono::seconds>(runEnd - runStart).count() << "s Pointwise Join Calcs " << std::endl;
+
 
     //std::cout << "I/O done." << std::endl;
 
 
     std::chrono::time_point<std::chrono::steady_clock> runStart = std::chrono::steady_clock::now();
 
-    //std::mt19937_64 rngEngine(0);
-    //td::uniform_int_distribution<size_t> rngDist(size_t(0), mnistFashionTrain.numberOfSamples - 1);
+
+
     RngFunctor rngFunctor(0, mnistFashionTrain.size() - 1);
 
-    EuclidianScheme<AlignedArray<float>, AlignedArray<float>> splittingScheme(mnistFashionTrain);
+    
 
-    std::unique_ptr<size_t[]> indecies = std::make_unique<size_t[]>(mnistFashionTrain.size());
-    std::iota(indecies.get(), indecies.get()+mnistFashionTrain.size(), 0);
+    auto [rpTrees, splittingVectors] = (parallelIndexBuild) ? 
+                                        BuildRPForest<ParallelEuclidianScheme<AlignedArray<float>, AlignedArray<float>>>(std::execution::par_unseq, mnistFashionTrain, parameters.splitParams, 12) :
+                                        BuildRPForest<EuclidianScheme<AlignedArray<float>, AlignedArray<float>>>(std::execution::seq, mnistFashionTrain, parameters.splitParams);
+                                        
 
-
-    ForestBuilder builder{std::move(rngFunctor), splitParams, splittingScheme};
-
-
-    RandomProjectionForest rpTrees = builder(std::move(indecies), mnistFashionTrain.size());
+    std::chrono::time_point<std::chrono::steady_clock> rpTrainEnd = std::chrono::steady_clock::now();
+    std::cout << std::chrono::duration_cast<std::chrono::duration<float>>(rpTrainEnd - runStart).count() << "s total for test set rpTrees " << std::endl;
 
 
     //std::vector<size_t> trainClassifications(mnistFashionTrain.numberOfSamples);
@@ -368,7 +355,7 @@ int main(int argc, char *argv[]){
 
     EuclidianScheme<AlignedArray<float>, AlignedArray<float>> transformingScheme(mnistFashionTest);
 
-    transformingScheme.splittingVectors = std::move(splittingScheme.splittingVectors);
+    transformingScheme.splittingVectors = std::move(splittingVectors);
 
     std::unique_ptr<size_t[]> testIndecies = std::make_unique<size_t[]>(mnistFashionTest.size());
     std::iota(testIndecies.get(), testIndecies.get()+mnistFashionTest.size(), 0);
@@ -455,7 +442,7 @@ int main(int argc, char *argv[]){
         
         
         for (size_t j = 0; auto& context: testBlock){
-            context.blocksJoined[i] = true;
+            //context.blocksJoined[i] = true;
             searchDist.SetBlock(i);
             GraphVertex<size_t, float> initNeighbors = blockUpdateContexts[i].queryContext.queryHint;
             blockUpdateContexts[i].queryContext.Query(initNeighbors, context.dataIndex, searchDist);
@@ -464,17 +451,24 @@ int main(int argc, char *argv[]){
             context.currentNeighbors = nullVertex;
             ConsumeVertex(context.currentNeighbors, initNeighbors, i);
             std::sort(context.currentNeighbors.begin(), context.currentNeighbors.end(), NeighborDistanceComparison<BlockIndecies, float>);
+            std::unordered_map<size_t, std::vector<size_t>> searchesToDo;
             for (const auto& result: context.currentNeighbors){
                 
                 for (const auto& resultNeighbor: blockUpdateContexts[i].currentGraph[result.first]){
                     if (!context.blocksJoined[resultNeighbor.first.blockNumber]) {
-                        context.blocksJoined[resultNeighbor.first.blockNumber] = true;
-                        searchHints[resultNeighbor.first.blockNumber].push_back({{i,j}, resultNeighbor.first.dataIndex});
+                        //context.blocksJoined[resultNeighbor.first.blockNumber] = true;
+                        //searchHints[resultNeighbor.first.blockNumber].push_back({{i,j}, resultNeighbor.first.dataIndex});
+                        std::vector<size_t>& queue = searchesToDo[resultNeighbor.first.blockNumber];
+                        auto result = std::find(queue.begin(), queue.end(), resultNeighbor.first.dataIndex);
+                        if(result == queue.end()) queue.push_back(resultNeighbor.first.dataIndex);
                         hintsAdded++;
                         
                     }
                 }
-                if (hintsAdded >= maxNewSearches) break;
+                //if (hintsAdded >= maxNewSearches) break;
+            }
+            for (auto& [blockNum, dataIndecies]: searchesToDo){
+                searchHints[blockNum].push_back({{i,j}, std::move(dataIndecies)});
             }
             context.currentNeighbors.JoinPrep();
             //std::cout << hintsAdded << std::endl;
@@ -487,7 +481,12 @@ int main(int argc, char *argv[]){
         searchUpdates = 0;
         for (size_t i = 0; auto& hintMap: searchHints){
             for (size_t j = 0; const auto& hint: hintMap){
-                
+                searchDist.SetBlock(i);
+                //float firstDist = searchDist(searchContexts[hint.first.blockNumber][hint.first.dataIndex].dataIndex, hint.second);
+                //if(firstDist > searchContexts[hint.first.blockNumber][hint.first.dataIndex].currentNeighbors[0].second){
+                //    searchContexts[hint.first.blockNumber][hint.first.dataIndex].blocksJoined[i] = false;
+                //    continue;
+                //}
                 GraphVertex<size_t, float> newNodes = BlockwiseSearch(searchContexts[hint.first.blockNumber][hint.first.dataIndex],
                                                                                 blockUpdateContexts[i].queryContext,
                                                                                 hint.second,
@@ -499,13 +498,24 @@ int main(int argc, char *argv[]){
                                 searchContexts[hint.first.blockNumber][hint.first.dataIndex],
                                 hint.first,
                                 newNodes,
-                                searchHints,
                                 maxNewSearches);
 
 
                 
             }
             hintMap.clear();
+            i++;
+        }
+        for (size_t i = 0; auto& vector: searchContexts){
+            for (size_t j = 0; auto& context: vector){
+                for (auto& [blockNum, indecies]: context.searchesToDo){
+                    if (!context.blocksJoined[blockNum]){
+                        searchHints[blockNum].push_back({{i,j}, std::move(indecies)});
+                    }
+                }
+                context.searchesToDo.clear();
+                j++;
+            }
             i++;
         }
     }

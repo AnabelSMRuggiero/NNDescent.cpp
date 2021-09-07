@@ -89,8 +89,9 @@ int main(int argc, char *argv[]){
                                       ThreadPool<void>& threadPool,
                                       std::pmr::memory_resource* upstream = std::pmr::get_default_resource()
     */
+
     std::pmr::synchronized_pool_resource memory;
-    ThreadPool<void> pool(numThreads);
+    ThreadPool<TreeRef> pool(numThreads);
     pool.StartThreads();
     RandomProjectionForest rpTrees = builder(std::execution::par_unseq,
                                              std::move(indecies), 
@@ -100,7 +101,6 @@ int main(int argc, char *argv[]){
 
     pool.StopThreads();
 
-    ThreadPool<TreeRef> builderPool(numThreads, std::reference_wrapper(rpTrees));
 
     //auto [indexMappings, dataBlocks] = PartitionData<AlignedArray<float>>(rpTrees, mnistFashionTrain);
     

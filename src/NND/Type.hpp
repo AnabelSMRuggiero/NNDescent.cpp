@@ -39,7 +39,7 @@ struct NodeTracker{
 
 };
 
-    using SearchQueue = std::vector<std::vector<std::pair<BlockIndecies, size_t>>>;
+    using SearchQueue = std::vector<std::vector<std::pair<BlockIndecies, std::vector<size_t>>>>;
 
     // Two member struct with the following properties. hash({x,y}) == hash({y,x}) and {x,y} == {y,x}
 // This way a set can be used to queue up an operation between two blocks without worrying which is first or second.

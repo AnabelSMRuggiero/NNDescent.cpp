@@ -29,7 +29,8 @@ struct AsyncQueue{
     using allocator_type = Allocator;
 
     AsyncQueue() = default;
-    AsyncQueue(AsyncQueue&) = default;
+    //AsyncQueue(const AsyncQueue&) = default;
+    AsyncQueue(AsyncQueue&&) = default;
     
     AsyncQueue(Allocator alloc): tasks(alloc){};
 

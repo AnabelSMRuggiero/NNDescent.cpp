@@ -187,7 +187,15 @@ struct ThreadPool{
             ThreadState* statePtr = &(threadStates[i].state);
             statePtr->~ThreadState();
             new (statePtr) ThreadState(args...);
-            //*statePtr = std::make_from_tuple<ThreadState>(std::tuple<ThreadStateArgs...>{args...});
+        }
+    }
+
+    template<typename ...ThreadStateArgs>
+    void RebuildStates(ThreadStateArgs... args){
+        for (size_t i = 0; i<numThreads; i += 1){
+            ThreadState* statePtr = &(threadStates[i].state);
+            statePtr->~ThreadState();
+            new (statePtr) ThreadState(args...);
         }
     }
 
@@ -233,6 +241,21 @@ struct ThreadPool{
         return numThreads;
     }
 
+    size_t TaskCount(){
+        size_t count(0);
+        for (size_t i = 0; i<numThreads; i+=1){
+            count += threadStates[i].workQueue.GetCount();
+        }
+        return count;
+    }
+
+    void WaitOnCounts(size_t num = 0){
+        auto waiter = [num](const size_t count){return count < num; };
+        for (size_t i = 0; i<numThreads; i+=1){
+            while(!waiter(threadStates[i].workQueue.WaitOnCount()));
+        }
+    }
+
     //I hate that I have to write this, but should be a temporary crutch
     void Latch(){
         auto latcher = [](const size_t count){return count == 0; };
@@ -242,9 +265,7 @@ struct ThreadPool{
         }
         for (size_t i = 0; i<numThreads; i+=1){
             while(!latcher(threadStates[i].workQueue.WaitOnCount()));
-        }
-        
-        
+        }  
     }
 
     private:

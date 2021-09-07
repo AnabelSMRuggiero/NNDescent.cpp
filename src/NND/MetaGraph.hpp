@@ -169,11 +169,11 @@ struct DataMapper{
     std::vector<size_t> sourceToSplitIndex;
     BoundConstructor construct;
 
-    DataMapper(const DataSet<DataEntry>& source, BoundConstructor constructor):
+    DataMapper(const DataSet<DataEntry>& source, BoundConstructor constructor, const size_t startIndex = 0):
         dataSource(source),
         sourceToBlockIndex(dataSource.numberOfSamples),
         sourceToSplitIndex(dataSource.numberOfSamples),
-        blockCounter(0),
+        blockCounter(startIndex),
         construct(constructor) {};
 
     void operator()(size_t splittingIndex, std::span<const size_t> indicies){

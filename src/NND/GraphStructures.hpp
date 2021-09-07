@@ -34,7 +34,9 @@ https://github.com/AnabelSMRuggiero/NNDescent.cpp
 
 namespace nnd{
 
-template<TriviallyCopyable IndexType, typename FloatType>
+
+
+template<typename IndexType, typename FloatType>
 struct GraphVertex{
 
     using iterator = typename std::vector<std::pair<IndexType, FloatType>>::iterator;
@@ -166,6 +168,19 @@ unsigned int ConsumeVertex(GraphVertex<BlockIndecies, ConsumerDist>& consumer, G
     }
     return neighborsAdded;
 }
+
+template<TriviallyCopyable OtherIndex, typename OtherDist, typename ConsumerDist>
+unsigned int ConsumeVertex(GraphVertex<std::pair<BlockIndecies, bool>, ConsumerDist>& consumer, GraphVertex<OtherIndex, OtherDist>& consumee, size_t consumeeBlockNum){
+    std::sort(consumee.begin(), consumee.end(), NeighborDistanceComparison<OtherIndex, OtherDist>);
+    unsigned int neighborsAdded(0);
+    for (auto& pair: consumee){
+        if (pair.second >= consumer.neighbors[0].second) return neighborsAdded;
+        consumer.PushNeighbor({{{consumeeBlockNum, pair.first}, false}, static_cast<ConsumerDist>(pair.second)});
+        neighborsAdded++;
+    }
+    return neighborsAdded;
+}
+
 
 
 //Prototype

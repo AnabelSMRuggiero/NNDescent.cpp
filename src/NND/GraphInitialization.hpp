@@ -30,13 +30,13 @@ https://github.com/AnabelSMRuggiero/NNDescent.cpp
 namespace nnd{
 
 template<typename DataEntry>
-std::pair<IndexMaps<size_t>, std::vector<DataBlock<DataEntry>>> PartitionData(const RandomProjectionForest& treeToMap, const DataSet<DataEntry>& sourceData){
+std::pair<IndexMaps<size_t>, std::vector<DataBlock<DataEntry>>> PartitionData(const RandomProjectionForest& treeToMap, const DataSet<DataEntry>& sourceData, const size_t startIndex=0){
     //There might be a more elegant way to do this with templates. I tried.
     auto boundContructor = [](const DataSet<DataEntry>& dataSource, std::span<const size_t> dataPoints, size_t blockNumber){ 
         return DataBlock<DataEntry>(dataSource, dataPoints, blockNumber);
     };
     
-    DataMapper<DataEntry, DataBlock<DataEntry>, decltype(boundContructor)> dataMapper(sourceData, boundContructor);
+    DataMapper<DataEntry, DataBlock<DataEntry>, decltype(boundContructor)> dataMapper(sourceData, boundContructor, startIndex);
     CrawlTerminalLeaves(treeToMap, dataMapper);
     
     std::vector<DataBlock<DataEntry>> retBlocks = std::move(dataMapper.dataBlocks);
@@ -94,7 +94,8 @@ template<typename DistType, typename COMExtent>
 std::vector<BlockUpdateContext<DistType>> InitializeBlockContexts(std::vector<Graph<size_t, DistType>>& blockGraphs,
                                                                   const MetaGraph<COMExtent>& metaGraph,
                                                                   Graph<size_t, DistType>& queryHints,
-                                                                  const int queryDepth){
+                                                                  const int queryDepth,
+                                                                  const size_t startIndex = 0){
                                                                         
     std::vector<BlockUpdateContext<DistType>> blockUpdateContexts;
     blockUpdateContexts.reserve(blockGraphs.size());
@@ -104,7 +105,7 @@ std::vector<BlockUpdateContext<DistType>> InitializeBlockContexts(std::vector<Gr
         QueryContext<DistType> queryContext(blockGraphs[i],
                                             std::move(queryHints[i]),
                                             queryDepth,
-                                            i,
+                                            i + startIndex,
                                             blockGraphs[i].size());
 
         blockUpdateContexts.emplace_back(std::move(blockGraphs[i]),
@@ -128,7 +129,7 @@ std::pair<Graph<size_t, DistType>, InitialJoinHints<DistType>> NearestNodeDistan
                                                         DispatchFunctor<DistType> distanceFunctor){
 
     std::unordered_set<ComparisonKey<size_t>> nearestNodeDistQueue;
-
+    const size_t startIndex = blockUpdateContexts[0].queryContext.blockNumber;
     for (size_t i = 0; const auto& vertex: metaGraph.verticies){
         for (const auto& neighbor: vertex){
             nearestNodeDistQueue.insert({i, neighbor.first});

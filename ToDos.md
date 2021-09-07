@@ -20,10 +20,9 @@
   - 
 
 #RPTrees
-- Move forest building outside of constructor.
 - Add in tree merge functionality
+  - Don't think this will be needed after all
 - Think of a better way to refine tree splitting than if statement into goto.
-- Rewrite TreeLeaf
 
 #NNDescent
 - This will be forever out from now, but test builing data array inside of the control structure itself to see if it reduces cache misses.
@@ -37,17 +36,11 @@
   - Also set it up so NearestPair calculations can update neighbor lists.
   - Prototyped CacheLineVertex
 
-- Second pass on breaking up BlockSitching and NearestNodeDistances. Mainly a concern at the parallelism stage. Do I need to transform from a contiguous section of memory?
-
-- paramterize/pass as arguement the COM distance functor for metagraph
-
 - Most of my run time is in distance calcs. While optimizing the calculation will be important, I need to squeeze as much as I can out of every call.
-
-- On QueryHotPath: I want copies when I use the queryHint member, but not really when I'm passing in hints.
 
 - UndirectedGraph BlockIndices template specialization.
 
-
+- Remove the assumption that the 0th element is block 0.
 
 - Add in search bailout
 
