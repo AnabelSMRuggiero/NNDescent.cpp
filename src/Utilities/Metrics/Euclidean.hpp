@@ -196,6 +196,7 @@ std::vector<float> BatchEuclideanNorm(const std::vector<AlignedSpan<const float>
             result[j] = accumulators[j].m256_f32[0] + accumulators[j].m256_f32[4];
             #endif
             */
+            //This constexpr branch works with MSVC and Clang, haven't tried GCC, but I suspect it should.
             if constexpr (std::is_union_v<__m256>){
                 result[j] = accumulators[j].m256_f32[0] + accumulators[j].m256_f32[4];
             } else{

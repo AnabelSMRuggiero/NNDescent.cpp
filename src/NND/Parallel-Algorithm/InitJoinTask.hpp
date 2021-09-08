@@ -78,7 +78,7 @@ struct InitJoinGenerator{
             return initJoin;
         };
 
-        size_t nullCounter;
+        size_t nullCounter(0);
         for(auto& stitchHint: initJoinsToDo){
 
             if(!stitchHint) {

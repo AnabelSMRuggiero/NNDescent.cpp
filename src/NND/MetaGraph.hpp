@@ -171,9 +171,9 @@ struct DataMapper{
 
     DataMapper(const DataSet<DataEntry>& source, BoundConstructor constructor, const size_t startIndex = 0):
         dataSource(source),
+        blockCounter(startIndex),
         sourceToBlockIndex(dataSource.numberOfSamples),
         sourceToSplitIndex(dataSource.numberOfSamples),
-        blockCounter(startIndex),
         construct(constructor) {};
 
     void operator()(size_t splittingIndex, std::span<const size_t> indicies){
@@ -242,7 +242,7 @@ WeightedGraphEdges NeighborsOutOfBlock(const DataSet<std::valarray<int32_t>>& gr
             return lhs.second > rhs.second;
         };
 
-        for (const auto [originIndex, edges] : unweightedGraph){
+        for (const auto& [originIndex, edges] : unweightedGraph){
             size_t totWeight(0);
             for (const auto [targetIndex, weight] : edges){
                 totWeight += weight;

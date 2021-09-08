@@ -104,7 +104,7 @@ std::unique_ptr<SplitState> Split(size_t* fromBegin, const size_t* fromEnd, size
     
 
     
-    return std::move(ptrToState);
+    return ptrToState;
 }
 
 struct TreeLeaf{
@@ -116,15 +116,15 @@ struct TreeLeaf{
     std::pair<TreeLeaf*, TreeLeaf*> children;
     
     
-    TreeLeaf() : splitRange(0,0), splittingIndex(-1), children(nullptr, nullptr), parent(nullptr){};
+    TreeLeaf() : splittingIndex(-1), splitRange(0,0), parent(nullptr), children(nullptr, nullptr){};
 
-    TreeLeaf(size_t index1, size_t index2, size_t splittingIndex, TreeLeaf* parent) : splitRange(index1, index2),
-                                                                            splittingIndex(splittingIndex), 
+    TreeLeaf(size_t index1, size_t index2, size_t splittingIndex, TreeLeaf* parent) : splittingIndex(splittingIndex), 
+                                                                            splitRange(index1, index2),
                                                                             parent(parent),
                                                                             children(nullptr, nullptr) {};
 
-    TreeLeaf(std::pair<size_t, size_t> indecies, size_t splittingIndex, TreeLeaf* parent) : splitRange(indecies),
-                                                                                splittingIndex(splittingIndex), 
+    TreeLeaf(std::pair<size_t, size_t> indecies, size_t splittingIndex, TreeLeaf* parent) : splittingIndex(splittingIndex), 
+                                                                                splitRange(indecies),
                                                                                 parent(parent),
                                                                                 children(nullptr, nullptr){};
     
@@ -220,6 +220,8 @@ struct TreeRef{
         buildMemory = alloc.allocate_object<TreeLeaf>(RandomProjectionForest::chunkSize);
         buildEnd = buildMemory + 32;
         TreeLeaf* somethingToMove = buildMemory;
+        //If I'm not using the new_delete_resource, I should be able to get away with letting the resource
+        //manage the memory.
         if(alloc.resource() == std::pmr::new_delete_resource()) memManager->Put(std::move(somethingToMove));
     }
 
@@ -349,8 +351,6 @@ RandomProjectionForest ForestBuilder<SplittingScheme>::operator()(std::unique_pt
             //builder, samples, this
             builder.refNode = splitQueue1.back();
 
-            retry:
-            //This is bootleg af, need to refactor how I do rng.
             
             rngFunctor.SetRange(builder.refNode->splitRange.first, builder.refNode->splitRange.second - 1);
 
@@ -395,7 +395,7 @@ RandomProjectionForest ForestBuilder<SplittingScheme>::operator()(std::unique_pt
     if (samples.data() == workSpaceArr.get()){
         std::swap(forest.indecies, workSpaceArr);
     }
-    return std::move(forest);
+    return forest;
 } //end operator()
 
 template<typename SplittingScheme>
@@ -556,7 +556,7 @@ RandomProjectionForest ForestBuilder<SplittingScheme>::operator()(std::execution
             throw std::logic_error("Sum of indicies should be invariant.");
         };
     }
-    return std::move(forest);
+    return forest;
 }
 
 
@@ -662,7 +662,7 @@ RandomProjectionForest ForestBuilder<SplittingScheme>::operator()(std::unique_pt
             throw std::logic_error("Sum of indicies should be invariant.");
         };
     }
-    return std::move(forest);
+    return forest;
     //indexArray = std::move(indexVector1);
 } //end operator()
     
@@ -670,13 +670,12 @@ RandomProjectionForest ForestBuilder<SplittingScheme>::operator()(std::unique_pt
 template<typename Functor>
 void CrawlTerminalLeaves(const RandomProjectionForest& forest, Functor& terminalFunctor){
 
-    //std::vector<size_t> treePath;
+
     std::vector<char> pathState;
-    //treePath.push_back(0);
     pathState.push_back(0);
 
-    size_t highestIndex = 0;
-    size_t counter = 0;
+    //size_t highestIndex = 0;
+    //size_t counter = 0;
     
     std::span<const size_t> indecies = forest.GetView();
     
@@ -710,8 +709,8 @@ void CrawlTerminalLeaves(const RandomProjectionForest& forest, Functor& terminal
             throw std::logic_error("Invalid Crawl State");
             
         } else if (currentNode->children.first == nullptr && currentNode->children.second == nullptr){
-            highestIndex = std::max(highestIndex, currentNode->splittingIndex);
-            counter += 1;
+            //highestIndex = std::max(highestIndex, currentNode->splittingIndex);
+            //counter += 1;
             std::span indexSpan(&(indecies[currentNode->splitRange.first]),
                               size_t(currentNode->splitRange.second - currentNode->splitRange.first));
 
@@ -736,13 +735,11 @@ void CrawlTerminalLeaves(const RandomProjectionForest& forest, Functor& terminal
 template<typename Functor>
 void CrawlLeaves(const RandomProjectionForest& forest, Functor& nodeFunctor){
 
-    //std::vector<size_t> treePath;
     std::vector<char> pathState;
-    //treePath.push_back(0);
     pathState.push_back(0);
 
-    size_t highestIndex = 0;
-    size_t counter = 0;
+    //size_t highestIndex = 0;
+    //size_t counter = 0;
     
     std::span<const size_t> indecies = forest.GetView();
     

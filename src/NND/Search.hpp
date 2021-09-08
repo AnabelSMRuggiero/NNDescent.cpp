@@ -62,11 +62,6 @@ GraphVertex<size_t, DistType> BlockwiseSearch(SearchContext<DistType>& searching
         }
     }
     
-
-    //searchingPoint.joinHints.erase(targetBlock.dataBlock.blockNumber);
-    
-
-    //std::vector<std::pair<DataIndexType, GraphVertex<DataIndexType, DistType>>> retResults;
     searchingPoint.blocksJoined[targetBlock.blockNumber] = true;
     queryFunctor.SetBlock(targetBlock.blockNumber);
     targetBlock.Query(queryHint, searchingPoint.dataIndex, queryFunctor);
@@ -124,6 +119,38 @@ void QueueSearches(const BlockUpdateContext<DistType>& graphFragment,
         }
         if (hintsAdded >= maxNewSearches) break;
     }
+}
+
+template<typename DistType>
+GraphVertex<BlockIndecies, DistType> InitialSearch(SinglePointFunctor<DistType>& distFunctor,
+                                                   const QueryContext<DistType>& blockToSearch,
+                                                   const size_t searchIndex){
+    distFunctor.SetBlock(blockToSearch.blockNumber);
+    GraphVertex<size_t, DistType> initNeighbors = blockToSearch.queryHint;
+    blockToSearch.Query(initNeighbors, searchIndex, distFunctor);
+
+    //context.blocksJoined[blockToSearch.blockNumber] = true;
+    return ToBlockIndecies(initNeighbors, blockToSearch.blockNumber);
+    // This shouldn't be needed?
+
+}
+
+//template<typename DistType>
+std::unordered_map<size_t, std::vector<size_t>> InitialQueue(SearchContext<float>& searchPoint, const Graph<BlockIndecies, float>& graphFragment){
+    
+    std::unordered_map<size_t, std::vector<size_t>> searchesToDo;
+
+    for (const auto& result: searchPoint.currentNeighbors){
+        for (const auto& resultNeighbor: graphFragment[result.first]){
+            if (!searchPoint.blocksJoined[resultNeighbor.first.blockNumber]) {
+                std::vector<size_t>& queue = searchesToDo[resultNeighbor.first.blockNumber];
+                auto result = std::find(queue.begin(), queue.end(), resultNeighbor.first.dataIndex);
+                if(result == queue.end()) queue.push_back(resultNeighbor.first.dataIndex);
+            }
+        }
+    }
+
+    return searchesToDo;
 }
 
 }

@@ -32,7 +32,7 @@ struct AsyncQueue{
     //AsyncQueue(const AsyncQueue&) = default;
     AsyncQueue(AsyncQueue&&) = default;
     
-    AsyncQueue(Allocator alloc): tasks(alloc){};
+    //AsyncQueue(Allocator alloc): tasks(alloc){};
 
     AsyncQueue& operator=(AsyncQueue&& rhs) = default;
 

@@ -50,7 +50,7 @@ struct NearestNodesGenerator{
                     std::vector<std::optional<ComparisonKey<size_t>>>& distancesToCompute){
         auto nnDistanceTaskGenerator = [&](BlockPtrPair blockPtrs)->auto{
 
-            auto task = [&, ptrs = blockPtrs, readyBlocks = this->readyBlocks](ThreadFunctors<DistType, COMExtent>& functors) mutable->void{
+            auto task = [&, ptrs = blockPtrs](ThreadFunctors<DistType, COMExtent>& functors) mutable->void{
                 const QueryContext<DistType>& lhsQueryContext = ptrs.first->queryContext;
                 const QueryContext<DistType>& rhsQueryContext = ptrs.second->queryContext;
                 std::tuple<size_t, size_t, DistType> nnDistResult = lhsQueryContext.NearestNodes(rhsQueryContext,

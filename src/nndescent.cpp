@@ -301,8 +301,8 @@ int main(int argc, char *argv[]){
                                         BuildRPForest<EuclidianScheme<AlignedArray<float>, AlignedArray<float>>>(std::execution::seq, mnistFashionTrain, parameters.splitParams);
                                         
 
-    std::chrono::time_point<std::chrono::steady_clock> rpTrainEnd = std::chrono::steady_clock::now();
-    std::cout << std::chrono::duration_cast<std::chrono::duration<float>>(rpTrainEnd - runStart).count() << "s total for test set rpTrees " << std::endl;
+    //std::chrono::time_point<std::chrono::steady_clock> rpTrainEnd = std::chrono::steady_clock::now();
+    //std::cout << std::chrono::duration_cast<std::chrono::duration<float>>(rpTrainEnd - runStart).count() << "s total for test set rpTrees " << std::endl;
 
 
     //std::vector<size_t> trainClassifications(mnistFashionTrain.numberOfSamples);
@@ -348,8 +348,8 @@ int main(int argc, char *argv[]){
     
     
     std::chrono::time_point<std::chrono::steady_clock> runEnd = std::chrono::steady_clock::now();
-    std::cout << std::chrono::duration_cast<std::chrono::duration<float>>(runEnd - runStart).count() << "s total for index building " << std::endl;
-    //std::cout << std::chrono::duration_cast<std::chrono::duration<float>>(runEnd - runStart).count() << std::endl;
+    //std::cout << std::chrono::duration_cast<std::chrono::duration<float>>(runEnd - runStart).count() << "s total for index building " << std::endl;
+    std::cout << std::chrono::duration_cast<std::chrono::duration<float>>(runEnd - runStart).count() << std::endl;
 
     std::chrono::time_point<std::chrono::steady_clock> runStart2 = std::chrono::steady_clock::now();
 
@@ -384,8 +384,8 @@ int main(int argc, char *argv[]){
     RandomProjectionForest rpTreesTest = testBuilder(std::move(testIndecies), mnistFashionTest.size(), splittingIndicies);
 
 
-    std::chrono::time_point<std::chrono::steady_clock> rpTestEnd = std::chrono::steady_clock::now();
-    std::cout << std::chrono::duration_cast<std::chrono::duration<float>>(rpTestEnd - runStart2).count() << "s total for test set rpTrees " << std::endl;
+    //std::chrono::time_point<std::chrono::steady_clock> rpTestEnd = std::chrono::steady_clock::now();
+    //std::cout << std::chrono::duration_cast<std::chrono::duration<float>>(rpTestEnd - runStart2).count() << "s total for test set rpTrees " << std::endl;
 
     //RandomProjectionForest rpTreesTest(mnistFashionTest.numberOfSamples, transformingFunc, splittingIndicies);
 
@@ -405,7 +405,7 @@ int main(int argc, char *argv[]){
     }
 
     SearchFunctor<AlignedArray<float>, EuclideanMetricPair> searchDist(dataBlocks, mnistFashionTest);
-    //SinglePointFunctor<float> searchFunctor(searchDist);
+    SinglePointFunctor<float> searchFunctor(searchDist);
 
     auto searcherConstructor = [&, blocks = &dataBlocks](const DataSet<AlignedArray<float>>& dataSource, std::span<const size_t> indicies, size_t blockCounter)->
                                   std::vector<SearchContext<float>>{
@@ -442,35 +442,19 @@ int main(int argc, char *argv[]){
         
         
         for (size_t j = 0; auto& context: testBlock){
-            //context.blocksJoined[i] = true;
-            searchDist.SetBlock(i);
-            GraphVertex<size_t, float> initNeighbors = blockUpdateContexts[i].queryContext.queryHint;
-            blockUpdateContexts[i].queryContext.Query(initNeighbors, context.dataIndex, searchDist);
-            size_t hintsAdded = 0;
+
+
             context.blocksJoined[i] = true;
-            context.currentNeighbors = nullVertex;
-            ConsumeVertex(context.currentNeighbors, initNeighbors, i);
-            std::sort(context.currentNeighbors.begin(), context.currentNeighbors.end(), NeighborDistanceComparison<BlockIndecies, float>);
-            std::unordered_map<size_t, std::vector<size_t>> searchesToDo;
-            for (const auto& result: context.currentNeighbors){
-                
-                for (const auto& resultNeighbor: blockUpdateContexts[i].currentGraph[result.first]){
-                    if (!context.blocksJoined[resultNeighbor.first.blockNumber]) {
-                        //context.blocksJoined[resultNeighbor.first.blockNumber] = true;
-                        //searchHints[resultNeighbor.first.blockNumber].push_back({{i,j}, resultNeighbor.first.dataIndex});
-                        std::vector<size_t>& queue = searchesToDo[resultNeighbor.first.blockNumber];
-                        auto result = std::find(queue.begin(), queue.end(), resultNeighbor.first.dataIndex);
-                        if(result == queue.end()) queue.push_back(resultNeighbor.first.dataIndex);
-                        hintsAdded++;
-                        
-                    }
-                }
-                //if (hintsAdded >= maxNewSearches) break;
-            }
+            //context.blocksJoined[blockUpdateContexts[i].queryContext.blockNumber] = true;
+            context.currentNeighbors = InitialSearch(searchFunctor, blockUpdateContexts[i].queryContext, context.dataIndex);
+            
+            //SearchContext<float> searchPoint, const Graph<BlockIndecies, float>& graphFragment
+            std::unordered_map<size_t, std::vector<size_t>> searchesToDo = InitialQueue(context, blockUpdateContexts[i].currentGraph);
+
             for (auto& [blockNum, dataIndecies]: searchesToDo){
                 searchHints[blockNum].push_back({{i,j}, std::move(dataIndecies)});
             }
-            context.currentNeighbors.JoinPrep();
+        
             //std::cout << hintsAdded << std::endl;
             j++;
         }
@@ -482,11 +466,7 @@ int main(int argc, char *argv[]){
         for (size_t i = 0; auto& hintMap: searchHints){
             for (size_t j = 0; const auto& hint: hintMap){
                 searchDist.SetBlock(i);
-                //float firstDist = searchDist(searchContexts[hint.first.blockNumber][hint.first.dataIndex].dataIndex, hint.second);
-                //if(firstDist > searchContexts[hint.first.blockNumber][hint.first.dataIndex].currentNeighbors[0].second){
-                //    searchContexts[hint.first.blockNumber][hint.first.dataIndex].blocksJoined[i] = false;
-                //    continue;
-                //}
+
                 GraphVertex<size_t, float> newNodes = BlockwiseSearch(searchContexts[hint.first.blockNumber][hint.first.dataIndex],
                                                                                 blockUpdateContexts[i].queryContext,
                                                                                 hint.second,
@@ -500,8 +480,6 @@ int main(int argc, char *argv[]){
                                 newNodes,
                                 maxNewSearches);
 
-
-                
             }
             hintMap.clear();
             i++;
@@ -520,8 +498,8 @@ int main(int argc, char *argv[]){
         }
     }
     std::chrono::time_point<std::chrono::steady_clock> runEnd2 = std::chrono::steady_clock::now();
-    std::cout << std::chrono::duration_cast<std::chrono::duration<float>>(runEnd2 - runStart2).count() << "s test set search " << std::endl;
-    //std::cout << std::chrono::duration_cast<std::chrono::duration<float>>(runEnd2 - runStart2).count() << std::endl;
+    //std::cout << std::chrono::duration_cast<std::chrono::duration<float>>(runEnd2 - runStart2).count() << "s test set search " << std::endl;
+    std::cout << std::chrono::duration_cast<std::chrono::duration<float>>(runEnd2 - runStart2).count() << std::endl;
 
 
     
@@ -562,8 +540,8 @@ int main(int argc, char *argv[]){
         correctPerBlockFloat[i] = float(correctNeighborsPerBlock[i]*10)/float(searchContexts[i].size());
     }
     double recall = double(numNeighborsCorrect)/ double(10*mnistFashionTestNeighbors.samples.size());
-    //std::cout << (recall * 100) << std::endl;
-    std::cout << "Recall: " << (recall * 100) << "%" << std::endl;
+    std::cout << (recall * 100) << std::endl;
+    //std::cout << "Recall: " << (recall * 100) << "%" << std::endl;
     
     //WeightedGraphEdges graphEdges = NeighborsOutOfBlock(mnistFashionTestNeighbors, trainMapper.sourceToBlockIndex, testClassifications);
 

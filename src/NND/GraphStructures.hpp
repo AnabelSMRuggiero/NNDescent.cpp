@@ -371,6 +371,15 @@ Graph<BlockIndecies, DistType> ToBlockIndecies(const Graph<DataIndexType, DistTy
     return newGraph;
 }
 
+template<typename DistType>
+GraphVertex<BlockIndecies, DistType> ToBlockIndecies(const GraphVertex<size_t, DistType>& vertexToConvert, const size_t blockNum){
+    GraphVertex<BlockIndecies, DistType> newVertex(vertexToConvert.size());
+    for(const auto& neighbor: vertexToConvert){
+        newVertex.push_back({{blockNum, neighbor.first}, neighbor.second});
+    }   
+    return newVertex;
+}
+
 
 template<TriviallyCopyable IndexType>
 struct UndirectedGraph{
@@ -521,11 +530,9 @@ struct CachingFunctor{
     CachingFunctor(DispatchFunctor<DistType>& metricFunctor, size_t maxBlockSize, size_t numNeighbors):
         metricFunctor(metricFunctor), 
         reverseGraph(maxBlockSize, numNeighbors),
-        numNeighbors(numNeighbors),
         nodesJoined(maxBlockSize, NodeTracker(maxBlockSize)),
-        maxBlockSize(maxBlockSize){
-        //cache.reserve(cacheSize);
-    }
+        numNeighbors(numNeighbors),
+        maxBlockSize(maxBlockSize) {};
 
     CachingFunctor() = default;
 

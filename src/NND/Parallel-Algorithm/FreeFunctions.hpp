@@ -134,11 +134,12 @@ void ParallelBlockJoins(std::span<BlockUpdateContext<DistType>> blocks, std::uni
         };
         return updateTask;
     };
+    //For the case where we start with 0 joins to do
     for (size_t i = 0; i<blocks.size(); i +=1){
         if(blocks[i].joinsToDo.size()==0) doneBlocks++;
     }
-    //Case where we start with 0 joins to do?
-    bool firstLoop = true;
+    
+    
     while(doneBlocks<blocks.size()){
         //doneBlocks = 0;
         for(size_t i = 0; i<blocks.size(); i+=1){
@@ -168,7 +169,7 @@ void ParallelBlockJoins(std::span<BlockUpdateContext<DistType>> blocks, std::uni
             }
             if(!queued)blockStates[i] = true;
         }
-        firstLoop = false;
+        
     }
 }
 

@@ -156,6 +156,7 @@ struct TaskQueuer{
 
 };
 
+//For ending a pipeline
 template<typename GenType>
 struct TaskQueuer<GenType, void>{
     using Generator = GenType;
@@ -244,27 +245,13 @@ template<typename Task, typename NextTask>
 constexpr static bool consumeWithNext = requires (Task cons, NextTask& nextGen) {
     cons.ConsumeResults(nextGen);
 };
-/*
-template<typename Task, typename NextTask>
-concept CanConsumeWithNext = requires (Task cons, NextTask& nextGen) {
-    cons.ConsumeResults(nextGen);
-};
 
-template<typename Task, typename NextTask>
-struct ConsumeWithNext : std::false_type {};
-
-template<typename Task, CanConsumeWithNext<Task> NextTask>
-struct ConsumeWithNext<Task, NextTask> : std::true_type {};
-
-template<size_t idx, typename TaskTuple>
-using CurrentTask = typename std::tuple_element<idx, TaskTuple>::type;
-*/
 template<size_t idx, typename TaskTuple>
 consteval bool ConsumeHelper(){
     //return CurrentTask<idx, TaskTuple>::template consumeWithNext<typename std::tuple_element<idx + 1, TaskTuple>::type>;
     
     return consumeWithNext<typename std::tuple_element<idx, TaskTuple>::type,
-                           typename std::tuple_element<idx+1, TaskTuple>::type>::value;
+                           typename std::tuple_element<idx+1, TaskTuple>::type>;
     
 }
 

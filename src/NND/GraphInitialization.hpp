@@ -129,7 +129,7 @@ std::pair<Graph<size_t, DistType>, InitialJoinHints<DistType>> NearestNodeDistan
                                                         DispatchFunctor<DistType> distanceFunctor){
 
     std::unordered_set<ComparisonKey<size_t>> nearestNodeDistQueue;
-    const size_t startIndex = blockUpdateContexts[0].queryContext.blockNumber;
+    //const size_t startIndex = blockUpdateContexts[0].queryContext.blockNumber;
     for (size_t i = 0; const auto& vertex: metaGraph.verticies){
         for (const auto& neighbor: vertex){
             nearestNodeDistQueue.insert({i, neighbor.first});

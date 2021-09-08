@@ -86,6 +86,10 @@ struct TaskThread{
 
 };
 
+//Not sure why the copy/move constructors of this specialization are generating errors.
+//The errors say the defaulted constructors are deleted because of AsyncQueue, but that doesn't affect
+//the unspecialized template. /shrug
+
 template<>
 struct TaskThread<void>{
 
@@ -144,7 +148,7 @@ struct TaskThread<void>{
     bool running;
 
 };
-
+/*
 template<typename Element>
     requires std::negation_v<std::is_array<Element>>
 std::unique_ptr<Element> MakeUninitialized(){
@@ -160,7 +164,7 @@ std::unique_ptr<Element> MakeUninitialized(const size_t numElem){
 template<typename Element, typename... Args>
     requires std::is_bounded_array_v<Element>
 void MakeUninitialized(Args&&... ) = delete;
-
+*/
 
 template<typename ThreadState>
 struct ThreadPool{
