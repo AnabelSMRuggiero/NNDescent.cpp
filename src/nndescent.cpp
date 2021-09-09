@@ -197,7 +197,7 @@ int main(int argc, char *argv[]){
         options.emplace_back(argv[i]);
     }
 
-    for (const auto option: options){
+    for (const auto& option: options){
         size_t nameEnd = option.find('=');
         if (nameEnd == std::string::npos){
             std::cout << "Could not split option from value; no '=' in: " << option << std::endl;
@@ -407,7 +407,7 @@ int main(int argc, char *argv[]){
     SearchFunctor<AlignedArray<float>, EuclideanMetricPair> searchDist(dataBlocks, mnistFashionTest);
     SinglePointFunctor<float> searchFunctor(searchDist);
 
-    auto searcherConstructor = [&, blocks = &dataBlocks](const DataSet<AlignedArray<float>>& dataSource, std::span<const size_t> indicies, size_t blockCounter)->
+    auto searcherConstructor = [&](const DataSet<AlignedArray<float>>& dataSource, std::span<const size_t> indicies, size_t blockCounter)->
                                   std::vector<SearchContext<float>>{
         std::vector<SearchContext<float>> retVec;
         retVec.reserve(indicies.size());
@@ -432,71 +432,14 @@ int main(int argc, char *argv[]){
         std::move(testMapper.sourceToSplitIndex)
     };
     
-    SearchQueue searchHints(dataBlocks.size());
     
-    for (auto& queue: searchHints){
-        queue.reserve(maxNewSearches * 10'000 / dataBlocks.size());
-    }
+
     
-    for (size_t i = 0; auto& testBlock: searchContexts){
-        
-        
-        for (size_t j = 0; auto& context: testBlock){
+    SearchQueue searchHints = FirstBlockSearch(searchContexts, searchFunctor, blockUpdateContexts);
+    
+    SearchLoop(searchFunctor, searchHints, searchContexts, blockUpdateContexts, maxNewSearches);
 
 
-            context.blocksJoined[i] = true;
-            //context.blocksJoined[blockUpdateContexts[i].queryContext.blockNumber] = true;
-            context.currentNeighbors = InitialSearch(searchFunctor, blockUpdateContexts[i].queryContext, context.dataIndex);
-            
-            //SearchContext<float> searchPoint, const Graph<BlockIndecies, float>& graphFragment
-            std::unordered_map<size_t, std::vector<size_t>> searchesToDo = InitialQueue(context, blockUpdateContexts[i].currentGraph);
-
-            for (auto& [blockNum, dataIndecies]: searchesToDo){
-                searchHints[blockNum].push_back({{i,j}, std::move(dataIndecies)});
-            }
-        
-            //std::cout << hintsAdded << std::endl;
-            j++;
-        }
-        i++;
-    }
-    size_t searchUpdates = 1;
-    while(searchUpdates){
-        searchUpdates = 0;
-        for (size_t i = 0; auto& hintMap: searchHints){
-            for (size_t j = 0; const auto& hint: hintMap){
-                searchDist.SetBlock(i);
-
-                GraphVertex<size_t, float> newNodes = BlockwiseSearch(searchContexts[hint.first.blockNumber][hint.first.dataIndex],
-                                                                                blockUpdateContexts[i].queryContext,
-                                                                                hint.second,
-                                                                                searchDist);
-                
-                searchUpdates += newNodes.size();
-
-                QueueSearches(blockUpdateContexts[i],
-                                searchContexts[hint.first.blockNumber][hint.first.dataIndex],
-                                hint.first,
-                                newNodes,
-                                maxNewSearches);
-
-            }
-            hintMap.clear();
-            i++;
-        }
-        for (size_t i = 0; auto& vector: searchContexts){
-            for (size_t j = 0; auto& context: vector){
-                for (auto& [blockNum, indecies]: context.searchesToDo){
-                    if (!context.blocksJoined[blockNum]){
-                        searchHints[blockNum].push_back({{i,j}, std::move(indecies)});
-                    }
-                }
-                context.searchesToDo.clear();
-                j++;
-            }
-            i++;
-        }
-    }
     std::chrono::time_point<std::chrono::steady_clock> runEnd2 = std::chrono::steady_clock::now();
     //std::cout << std::chrono::duration_cast<std::chrono::duration<float>>(runEnd2 - runStart2).count() << "s test set search " << std::endl;
     std::cout << std::chrono::duration_cast<std::chrono::duration<float>>(runEnd2 - runStart2).count() << std::endl;

@@ -171,6 +171,7 @@ void ParallelBlockJoins(std::span<BlockUpdateContext<DistType>> blocks, std::uni
         }
         
     }
+    pool.Latch();
 }
 
 template<typename DistType, typename COMExtent>
@@ -253,6 +254,8 @@ std::unique_ptr<BlockUpdateContext<DistType>[]> BuildGraph(std::vector<size_t>&&
     pool.Latch();
 
     ParallelBlockJoins(blockSpan, std::move(blocksFinalized), pool);
+
+    //pool.Latch();
     
     return std::move(blocks.blocks);
 }

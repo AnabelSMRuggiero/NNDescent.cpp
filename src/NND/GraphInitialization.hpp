@@ -223,7 +223,7 @@ void StitchBlocks(const Graph<size_t, DistType>& nearestNodeDistances,
                                       blockLHS.joinPropagation,
                                       blockRHS.queryContext,
                                       cachingFunctor);
-
+        /*
         cachingFunctor.metricFunctor.SetBlocks(blockNumbers.second, blockNumbers.first);
         ReverseBlockJoin(RHShint,
                          blockRHS.currentGraph,
@@ -231,7 +231,14 @@ void StitchBlocks(const Graph<size_t, DistType>& nearestNodeDistances,
                          blockLHS.queryContext,
                          cachingFunctor,
                          cachingFunctor.metricFunctor);
-
+        */
+        for(size_t i = 0; auto& vertex: cachingFunctor.reverseGraph){
+            NeighborOverDist<size_t, DistType> comparison(blockRHS.currentGraph[i][0].second);
+            vertex.erase(std::remove_if(vertex.begin(),
+                                        vertex.end(),
+                                        comparison),
+                        vertex.end());
+        }
         for(size_t i = 0; const auto& vertex: cachingFunctor.reverseGraph){
             if(vertex.size()>0){
                 retPair.second.push_back({i, vertex});

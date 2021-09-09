@@ -56,7 +56,7 @@ struct InitJoinGenerator{
                                             blockLHS.joinPropagation,
                                             blockRHS.queryContext,
                                             threadFunctors.cache);
-
+                /*
                 threadFunctors.dispatchFunctor.SetBlocks(blockRHS.queryContext.blockNumber, blockLHS.queryContext.blockNumber);
                 ReverseBlockJoin(RHShint,
                                 blockRHS.currentGraph,
@@ -64,6 +64,14 @@ struct InitJoinGenerator{
                                 blockLHS.queryContext,
                                 threadFunctors.cache,
                                 threadFunctors.dispatchFunctor);
+                */
+                for(size_t i = 0; auto& vertex: threadFunctors.cache.reverseGraph){
+                    NeighborOverDist<size_t, DistType> comparison(blockRHS.currentGraph[i][0].second);
+                    vertex.erase(std::remove_if(vertex.begin(),
+                                                vertex.end(),
+                                                comparison),
+                                vertex.end());
+                }
 
                 for(size_t i = 0; const auto& vertex: threadFunctors.cache.reverseGraph){
                     if(vertex.size()>0){

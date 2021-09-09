@@ -306,11 +306,11 @@ int UpdateBlocks(BlockUpdateContext<DistType>& blockLHS,
                  CachingFunctor<DistType>& cachingFunctor){
 
 
-    bool doRHSJoin = blockRHS.joinsToDo.find(blockLHS.queryContext.blockNumber) != blockRHS.joinsToDo.end();
+    //bool doRHSJoin = blockRHS.joinsToDo.find(blockLHS.queryContext.blockNumber) != blockRHS.joinsToDo.end();
 
     int graphUpdates(0);
 
-    if(doRHSJoin){
+    //if(doRHSJoin){
         blockLHS.blockJoinTracker[blockRHS.queryContext.blockNumber] = true;
         
         cachingFunctor.SetBlocks(blockLHS.queryContext.blockNumber, blockRHS.queryContext.blockNumber);
@@ -347,7 +347,8 @@ int UpdateBlocks(BlockUpdateContext<DistType>& blockLHS,
 
         }
         */
-        cachingFunctor.SetBlocks(blockRHS.queryContext.blockNumber, blockLHS.queryContext.blockNumber);
+        /*
+        cachingFunctor.metricFunctor.SetBlocks(blockRHS.queryContext.blockNumber, blockLHS.queryContext.blockNumber);
 
         ReverseBlockJoin(blockRHS.joinsToDo[blockLHS.queryContext.blockNumber],
                             blockRHS.currentGraph,
@@ -355,7 +356,14 @@ int UpdateBlocks(BlockUpdateContext<DistType>& blockLHS,
                             blockLHS.queryContext,
                             cachingFunctor,
                             cachingFunctor.metricFunctor);
-
+        */
+        for(size_t i = 0; auto& vertex: cachingFunctor.reverseGraph){
+            NeighborOverDist<size_t, DistType> comparison(blockRHS.currentGraph[i][0].second);
+            vertex.erase(std::remove_if(vertex.begin(),
+                                        vertex.end(),
+                                        comparison),
+                        vertex.end());
+        }
         NewJoinQueues<float>(cachingFunctor.reverseGraph, blockRHS.blockJoinTracker, blockLHS.currentGraph, blockRHS.newJoins);
 
         for (size_t i = 0; auto& result: cachingFunctor.reverseGraph){
@@ -367,7 +375,7 @@ int UpdateBlocks(BlockUpdateContext<DistType>& blockLHS,
         }
         
         return graphUpdates;
-        
+    /*
     } else {
         //This feels like som jank control flow
         blockLHS.blockJoinTracker[blockRHS.queryContext.blockNumber] = true;
@@ -389,7 +397,7 @@ int UpdateBlocks(BlockUpdateContext<DistType>& blockLHS,
         return graphUpdates;
 
     }
-    
+    */
 }
 
 }
