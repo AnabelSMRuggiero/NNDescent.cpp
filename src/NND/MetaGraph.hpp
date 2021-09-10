@@ -33,32 +33,32 @@ struct MetaPoint{
 
 
 template<std::ranges::random_access_range DataEntry, typename COMExtent>
-MetaPoint<COMExtent> CalculateCOM(const DataBlock<DataEntry>& dataBlock){
+AlignedArray<COMExtent> CalculateCOM(const DataBlock<DataEntry>& dataBlock){
 
-    MetaPoint<COMExtent> retPoint;
-    retPoint.weight = dataBlock.size();
-    retPoint.centerOfMass = AlignedArray<COMExtent>(std::ranges::size(dataBlock.blockData[0]));
+    
+    //retPoint.weight = dataBlock.size();
+    AlignedArray<COMExtent> retPoint(std::ranges::size(dataBlock[0]));
     //retPoint.distanceFunctor = distanceFunctor;
     
     for (size_t i = 0; i<dataBlock.blockData.size(); i += 1){
         for(size_t j = 0; j<dataBlock.blockData[i].size(); j += 1){
-            retPoint.centerOfMass[j] += static_cast<COMExtent>(dataBlock.blockData[i][j]);
+            retPoint[j] += static_cast<COMExtent>(dataBlock.blockData[i][j]);
         }
     }
 
     //divide the COM by the weight to put it in the center of the cluster
-    for(auto& extent: retPoint.centerOfMass) extent /= retPoint.weight;
+    for(auto& extent: retPoint) extent /= dataBlock.size();
 
     return retPoint;
 }
 
 template<typename FloatType, typename Metric>
-void BruteForceGraph(Graph<size_t, FloatType>& uninitGraph, size_t numNeighbors, const std::vector<MetaPoint<FloatType>>& dataVector, Metric distanceFunctor){
+void BruteForceGraph(Graph<size_t, FloatType>& uninitGraph, size_t numNeighbors, const std::vector<AlignedArray<FloatType>>& dataVector, Metric distanceFunctor){
     
     // I can make this branchless. Check to see if /O2 or /O3 can make this branchless (I really doubt it)
     for (size_t i = 0; i < dataVector.size(); i += 1){
         for (size_t j = i+1; j < dataVector.size(); j += 1){
-            FloatType distance = distanceFunctor(dataVector[i].centerOfMass, dataVector[j].centerOfMass);
+            FloatType distance = distanceFunctor(dataVector[i], dataVector[j]);
             if (uninitGraph[i].neighbors.size() < numNeighbors){
                 uninitGraph[i].neighbors.push_back(std::pair<size_t, FloatType>(j, distance));
                 if (uninitGraph[i].neighbors.size() == numNeighbors){
@@ -81,16 +81,24 @@ void BruteForceGraph(Graph<size_t, FloatType>& uninitGraph, size_t numNeighbors,
 
 template<typename COMExtent>
 struct MetaGraph{
-    std::vector<MetaPoint<COMExtent>> points;
+    //std::vector<MetaPoint<COMExtent>> points;
+    std::vector<int> weights;
+    std::vector<AlignedArray<COMExtent>> points;
     Graph<size_t, COMExtent> verticies;
 
     template<typename DataEntry, typename Metric>
-    MetaGraph(const std::vector<DataBlock<DataEntry>>& dataBlocks, const size_t numNeighbors, Metric metricFunctor): points(0), verticies(dataBlocks.size(), numNeighbors){
+    MetaGraph(const std::vector<DataBlock<DataEntry>>& dataBlocks, const size_t numNeighbors, Metric metricFunctor): weights(0), points(0), verticies(dataBlocks.size(), numNeighbors){
         //SinglePointFunctor<COMExtent> functor(DataComDistance<DataEntry, COMExtent, MetricPair>(*this, dataBlocks, metricFunctor));
+        weights.reserve(dataBlocks.size());
+        points.reserve(dataBlocks.size());
         for (const auto& dataBlock: dataBlocks){
+            weights.push_back(dataBlock.size());
             points.push_back(CalculateCOM<DataEntry, COMExtent>(dataBlock));
         }
         BruteForceGraph<COMExtent, Metric>(verticies, numNeighbors, points, metricFunctor);
+        for(auto& vertex: verticies){
+            std::sort(vertex.begin(), vertex.end(), NeighborDistanceComparison<size_t, COMExtent>);
+        }
     }
     /*
     DataComDistance(const ComView& centerOfMass, const std::vector<DataBlock<DataEntry>>& blocks): centerOfMass(centerOfMass), blocks(blocks), functor(){};

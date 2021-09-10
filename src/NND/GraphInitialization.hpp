@@ -233,7 +233,7 @@ void StitchBlocks(const Graph<size_t, DistType>& nearestNodeDistances,
                          cachingFunctor.metricFunctor);
         */
         for(size_t i = 0; auto& vertex: cachingFunctor.reverseGraph){
-            NeighborOverDist<size_t, DistType> comparison(blockRHS.currentGraph[i][0].second);
+            NeighborOverDist<DistType> comparison(blockRHS.currentGraph[i][0].second);
             vertex.erase(std::remove_if(vertex.begin(),
                                         vertex.end(),
                                         comparison),

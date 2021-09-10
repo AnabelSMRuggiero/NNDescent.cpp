@@ -154,12 +154,14 @@ void ReverseBlockJoin(const JoinHints<size_t>& startJoins,
         
         nodesJoined[hint.first] = true;
         targetBlock.Query(vertex, hint.first, queryFunctor, cache.nodesJoined[hint.first]);
+        EraseRemove(vertex, currentGraphState[hint.first][0].second);
+        /*
         NeighborOverDist<size_t, DistType> comparison(currentGraphState[hint.first][0].second);
         vertex.erase(std::remove_if(vertex.begin(),
                                     vertex.end(),
                                     comparison),
                      vertex.end());
-
+        */
         if (vertex.size()!=0) successfulJoins.push_back(hint.first);
         
         /*
@@ -192,7 +194,7 @@ void ReverseBlockJoin(const JoinHints<size_t>& startJoins,
 
             targetBlock.Query(cache.reverseGraph[joinee], joinee, queryFunctor);
             nodesJoined[joinee] = true;
-            NeighborOverDist<size_t, DistType> comparison(currentGraphState[joinee][0].second);
+            NeighborOverDist<DistType> comparison(currentGraphState[joinee][0].second);
             cache.reverseGraph[joinee].erase(std::remove_if(cache.reverseGraph[joinee].begin(), cache.reverseGraph[joinee].end(), comparison), cache.reverseGraph[joinee].end());
             if (cache.reverseGraph[joinee].size()!=0) successfulJoins.push_back(joinee);
         }
@@ -276,6 +278,11 @@ struct BlockUpdateContext {
 
     void SetNextJoins(){
         joinsToDo = std::move(newJoins);
+        auto removeExtraneous = [&](const auto& item){
+            const auto& [key, value] = item;
+            return this->blockJoinTracker[key];
+        };
+        std::erase_if(joinsToDo, removeExtraneous);
         newJoins = JoinMap<size_t, size_t>();
     }
 };
@@ -358,7 +365,7 @@ int UpdateBlocks(BlockUpdateContext<DistType>& blockLHS,
                             cachingFunctor.metricFunctor);
         */
         for(size_t i = 0; auto& vertex: cachingFunctor.reverseGraph){
-            NeighborOverDist<size_t, DistType> comparison(blockRHS.currentGraph[i][0].second);
+            NeighborOverDist<DistType> comparison(blockRHS.currentGraph[i][0].second);
             vertex.erase(std::remove_if(vertex.begin(),
                                         vertex.end(),
                                         comparison),

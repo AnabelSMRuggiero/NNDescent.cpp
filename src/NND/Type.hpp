@@ -5,7 +5,7 @@
 #include "../Utilities/Type.hpp"
 
 namespace nnd{
-
+constexpr static bool debugNND = false;
 //Maybe a block specific one that reads i.blockNumber from a BlockIndecies
 struct NodeTracker{
 
@@ -39,9 +39,9 @@ struct NodeTracker{
 
 };
 
-    using SearchQueue = std::vector<std::vector<std::pair<BlockIndecies, std::vector<size_t>>>>;
 
-    // Two member struct with the following properties. hash({x,y}) == hash({y,x}) and {x,y} == {y,x}
+//using SearchQueue = std::vector<std::vector<std::pair<BlockIndecies, size_t>>>;
+// Two member struct with the following properties. hash({x,y}) == hash({y,x}) and {x,y} == {y,x}
 // This way a set can be used to queue up an operation between two blocks without worrying which is first or second.
 template<typename IndexType>
 struct ComparisonKey{

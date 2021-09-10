@@ -12,7 +12,11 @@ https://github.com/AnabelSMRuggiero/NNDescent.cpp
 #define NND_SEARCH_HPP
 
 #include <vector>
-
+#include <algorithm>
+#include <execution>
+#include <unordered_map>
+#include <unordered_set>
+#include <optional>
 
 
 #include "GraphStructures.hpp"
@@ -24,16 +28,45 @@ https://github.com/AnabelSMRuggiero/NNDescent.cpp
 
 namespace nnd{
 
+using SearchQueue = std::vector<std::vector<std::pair<BlockIndecies, std::vector<size_t>>>>;
+using SearchSet = std::unordered_map<size_t, std::vector<size_t>>;
+
 template<typename DistType>
 struct SearchContext{
 
     GraphVertex<BlockIndecies, DistType> currentNeighbors;
     NodeTracker blocksJoined;
     size_t dataIndex;
-    std::unordered_map<size_t, std::vector<size_t>> searchesToDo;
+    //std::unordered_map<size_t, std::vector<size_t>> searchesToDo;
+    std::unordered_map<BlockIndecies, std::vector<BlockIndecies>> comparisonResults;
+    bool done;
+    //std::unordered_map<size_t, size_t> targetBlocks;
     
     SearchContext(const size_t numNeighbors, const size_t numBlocks, const size_t dataIndex):
-        currentNeighbors(numNeighbors), blocksJoined(numBlocks), dataIndex(dataIndex){};
+        currentNeighbors(numNeighbors), blocksJoined(numBlocks), dataIndex(dataIndex), done(false){};
+
+    std::optional<SearchSet> NextSearches(const size_t maxQueueDepth){
+        if(done) return std::nullopt;
+        currentNeighbors.UnPrep();
+        
+        for (size_t i = 0; auto& neighbor: currentNeighbors){
+            if (comparisonResults.contains(neighbor.first)){
+                SearchSet searchesToDo;
+                for (auto& comparison: comparisonResults[neighbor.first]){
+                   if(!blocksJoined[comparison.blockNumber])searchesToDo[comparison.blockNumber].push_back(comparison.dataIndex);
+                }
+                if (searchesToDo.size() == 0) continue;
+                comparisonResults.erase(neighbor.first);
+                currentNeighbors.JoinPrep();
+                return searchesToDo;
+            }
+            if(i == maxQueueDepth) break;
+            i++;
+        }
+        currentNeighbors.JoinPrep();
+        done = true;
+        return std::nullopt;
+    }
 
 };
 
@@ -65,9 +98,9 @@ GraphVertex<size_t, DistType> BlockwiseSearch(SearchContext<DistType>& searching
     searchingPoint.blocksJoined[targetBlock.blockNumber] = true;
     queryFunctor.SetBlock(targetBlock.blockNumber);
     targetBlock.Query(queryHint, searchingPoint.dataIndex, queryFunctor);
-    size_t resultsAdded = ConsumeVertex(searchingPoint.currentNeighbors, queryHint, targetBlock.blockNumber);
+    //size_t resultsAdded = ConsumeVertex(searchingPoint.currentNeighbors, queryHint, targetBlock.blockNumber);
     
-    queryHint.resize(resultsAdded);
+    //queryHint.resize(resultsAdded);
     
     
     return queryHint;
@@ -97,7 +130,7 @@ unsigned int BlockwiseSearch(SearchContext<DistType>& searchingPoint,
 }
 */
 
-
+/*
 template<typename DistType>
 void QueueSearches(const BlockUpdateContext<DistType>& graphFragment,
                    SearchContext<DistType>& searchingPoint,
@@ -120,6 +153,22 @@ void QueueSearches(const BlockUpdateContext<DistType>& graphFragment,
         if (hintsAdded >= maxNewSearches) break;
     }
 }
+*/
+template<typename DistType>
+void AddComparisons(const Graph<BlockIndecies, DistType>& graphFragment,
+                    SearchContext<DistType>& context,
+                    std::vector<BlockIndecies>& addedIndecies){
+    for (const auto& index: addedIndecies){
+        const GraphVertex<BlockIndecies, DistType>& vertex = graphFragment[index];
+        for (const auto& neighbor: vertex){
+            if(!context.blocksJoined[neighbor.first.blockNumber]){
+                context.comparisonResults[index].push_back(neighbor.first);
+            }
+        }
+
+    }
+
+}
 
 template<typename DistType>
 GraphVertex<BlockIndecies, DistType> InitialSearch(SinglePointFunctor<DistType>& distFunctor,
@@ -134,13 +183,15 @@ GraphVertex<BlockIndecies, DistType> InitialSearch(SinglePointFunctor<DistType>&
     // This shouldn't be needed?
 
 }
-
-//template<typename DistType>
-std::unordered_map<size_t, std::vector<size_t>> InitialQueue(SearchContext<float>& searchPoint, const Graph<BlockIndecies, float>& graphFragment){
+/*
+template<typename DistType>
+std::unordered_map<size_t, std::vector<size_t>> InitialQueue(const SearchContext<DistType>& searchPoint,
+                                                             const GraphVertex<BlockIndecies, DistType>& vertex,
+                                                             const Graph<BlockIndecies, DistType>& graphFragment){
     
     std::unordered_map<size_t, std::vector<size_t>> searchesToDo;
 
-    for (const auto& result: searchPoint.currentNeighbors){
+    for (const auto& result: vertex){
         for (const auto& resultNeighbor: graphFragment[result.first]){
             if (!searchPoint.blocksJoined[resultNeighbor.first.blockNumber]) {
                 std::vector<size_t>& queue = searchesToDo[resultNeighbor.first.blockNumber];
@@ -152,33 +203,177 @@ std::unordered_map<size_t, std::vector<size_t>> InitialQueue(SearchContext<float
 
     return searchesToDo;
 }
+*/
+template<typename DistType>
+std::unordered_map<BlockIndecies, std::vector<BlockIndecies>> InitialComparisons(const SearchContext<DistType>& searchPoint,
+                                                             const GraphVertex<BlockIndecies, DistType>& vertex,
+                                                             const Graph<BlockIndecies, DistType>& graphFragment){
+    
+    std::unordered_map<BlockIndecies, std::vector<BlockIndecies>> comparisons;
+
+    for (const auto& result: vertex){
+        const GraphVertex<BlockIndecies, DistType>& neighborNeighbors = graphFragment[result.first];
+        std::vector<BlockIndecies> searchTargets;
+        searchTargets.reserve(neighborNeighbors.size());
+        for (const auto& neighbor: neighborNeighbors){
+            if (!searchPoint.blocksJoined[neighbor.first.blockNumber]) searchTargets.push_back(neighbor.first);
+        }
+        comparisons[result.first] = std::move(searchTargets);
+    }
+
+    return comparisons;
+}
+
+template<typename DistType>
+void UpdateInitialQueue(std::unordered_map<size_t, std::vector<size_t>>& searchesToDo,
+                        const SearchContext<DistType>& searchPoint,
+                        const GraphVertex<BlockIndecies, DistType>& vertex,
+                        const Graph<BlockIndecies, DistType>& graphFragment){
+    
+    //std::unordered_map<size_t, std::vector<size_t>> searchesToDo;
+
+    for (const auto& result: vertex){
+        for (const auto& resultNeighbor: graphFragment[result.first]){
+            if (!searchPoint.blocksJoined[resultNeighbor.first.blockNumber]) {
+                std::vector<size_t>& queue = searchesToDo[resultNeighbor.first.blockNumber];
+                auto result = std::find(queue.begin(), queue.end(), resultNeighbor.first.dataIndex);
+                if(result == queue.end()) queue.push_back(resultNeighbor.first.dataIndex);
+            }
+        }
+    }
+}
+
+template<typename DistType>
+void UpdateInitialComparisons(std::unordered_map<BlockIndecies, std::vector<BlockIndecies>>& comparisons,
+                        const SearchContext<DistType>& searchPoint,
+                        const GraphVertex<BlockIndecies, DistType>& vertex,
+                        const Graph<BlockIndecies, DistType>& graphFragment){
+    
+    //std::unordered_map<size_t, std::vector<size_t>> searchesToDo;
+
+    for (const auto& result: vertex){
+        const GraphVertex<BlockIndecies, DistType>& neighborNeighbors = graphFragment[result.first];
+        std::vector<BlockIndecies> searchTargets;
+        searchTargets.reserve(neighborNeighbors.size());
+        for (const auto& neighbor: neighborNeighbors){
+            if (!searchPoint.blocksJoined[neighbor.first.blockNumber]) searchTargets.push_back(neighbor.first);
+        }
+        comparisons[result.first] = std::move(searchTargets);
+    }
+
+}
+
 //searchContexts, searchFunctor,                 blockUpdateContexts,                
 //std::vector<std::vector<SearchContext<float>>>  SinglePointFunctor<DistType>&, std::span<const BlockUpdateContexts>
+
+std::vector<std::vector<size_t>> BlocksToSearch(std::vector<std::vector<SearchContext<float>>>& searchContexts,
+                                                const MetaGraph<float>& metaGraph,
+                                                const size_t numInitSearches){
+    std::vector<std::vector<size_t>> blocksToSearch;
+    blocksToSearch.reserve(metaGraph.verticies.size());
+    for (const auto& vertex: metaGraph.verticies){
+        blocksToSearch.push_back({});
+        for (size_t i = 0; i<numInitSearches; i+=1){
+            blocksToSearch.back().push_back(vertex[i].first);
+        }
+    }
+
+    return blocksToSearch;
+}
+
+template<typename IndexType, typename DistType>
+std::pair<std::vector<IndexType>, std::vector<IndexType>> AddNeighbors(GraphVertex<IndexType, DistType>& vertexToUpdate,
+                                                         GraphVertex<IndexType, DistType>& updates){
+    EraseRemove(updates, vertexToUpdate[0].second);
+    std::unordered_set<IndexType> addedNeighbors;
+    std::unordered_set<IndexType> removedNeighbors;
+    for (auto& neighbor: updates){
+        addedNeighbors.insert(neighbor.first);
+        removedNeighbors.insert(vertexToUpdate.PushNeighbor(neighbor, returnRemovedTag).first);
+    }
+    std::vector<IndexType> flattenedAdds;
+    for(auto& neighbor : addedNeighbors){
+        if (removedNeighbors.contains(neighbor)) removedNeighbors.erase(neighbor);
+        else flattenedAdds.push_back(neighbor);
+    }
+    std::vector<IndexType> flattenedRemoves;
+    for (auto& neighbor : removedNeighbors){
+        flattenedRemoves.push_back(neighbor);
+    }
+
+    return {std::move(flattenedAdds), std::move(flattenedRemoves)};
+}
+
+
 template<typename DistType>
 SearchQueue FirstBlockSearch(std::vector<std::vector<SearchContext<DistType>>>& searchContexts,
+                             const std::vector<std::vector<size_t>>& blocksToSearch,
                              SinglePointFunctor<DistType>& searchFunctor,
-                             std::span<BlockUpdateContext<DistType>> blockUpdateContexts){
+                             std::span<BlockUpdateContext<DistType>> blockUpdateContexts,
+                             const size_t maxNewSearches){
 
     SearchQueue searchHints(searchContexts.size());
     
-
+    size_t extraNeighborsAdded(0);
 
     for (size_t i = 0; auto& testBlock: searchContexts){
             
             
         for (size_t j = 0; auto& context: testBlock){
 
-
+            std::vector<GraphVertex<BlockIndecies, DistType>> potentialNeighbors;
             context.blocksJoined[i] = true;
-            context.currentNeighbors = InitialSearch(searchFunctor, blockUpdateContexts[i].queryContext, context.dataIndex);
+            potentialNeighbors.push_back(InitialSearch(searchFunctor, blockUpdateContexts[i].queryContext, context.dataIndex));
             
-            
-            std::unordered_map<size_t, std::vector<size_t>> searchesToDo = InitialQueue(context, blockUpdateContexts[i].currentGraph);
-
-            for (auto& [blockNum, dataIndecies]: searchesToDo){
-                searchHints[blockNum].push_back({{i,j}, std::move(dataIndecies)});
+            for(auto& blockNum: blocksToSearch[i]){
+                context.blocksJoined[blockNum] = true;
+                potentialNeighbors.push_back(InitialSearch(searchFunctor, blockUpdateContexts[blockNum].queryContext, context.dataIndex));
+                EraseRemove(potentialNeighbors.back(), potentialNeighbors.front()[0].second);
+                extraNeighborsAdded += potentialNeighbors.back().size();
+                /*
+                extraNeighborsAdded += ConsumeVertex(
+                    context.currentNeighbors,
+                    InitialSearch(searchFunctor, blockUpdateContexts[blockNum].queryContext, context.dataIndex)
+                );
+                */
             }
-        
+            /*
+            vertex.erase(std::remove_if(vertex.begin(),
+                                    vertex.end(),
+                                    comparison),
+                     vertex.end());
+                     */
+            std::unordered_map<BlockIndecies, std::vector<BlockIndecies>> comparisons = InitialComparisons(context, potentialNeighbors.front(), blockUpdateContexts[i].currentGraph);
+            for (size_t k = 1; k<potentialNeighbors.size(); k+=1){
+                UpdateInitialComparisons(comparisons, context, potentialNeighbors[k], blockUpdateContexts[blocksToSearch[i][k-1]].currentGraph);
+            }
+            //std::vector<std::pair<BlockIndecies, DistType>> removedValues;
+            for (size_t k = 1; k<potentialNeighbors.size(); k+=1){
+                for(const auto& neighbor: potentialNeighbors[k]){
+                    comparisons.erase(potentialNeighbors.front().PushNeighbor(neighbor, returnRemovedTag).first);
+                }
+            }
+            context.currentNeighbors = std::move(potentialNeighbors.front());
+            context.comparisonResults = std::move(comparisons);
+
+            std::optional<SearchSet> searches = context.NextSearches(maxNewSearches);
+            /*
+            for (const auto& [ignore, comparison]: context.comparisonResults){
+                for (const auto& index: comparison){
+                    context.targetBlocks[index.blockNumber] += 1;
+                }
+            }
+            */
+            //auto min = std::min_element(std::execution::unseq, context.currentNeighbors.begin(), context.currentNeighbors.end(), NeighborDistanceComparison<BlockIndecies, DistType>);
+            /*
+            
+            */
+            if(searches){
+                for (auto& [blockNum, dataIndecies]: *searches){
+                    searchHints[blockNum].push_back({{i,j}, std::move(dataIndecies)});
+                }
+            }
+            
             
             j++;
         }
@@ -193,38 +388,61 @@ void SearchLoop(SinglePointFunctor<float>& searchFunctor,
                 SearchQueue& searchHints,
                 std::vector<std::vector<SearchContext<float>>>& searchContexts,
                 std::span<BlockUpdateContext<float>> blockUpdateContexts,
-                const size_t maxNewSearches){
-    size_t searchUpdates = 1;
-    while(searchUpdates){
-        searchUpdates = 0;
+                const size_t maxNewSearches,
+                const size_t searchesToDo){
+    size_t doneSearches = 0;
+    while(doneSearches<searchesToDo){
+        doneSearches = 0;
         for (size_t i = 0; auto& hintMap: searchHints){
             for (size_t j = 0; const auto& hint: hintMap){
                 searchFunctor.SetBlock(i);
-
-                GraphVertex<size_t, float> newNodes = BlockwiseSearch(searchContexts[hint.first.blockNumber][hint.first.dataIndex],
-                                                                                blockUpdateContexts[i].queryContext,
-                                                                                hint.second,
-                                                                                searchFunctor);
+                SearchContext<float>& context = searchContexts[hint.first.blockNumber][hint.first.dataIndex];
+                GraphVertex<size_t, float> newNodes = BlockwiseSearch(context,
+                                                                      blockUpdateContexts[i].queryContext,
+                                                                      hint.second,
+                                                                      searchFunctor);
                 
-                searchUpdates += newNodes.size();
+                //EraseRemove(newNodes, context.currentNeighbors[0].second);
+                GraphVertex<BlockIndecies, float> convertex = ToBlockIndecies(newNodes, i);
+                auto [added, removed] = AddNeighbors(context.currentNeighbors, convertex);
+                //searchUpdates += newNodes.size();
+                for (auto& remove: removed){
+                    context.comparisonResults.erase(remove);
+                }
 
+                AddComparisons(blockUpdateContexts[i].currentGraph, context, added);
+                /*
                 QueueSearches(blockUpdateContexts[i],
                                 searchContexts[hint.first.blockNumber][hint.first.dataIndex],
                                 hint.first,
                                 newNodes,
                                 maxNewSearches);
-
+                */
+                
             }
             hintMap.clear();
             i++;
         }
 
+        for (size_t i = 0; auto& vector: searchContexts){
+            for (size_t j = 0; auto& context: vector){
+                std::optional<SearchSet> searches = context.NextSearches(maxNewSearches);
+                if(searches){
+                    for (auto& [blockNum, dataIndecies]: *searches){
+                        searchHints[blockNum].push_back({{i,j}, std::move(dataIndecies)});
+                    }
+                } else doneSearches++;
+                j++;
+            }
+            i++;
+        }
 
+        /*
         for (size_t i = 0; auto& vector: searchContexts){
             for (size_t j = 0; auto& context: vector){
                 for (auto& [blockNum, indecies]: context.searchesToDo){
                     if (!context.blocksJoined[blockNum]){
-                        searchHints[blockNum].push_back({{i,j}, std::move(indecies)});
+                        //searchHints[blockNum].push_back({{i,j}, std::move(indecies)});
                     }
                 }
                 context.searchesToDo.clear();
@@ -232,6 +450,7 @@ void SearchLoop(SinglePointFunctor<float>& searchFunctor,
             }
             i++;
         }
+        */
     }
 }
 

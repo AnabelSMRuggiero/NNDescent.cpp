@@ -51,6 +51,7 @@ struct GraphUpdateGenerator{
                         ConsumeVertex(blockPtr->currentGraph[vertex.first], vertex.second, joinUpdates.first);
                     }
                 }
+                if constexpr (debugNND) VerifySubGraphState(blockPtr->currentGraph, blockPtr->queryContext.blockNumber);
                 resultsQueue.Put({blockPtr->queryContext.blockNumber,
                                   InitializeComparisonQueues<size_t, size_t, DistType>(blockPtr->currentGraph, blockPtr->queryContext.blockNumber)});
                 readyBlocks[blockPtr->queryContext.blockNumber] = true;

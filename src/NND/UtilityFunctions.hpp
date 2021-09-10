@@ -15,12 +15,12 @@ https://github.com/AnabelSMRuggiero/NNDescent.cpp
 namespace nnd{
 
 template<TriviallyCopyable IndexType, typename FloatType>
-bool const NeighborDistanceComparison(const std::pair<IndexType, FloatType>& neighborA, const std::pair<IndexType, FloatType>& neighborB){
+bool constexpr NeighborDistanceComparison(const std::pair<IndexType, FloatType>& neighborA, const std::pair<IndexType, FloatType>& neighborB){
     return neighborA.second < neighborB.second;
 };
 
 template<TriviallyCopyable IndexType, typename FloatType>
-bool const NeighborIdentityCheck(const std::pair<IndexType, FloatType>& neighborA, const std::pair<IndexType, FloatType>& neighborB){
+bool constexpr NeighborIdentityCheck(const std::pair<IndexType, FloatType>& neighborA, const std::pair<IndexType, FloatType>& neighborB){
     return neighborA.first == neighborB.first;
 };
 
@@ -51,13 +51,14 @@ struct NeighborUnderDist{
 
 };
 
-template<TriviallyCopyable IndexType, typename DistType>
+template<typename DistType>
 struct NeighborOverDist{
     
-    IndexType threshold;
+    DistType threshold;
 
     NeighborOverDist(DistType threshold) : threshold(threshold){};
 
+    template<TriviallyCopyable IndexType>
     bool operator()(const std::pair<IndexType, DistType> currentValue){
         return currentValue.second >= threshold;
     }

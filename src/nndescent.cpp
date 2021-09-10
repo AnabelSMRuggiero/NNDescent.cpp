@@ -182,11 +182,18 @@ int main(int argc, char *argv[]){
     size_t queryDepth = 5;
 
     SearchParameters searchParams{15, 5, 10};
-    size_t numberSearchNeighbors = 15;
+    size_t numberSearchNeighbors = 10;
     size_t searchQueryDepth = 5;
-    size_t maxNewSearches = 10;
+    size_t maxNewSearches = 5;
 
     SplittingHeurisitcs splitParams= {16, 205, 123, 287};
+
+    size_t additionalInitSearches = 0;
+
+    //maxNearestNodes <= numCOMNeighbors
+    //additionalInitSearches <= numCOMNeighbors
+    //searchDepths <= numBlockGraphsNeighbors
+    // something about splitParams
 
     bool parallelIndexBuild = true;
 
@@ -433,11 +440,11 @@ int main(int argc, char *argv[]){
     };
     
     
-
+    auto blocksToSearch = BlocksToSearch(searchContexts, metaGraph, additionalInitSearches);
     
-    SearchQueue searchHints = FirstBlockSearch(searchContexts, searchFunctor, blockUpdateContexts);
+    SearchQueue searchHints = FirstBlockSearch(searchContexts, blocksToSearch, searchFunctor, blockUpdateContexts, maxNewSearches);
     
-    SearchLoop(searchFunctor, searchHints, searchContexts, blockUpdateContexts, maxNewSearches);
+    SearchLoop(searchFunctor, searchHints, searchContexts, blockUpdateContexts, maxNewSearches, mnistFashionTest.size());
 
 
     std::chrono::time_point<std::chrono::steady_clock> runEnd2 = std::chrono::steady_clock::now();

@@ -112,6 +112,8 @@ struct DataBlock{
         }
     }
 
+    //DataBlock()
+
     DataEntry& operator[](size_t i){
         return blockData[i];
     }

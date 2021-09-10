@@ -119,15 +119,21 @@ void ParallelBlockJoins(std::span<BlockUpdateContext<DistType>> blocks, std::uni
             lhsPtr->joinsToDo.erase(rhsPtr->queryContext.blockNumber);
             size_t doneInc{0};
             if(lhsPtr->joinsToDo.size() == 0){
-                if(lhsPtr->newJoins.size() == 0) doneInc++;
-                else lhsPtr->SetNextJoins();
+                lhsPtr->SetNextJoins();
+                if(lhsPtr->joinsToDo.size() == 0) doneInc++;
+                //if(lhsPtr->newJoins.size() == 0) doneInc++;
+                //else lhsPtr->SetNextJoins();
             }
             if(rhsPtr->joinsToDo.erase(lhsPtr->queryContext.blockNumber) == 1){
                 if(rhsPtr->joinsToDo.size() == 0){
-                    if(rhsPtr->newJoins.size() == 0) doneInc++;
-                    else rhsPtr->SetNextJoins();
+                    rhsPtr->SetNextJoins();
+                    if(rhsPtr->joinsToDo.size() == 0) doneInc++;
+                    //if(rhsPtr->newJoins.size() == 0) doneInc++;
+                    //else rhsPtr->SetNextJoins();
                 }   
-            } 
+            }
+            if constexpr (debugNND) VerifySubGraphState(lhsPtr->currentGraph, lhsPtr->queryContext.blockNumber);
+            if constexpr (debugNND) VerifySubGraphState(rhsPtr->currentGraph, rhsPtr->queryContext.blockNumber);
             blockStates[lhsPtr->queryContext.blockNumber] = true;
             blockStates[rhsPtr->queryContext.blockNumber] = true;
             if(doneInc>0) doneBlocks += doneInc;

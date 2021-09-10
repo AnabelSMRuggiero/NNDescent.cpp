@@ -167,7 +167,7 @@ struct DataComDistance{
                         centersOfMass(centersOfMass), blocks(blocks), functor(functor){};
 
     float operator()(const size_t metagraphIndex, const size_t dataIndex) const{
-        return functor(centersOfMass.points[metagraphIndex].centerOfMass, (*targetBlock)[dataIndex]);
+        return functor(centersOfMass.points[metagraphIndex], (*targetBlock)[dataIndex]);
     };
     
     std::vector<float> operator()(const size_t metagraphIndex, const std::vector<size_t>& rhsIndecies) const{
@@ -175,7 +175,7 @@ struct DataComDistance{
         for(const auto& index: rhsIndecies){
             rhsData.push_back((*targetBlock)[index]);
         }
-        return functor(centersOfMass.points[metagraphIndex].centerOfMass, rhsData);
+        return functor(centersOfMass.points[metagraphIndex], rhsData);
     };
 
     void SetBlock(size_t targetBlockNum){
