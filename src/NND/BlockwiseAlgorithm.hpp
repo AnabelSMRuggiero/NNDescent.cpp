@@ -192,10 +192,11 @@ void ReverseBlockJoin(const JoinHints<size_t>& startJoins,
         std::vector<std::pair<size_t, GraphVertex<size_t, DistType>>> joinResults;
         for (auto& joinee: joinQueue){
 
-            targetBlock.Query(cache.reverseGraph[joinee], joinee, queryFunctor);
+            targetBlock.Query(cache.reverseGraph[joinee], joinee, queryFunctor, cache.nodesJoined[joinee]);
             nodesJoined[joinee] = true;
-            NeighborOverDist<DistType> comparison(currentGraphState[joinee][0].second);
-            cache.reverseGraph[joinee].erase(std::remove_if(cache.reverseGraph[joinee].begin(), cache.reverseGraph[joinee].end(), comparison), cache.reverseGraph[joinee].end());
+            EraseRemove(cache.reverseGraph[joinee], currentGraphState[joinee][0].second);
+            //NeighborOverDist<DistType> comparison(currentGraphState[joinee][0].second);
+            //cache.reverseGraph[joinee].erase(std::remove_if(cache.reverseGraph[joinee].begin(), cache.reverseGraph[joinee].end(), comparison), cache.reverseGraph[joinee].end());
             if (cache.reverseGraph[joinee].size()!=0) successfulJoins.push_back(joinee);
         }
         joinQueue.clear();
@@ -354,7 +355,7 @@ int UpdateBlocks(BlockUpdateContext<DistType>& blockLHS,
 
         }
         */
-        /*
+        
         cachingFunctor.metricFunctor.SetBlocks(blockRHS.queryContext.blockNumber, blockLHS.queryContext.blockNumber);
 
         ReverseBlockJoin(blockRHS.joinsToDo[blockLHS.queryContext.blockNumber],
@@ -363,7 +364,7 @@ int UpdateBlocks(BlockUpdateContext<DistType>& blockLHS,
                             blockLHS.queryContext,
                             cachingFunctor,
                             cachingFunctor.metricFunctor);
-        */
+        
         for(size_t i = 0; auto& vertex: cachingFunctor.reverseGraph){
             NeighborOverDist<DistType> comparison(blockRHS.currentGraph[i][0].second);
             vertex.erase(std::remove_if(vertex.begin(),
