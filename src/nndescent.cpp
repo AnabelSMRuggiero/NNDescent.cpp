@@ -117,6 +117,53 @@ std::vector<BlockUpdateContext<float>> BuildGraph(const std::vector<DataBlock<Da
     return blockUpdateContexts;
 }
 
+template<typename DistType>
+std::vector<BlockIndecies> VertexToIndex(const GraphVertex<BlockIndecies, DistType>& vertex, const size_t blockNumber){
+    std::vector<std::pair<BlockIndecies, DistType>> neighborsOOB(vertex.size());
+
+    auto lastCopied = std::remove_copy_if(vertex.begin(),
+                                            vertex.end(),
+                                            neighborsOOB.begin(),
+                                            [blockNumber] (const std::pair<BlockIndecies, DistType>& neighbor) {
+                                                return neighbor.first.blockNumber == blockNumber;
+    });
+
+    neighborsOOB.erase(lastCopied, neighborsOOB.end());
+
+    std::vector<BlockIndecies> result(neighborsOOB.size());
+    std::transform(neighborsOOB.begin(), neighborsOOB.end(), result.begin(), [](const std::pair<BlockIndecies, DistType> neighbor){return neighbor.first;});
+    
+    return result;
+}
+
+using IndexBlock = std::vector<std::vector<BlockIndecies>>;
+
+template<typename DistType>
+std::vector<IndexBlock> IndexFinalization(std::span<BlockUpdateContext<DistType>> blocks){
+
+    std::vector<std::vector<std::vector<BlockIndecies>>> index(blocks.size());
+    //index.reserve(blocks.size());
+    
+    //maybe I should write my own "multi_transform"
+    std::transform(blocks.begin(), blocks.end(), index.begin(), [](const auto& block){    
+
+        std::vector<std::vector<BlockIndecies>> graphFragment(block.currentGraph.size());
+        std::transform(block.currentGraph.begin(), block.currentGraph.end(), graphFragment.begin(),
+            [blockNumber = block.queryContext.blockNumber](const auto& vertex){
+                return VertexToIndex(vertex, blockNumber);
+            });
+        return graphFragment;
+    });
+
+    return index;
+}
+        //
+
+
+    //}
+
+
+
 
 
 
@@ -133,23 +180,25 @@ enum class Options{
     searchNeighbors,
     searchDepth,
     maxSearchesQueued,
+    additionalInitSearches,
     parallelIndexBuild
 };
 
 
 using std::operator""s;
 static const std::unordered_map<std::string, Options> optionNumber = {
-    {"-blockGraphNeighbors"s,   Options::blockGraphNeighbors},
-    {"-COMNeighbors"s,          Options::COMNeighbors},
-    {"-nearestNodeNeighbors"s,  Options::nearestNodeNeighbors},
-    {"-queryDepth"s,            Options::queryDepth},
-    {"-targetSplitSize"s,       Options::targetSplitSize},
-    {"-minSplitSize"s,          Options::minSplitSize},
-    {"-maxSplitSize"s,          Options::maxSplitSize},
-    {"-searchNeighbors"s,       Options::searchNeighbors},
-    {"-searchDepth"s,           Options::searchDepth},
-    {"-maxSearchesQueued"s,     Options::maxSearchesQueued},
-    {"-parallelIndexBuild"s,    Options::parallelIndexBuild}
+    {"-blockGraphNeighbors"s,    Options::blockGraphNeighbors},
+    {"-COMNeighbors"s,           Options::COMNeighbors},
+    {"-nearestNodeNeighbors"s,   Options::nearestNodeNeighbors},
+    {"-queryDepth"s,             Options::queryDepth},
+    {"-targetSplitSize"s,        Options::targetSplitSize},
+    {"-minSplitSize"s,           Options::minSplitSize},
+    {"-maxSplitSize"s,           Options::maxSplitSize},
+    {"-searchNeighbors"s,        Options::searchNeighbors},
+    {"-searchDepth"s,            Options::searchDepth},
+    {"-maxSearchesQueued"s,      Options::maxSearchesQueued},
+    {"-additionalInitSearches"s, Options::additionalInitSearches},
+    {"-parallelIndexBuild"s,     Options::parallelIndexBuild}
 };
 
 
@@ -188,7 +237,7 @@ int main(int argc, char *argv[]){
 
     SplittingHeurisitcs splitParams= {16, 205, 123, 287};
 
-    size_t additionalInitSearches = 0;
+    size_t additionalInitSearches = 3;
 
     //maxNearestNodes <= numCOMNeighbors
     //additionalInitSearches <= numCOMNeighbors
@@ -258,6 +307,10 @@ int main(int argc, char *argv[]){
 
             case Options::maxSearchesQueued:
                 searchParams.maxSearchesQueued = maxNewSearches = stoul(std::string(option.substr(nameEnd+1)));
+                break;
+
+            case Options::additionalInitSearches:
+                additionalInitSearches = stoul(std::string(option.substr(nameEnd+1)));
                 break;
 
             case Options::parallelIndexBuild:
@@ -355,8 +408,15 @@ int main(int argc, char *argv[]){
     
     
     std::chrono::time_point<std::chrono::steady_clock> runEnd = std::chrono::steady_clock::now();
-    //std::cout << std::chrono::duration_cast<std::chrono::duration<float>>(runEnd - runStart).count() << "s total for index building " << std::endl;
-    std::cout << std::chrono::duration_cast<std::chrono::duration<float>>(runEnd - runStart).count() << std::endl;
+    std::cout << std::chrono::duration_cast<std::chrono::duration<float>>(runEnd - runStart).count() << "s total for index building " << std::endl;
+    //std::cout << std::chrono::duration_cast<std::chrono::duration<float>>(runEnd - runStart).count() << std::endl;
+    std::chrono::time_point<std::chrono::steady_clock> finalizationStart = std::chrono::steady_clock::now();
+
+    std::vector<IndexBlock> index = IndexFinalization(blockUpdateContexts);
+
+    std::chrono::time_point<std::chrono::steady_clock> finalizationEnd = std::chrono::steady_clock::now();
+    std::cout << std::chrono::duration_cast<std::chrono::duration<float>>(finalizationEnd - finalizationStart).count() << "s total for index finalization " << std::endl;
+
 
     std::chrono::time_point<std::chrono::steady_clock> runStart2 = std::chrono::steady_clock::now();
 
@@ -442,14 +502,14 @@ int main(int argc, char *argv[]){
     
     auto blocksToSearch = BlocksToSearch(searchContexts, metaGraph, additionalInitSearches);
     
-    SearchQueue searchHints = FirstBlockSearch(searchContexts, blocksToSearch, searchFunctor, blockUpdateContexts, maxNewSearches);
+    SearchQueue searchHints = FirstBlockSearch(searchContexts, blocksToSearch, searchFunctor, blockUpdateContexts, std::span(std::as_const(index)), maxNewSearches);
     
-    SearchLoop(searchFunctor, searchHints, searchContexts, blockUpdateContexts, maxNewSearches, mnistFashionTest.size());
+    SearchLoop(searchFunctor, searchHints, searchContexts, blockUpdateContexts, std::span(std::as_const(index)), maxNewSearches, mnistFashionTest.size());
 
 
     std::chrono::time_point<std::chrono::steady_clock> runEnd2 = std::chrono::steady_clock::now();
-    //std::cout << std::chrono::duration_cast<std::chrono::duration<float>>(runEnd2 - runStart2).count() << "s test set search " << std::endl;
-    std::cout << std::chrono::duration_cast<std::chrono::duration<float>>(runEnd2 - runStart2).count() << std::endl;
+    std::cout << std::chrono::duration_cast<std::chrono::duration<float>>(runEnd2 - runStart2).count() << "s test set search " << std::endl;
+    //std::cout << std::chrono::duration_cast<std::chrono::duration<float>>(runEnd2 - runStart2).count() << std::endl;
 
 
     
@@ -490,8 +550,8 @@ int main(int argc, char *argv[]){
         correctPerBlockFloat[i] = float(correctNeighborsPerBlock[i]*10)/float(searchContexts[i].size());
     }
     double recall = double(numNeighborsCorrect)/ double(10*mnistFashionTestNeighbors.samples.size());
-    std::cout << (recall * 100) << std::endl;
-    //std::cout << "Recall: " << (recall * 100) << "%" << std::endl;
+    //std::cout << (recall * 100) << std::endl;
+    std::cout << "Recall: " << (recall * 100) << "%" << std::endl;
     
     //WeightedGraphEdges graphEdges = NeighborsOutOfBlock(mnistFashionTestNeighbors, trainMapper.sourceToBlockIndex, testClassifications);
 

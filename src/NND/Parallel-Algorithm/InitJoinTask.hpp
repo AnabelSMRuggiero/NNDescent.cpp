@@ -66,7 +66,7 @@ struct InitJoinGenerator{
                                 threadFunctors.dispatchFunctor);
                 
                 for(size_t i = 0; auto& vertex: threadFunctors.cache.reverseGraph){
-                    NeighborOverDist<DistType> comparison(blockRHS.currentGraph[i][0].second);
+                    NeighborOverDist<DistType> comparison(blockRHS.currentGraph[i].PushThreshold());
                     vertex.erase(std::remove_if(vertex.begin(),
                                                 vertex.end(),
                                                 comparison),

@@ -93,7 +93,7 @@ GraphVertex<size_t, DistType> QueryCOMNeighbors(const size_t pointIndex,
                 if(nodesVisited[joinTarget.first]) continue;
                 nodesVisited[joinTarget.first] = true;
                 COMExtent distance = distanceFunctor(pointIndex, joinTarget.first);
-                if (distance < newState[0].second){
+                if (distance < newState.PushThreshold()){
                     newState.PushNeighbor({joinTarget.first, distance});
                     breakVar = false;
                 }

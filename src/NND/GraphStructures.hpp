@@ -81,6 +81,10 @@ struct GraphVertex{
         std::sort_heap(neighbors.begin(), neighbors.end(), NeighborDistanceComparison<IndexType, FloatType>);
     }
     
+    FloatType PushThreshold() const noexcept{
+        return neighbors[0].second;
+    }
+
     //Object Composition stuff below here
 
     constexpr void pop_back(){
@@ -169,7 +173,7 @@ unsigned int ConsumeVertex(GraphVertex<BlockIndecies, DistType>& consumer, Graph
     std::sort(consumee.begin(), consumee.end(), NeighborDistanceComparison<BlockIndecies, DistType>);
     unsigned int neighborsAdded(0);
     for (auto& pair: consumee){
-        if (pair.second >= consumer.neighbors[0].second) return neighborsAdded;
+        if (pair.second >= consumer.PushThreshold()) return neighborsAdded;
         consumer.PushNeighbor(pair);
         neighborsAdded++;
     }
@@ -181,7 +185,7 @@ unsigned int ConsumeVertex(GraphVertex<BlockIndecies, DistType>& consumer, Graph
     std::sort(consumee.begin(), consumee.end(), NeighborDistanceComparison<BlockIndecies, DistType>);
     unsigned int neighborsAdded(0);
     for (auto& pair: consumee){
-        if (pair.second >= consumer.neighbors[0].second) return neighborsAdded;
+        if (pair.second >= consumer.PushThreshold()) return neighborsAdded;
         consumer.PushNeighbor(pair);
         neighborsAdded++;
     }
@@ -193,7 +197,7 @@ unsigned int ConsumeVertex(GraphVertex<BlockIndecies, ConsumerDist>& consumer, G
     std::sort(consumee.begin(), consumee.end(), NeighborDistanceComparison<OtherIndex, OtherDist>);
     unsigned int neighborsAdded(0);
     for (auto& pair: consumee){
-        if (pair.second >= consumer.neighbors[0].second) return neighborsAdded;
+        if (pair.second >= consumer.PushThreshold()) return neighborsAdded;
         consumer.PushNeighbor({{consumeeBlockNum, pair.first}, static_cast<ConsumerDist>(pair.second)});
         neighborsAdded++;
     }
@@ -207,7 +211,7 @@ unsigned int ConsumeVertex(GraphVertex<std::pair<BlockIndecies, bool>, ConsumerD
     std::sort(consumee.begin(), consumee.end(), NeighborDistanceComparison<OtherIndex, OtherDist>);
     unsigned int neighborsAdded(0);
     for (auto& pair: consumee){
-        if (pair.second >= consumer.neighbors[0].second) return neighborsAdded;
+        if (pair.second >= consumer.PushThreshold()) return neighborsAdded;
         consumer.PushNeighbor({{{consumeeBlockNum, pair.first}, false}, static_cast<ConsumerDist>(pair.second)});
         neighborsAdded++;
     }
@@ -532,7 +536,7 @@ Graph<size_t, DistType> BruteForceBlock(const size_t numNeighbors, const size_t 
                 if (retGraph[i].size() == numNeighbors){
                     retGraph[i].JoinPrep();
                 }
-            } else if (distance < retGraph[i][0].second){
+            } else if (distance < retGraph[i].PushThreshold()){
                 retGraph[i].PushNeighbor(std::pair<size_t, DistType>(static_cast<size_t>(j), distance));
             }
             if (retGraph[j].size() < numNeighbors){
@@ -540,7 +544,7 @@ Graph<size_t, DistType> BruteForceBlock(const size_t numNeighbors, const size_t 
                 if (retGraph[j].size() == numNeighbors){
                     retGraph[j].JoinPrep();
                 }
-            } else if (distance < retGraph[j].neighbors[0].second){
+            } else if (distance < retGraph[j].PushThreshold()){
                 retGraph[j].PushNeighbor(std::pair<size_t, DistType>(static_cast<size_t>(i), distance));
             }
         }

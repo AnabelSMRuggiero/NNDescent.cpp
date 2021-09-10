@@ -78,6 +78,7 @@ struct HyperParameterValues{
     SearchParameters searchParams;
 };
 
+using IndexBlock = std::vector<std::vector<BlockIndecies>>;
 
 }
 

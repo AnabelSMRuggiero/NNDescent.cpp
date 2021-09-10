@@ -100,7 +100,7 @@ JoinResults<size_t, DistType> BlockwiseJoin(const JoinHints<size_t>& startJoins,
             bool newNeighbor = false;
             GraphVertex<size_t, DistType> updatedResult;
             for (const auto& neighborCandidate: result.second){
-                if (neighborCandidate.second < currentGraphState[result.first][0].second){
+                if (neighborCandidate.second < currentGraphState[result.first].PushThreshold()){
                     newNeighbor = true;
                     updatedResult.push_back(neighborCandidate);
                 }
@@ -154,7 +154,7 @@ void ReverseBlockJoin(const JoinHints<size_t>& startJoins,
         
         nodesJoined[hint.first] = true;
         targetBlock.Query(vertex, hint.first, queryFunctor, cache.nodesJoined[hint.first]);
-        EraseRemove(vertex, currentGraphState[hint.first][0].second);
+        EraseRemove(vertex, currentGraphState[hint.first].PushThreshold());
         /*
         NeighborOverDist<size_t, DistType> comparison(currentGraphState[hint.first][0].second);
         vertex.erase(std::remove_if(vertex.begin(),
@@ -194,7 +194,7 @@ void ReverseBlockJoin(const JoinHints<size_t>& startJoins,
 
             targetBlock.Query(cache.reverseGraph[joinee], joinee, queryFunctor, cache.nodesJoined[joinee]);
             nodesJoined[joinee] = true;
-            EraseRemove(cache.reverseGraph[joinee], currentGraphState[joinee][0].second);
+            EraseRemove(cache.reverseGraph[joinee], currentGraphState[joinee].PushThreshold());
             //NeighborOverDist<DistType> comparison(currentGraphState[joinee][0].second);
             //cache.reverseGraph[joinee].erase(std::remove_if(cache.reverseGraph[joinee].begin(), cache.reverseGraph[joinee].end(), comparison), cache.reverseGraph[joinee].end());
             if (cache.reverseGraph[joinee].size()!=0) successfulJoins.push_back(joinee);
@@ -366,7 +366,7 @@ int UpdateBlocks(BlockUpdateContext<DistType>& blockLHS,
                             cachingFunctor.metricFunctor);
         
         for(size_t i = 0; auto& vertex: cachingFunctor.reverseGraph){
-            NeighborOverDist<DistType> comparison(blockRHS.currentGraph[i][0].second);
+            NeighborOverDist<DistType> comparison(blockRHS.currentGraph[i].PushThreshold());
             vertex.erase(std::remove_if(vertex.begin(),
                                         vertex.end(),
                                         comparison),
