@@ -12,6 +12,8 @@ https://github.com/AnabelSMRuggiero/NNDescent.cpp
 #define NND_UTILITYFUNCTIONS_H
 #include <utility>
 
+#include "../Utilities/DataDeserialization.hpp"
+
 namespace nnd{
 
 template<TriviallyCopyable IndexType, typename FloatType>

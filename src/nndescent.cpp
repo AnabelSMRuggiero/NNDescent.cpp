@@ -244,7 +244,8 @@ int main(int argc, char *argv[]){
     //searchDepths <= numBlockGraphsNeighbors
     // something about splitParams
 
-    bool parallelIndexBuild = true;
+    bool parallelIndexBuild = false;
+    bool parallelSearch = false;
 
 
     std::vector<std::string> options;
@@ -408,14 +409,14 @@ int main(int argc, char *argv[]){
     
     
     std::chrono::time_point<std::chrono::steady_clock> runEnd = std::chrono::steady_clock::now();
-    std::cout << std::chrono::duration_cast<std::chrono::duration<float>>(runEnd - runStart).count() << "s total for index building " << std::endl;
-    //std::cout << std::chrono::duration_cast<std::chrono::duration<float>>(runEnd - runStart).count() << std::endl;
-    std::chrono::time_point<std::chrono::steady_clock> finalizationStart = std::chrono::steady_clock::now();
+    //std::cout << std::chrono::duration_cast<std::chrono::duration<float>>(runEnd - runStart).count() << "s total for index building " << std::endl;
+    std::cout << std::chrono::duration_cast<std::chrono::duration<float>>(runEnd - runStart).count() << std::endl;
+    //std::chrono::time_point<std::chrono::steady_clock> finalizationStart = std::chrono::steady_clock::now();
 
     std::vector<IndexBlock> index = IndexFinalization(blockUpdateContexts);
 
-    std::chrono::time_point<std::chrono::steady_clock> finalizationEnd = std::chrono::steady_clock::now();
-    std::cout << std::chrono::duration_cast<std::chrono::duration<float>>(finalizationEnd - finalizationStart).count() << "s total for index finalization " << std::endl;
+    //std::chrono::time_point<std::chrono::steady_clock> finalizationEnd = std::chrono::steady_clock::now();
+    //std::cout << std::chrono::duration_cast<std::chrono::duration<float>>(finalizationEnd - finalizationStart).count() << "s total for index finalization " << std::endl;
 
 
     std::chrono::time_point<std::chrono::steady_clock> runStart2 = std::chrono::steady_clock::now();
@@ -501,6 +502,35 @@ int main(int argc, char *argv[]){
     
     
     auto blocksToSearch = BlocksToSearch(searchContexts, metaGraph, additionalInitSearches);
+
+    /*
+    if(parallelSearch){
+        InitialSearchTask searchGenerator{ blockUpdateContexts,
+            std::span(std::as_const(index)),
+            std::move(blocksToSearch),
+            maxNewSearches,
+            AsyncQueue<std::pair<BlockIndecies, SearchSet>>()};
+
+         
+    SearchQueue ParaFirstBlockSearch(InitialSearchTask<DistType>& searchQueuer,
+                             std::vector<std::vector<ParallelSearchContext<DistType>>>& searchContexts,         
+                             ThreadPool<SinglePointFunctor<DistType>>& pool)
+    
+
+        
+        void ParaSearchLoop(ThreadPool<SinglePointFunctor<DistType>> pool,
+                    SearchQueue& searchHints,
+                    std::vector<std::vector<ParallelSearchContext<DistType>>>& searchContexts,
+                    std::span<BlockUpdateContext<DistType>> blockUpdateContexts,
+                    std::span<const IndexBlock> indexBlocks,
+                    const size_t maxNewSearches,
+                    const size_t searchesToDo)
+        
+        
+    }
+    */
+
+   
     
     SearchQueue searchHints = FirstBlockSearch(searchContexts, blocksToSearch, searchFunctor, blockUpdateContexts, std::span(std::as_const(index)), maxNewSearches);
     
@@ -508,8 +538,8 @@ int main(int argc, char *argv[]){
 
 
     std::chrono::time_point<std::chrono::steady_clock> runEnd2 = std::chrono::steady_clock::now();
-    std::cout << std::chrono::duration_cast<std::chrono::duration<float>>(runEnd2 - runStart2).count() << "s test set search " << std::endl;
-    //std::cout << std::chrono::duration_cast<std::chrono::duration<float>>(runEnd2 - runStart2).count() << std::endl;
+    //std::cout << std::chrono::duration_cast<std::chrono::duration<float>>(runEnd2 - runStart2).count() << "s test set search " << std::endl;
+    std::cout << std::chrono::duration_cast<std::chrono::duration<float>>(runEnd2 - runStart2).count() << std::endl;
 
 
     
@@ -550,8 +580,8 @@ int main(int argc, char *argv[]){
         correctPerBlockFloat[i] = float(correctNeighborsPerBlock[i]*10)/float(searchContexts[i].size());
     }
     double recall = double(numNeighborsCorrect)/ double(10*mnistFashionTestNeighbors.samples.size());
-    //std::cout << (recall * 100) << std::endl;
-    std::cout << "Recall: " << (recall * 100) << "%" << std::endl;
+    std::cout << (recall * 100) << std::endl;
+    //std::cout << "Recall: " << (recall * 100) << "%" << std::endl;
     
     //WeightedGraphEdges graphEdges = NeighborsOutOfBlock(mnistFashionTestNeighbors, trainMapper.sourceToBlockIndex, testClassifications);
 
