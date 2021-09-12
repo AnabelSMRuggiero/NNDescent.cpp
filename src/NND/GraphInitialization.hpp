@@ -208,8 +208,8 @@ void StitchBlocks(const Graph<size_t, DistType>& nearestNodeDistances,
         
         auto [blockNums, stitchHint] = *(stitchHints.find(blockNumbers));
         if (blockNums.first != blockNumbers.first) stitchHint = {std::get<1>(stitchHint), std::get<0>(stitchHint), std::get<2>(stitchHint)};
-        auto blockLHS = blockUpdateContexts[blockNumbers.first];
-        auto blockRHS = blockUpdateContexts[blockNumbers.second];
+        auto& blockLHS = blockUpdateContexts[blockNumbers.first];
+        auto& blockRHS = blockUpdateContexts[blockNumbers.second];
         JoinHints<size_t> LHShint;
         LHShint[std::get<0>(stitchHint)] = {std::get<1>(stitchHint)};
         JoinHints<size_t> RHShint;

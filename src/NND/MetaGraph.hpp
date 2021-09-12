@@ -16,6 +16,7 @@ https://github.com/AnabelSMRuggiero/NNDescent.cpp
 #include <ranges>
 #include <span>
 #include <concepts>
+#include <execution>
 
 #include "../Utilities/Data.hpp"
 #include "GraphStructures.hpp"
@@ -59,18 +60,18 @@ void BruteForceGraph(Graph<size_t, FloatType>& uninitGraph, size_t numNeighbors,
     for (size_t i = 0; i < dataVector.size(); i += 1){
         for (size_t j = i+1; j < dataVector.size(); j += 1){
             FloatType distance = distanceFunctor(dataVector[i], dataVector[j]);
-            if (uninitGraph[i].neighbors.size() < numNeighbors){
-                uninitGraph[i].neighbors.push_back(std::pair<size_t, FloatType>(j, distance));
-                if (uninitGraph[i].neighbors.size() == numNeighbors){
+            if (uninitGraph[i].size() < numNeighbors){
+                uninitGraph[i].push_back(std::pair<size_t, FloatType>(j, distance));
+                if (uninitGraph[i].size() == numNeighbors){
                     std::make_heap(uninitGraph[i].neighbors.begin(), uninitGraph[i].neighbors.end(), NeighborDistanceComparison<size_t, FloatType>);
                 }
             } else if (distance < uninitGraph[i].PushThreshold()){
                 uninitGraph[i].PushNeighbor(std::pair<size_t, FloatType>(j, distance));
             }
-            if (uninitGraph[j].neighbors.size() < numNeighbors){
-                uninitGraph[j].neighbors.push_back(std::pair<size_t, FloatType>(i, distance));
-                if (uninitGraph[j].neighbors.size() == numNeighbors){
-                    std::make_heap(uninitGraph[j].neighbors.begin(), uninitGraph[j].neighbors.end(), NeighborDistanceComparison<size_t, FloatType>);
+            if (uninitGraph[j].size() < numNeighbors){
+                uninitGraph[j].push_back(std::pair<size_t, FloatType>(i, distance));
+                if (uninitGraph[j].size() == numNeighbors){
+                    std::make_heap(uninitGraph[j].begin(), uninitGraph[j].end(), NeighborDistanceComparison<size_t, FloatType>);
                 }
             } else if (distance < uninitGraph[j].PushThreshold()){
                 uninitGraph[j].PushNeighbor(std::pair<size_t, FloatType>(i, distance));

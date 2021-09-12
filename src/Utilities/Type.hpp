@@ -60,7 +60,7 @@ struct AlignedArray{
     AlignedArray() = default;
 
     AlignedArray(size_t size): data(static_cast<ValueType*>(operator new[](size*sizeof(ValueType), std::align_val_t(alignment))), AlignedDeleter()), capacity(size) {
-        std::uninitialized_default_construct(this->begin(), this->end());
+        std::uninitialized_value_construct(this->begin(), this->end());
     };
 
     AlignedArray(const AlignedArray& other): data(static_cast<ValueType*>(operator new[](other.capacity*sizeof(ValueType), std::align_val_t(alignment))), AlignedDeleter()), capacity(other.capacity) {
