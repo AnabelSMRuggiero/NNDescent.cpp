@@ -20,9 +20,8 @@
   - 
 
 #RPTrees
-- Add in tree merge functionality
-  - Don't think this will be needed after all
 - Think of a better way to refine tree splitting than if statement into goto.
+  - Removed in serial case, left for part of the parallel case.
 
 #NNDescent
 - This will be forever out from now, but test builing data array inside of the control structure itself to see if it reduces cache misses.

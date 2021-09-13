@@ -16,7 +16,7 @@ from pymoo.model.problem import Problem
 from pymoo.visualization.scatter import Scatter
 
 
-def RunNNDescent(blockNeighbors, nearestNodeNeighbors, queryDepth, targetSplitSize, searchNeighbors, searchDepth):
+def RunNNDescent(blockNeighbors, nearestNodeNeighbors, queryDepth, targetSplitSize, searchNeighbors, searchDepth, searchQueue):
     comNeighbors = nearestNodeNeighbors + 5
     minSplitSize = math.floor(targetSplitSize * 0.6)
     maxSplitSize = math.ceil(targetSplitSize * 1.4)
@@ -29,22 +29,47 @@ def RunNNDescent(blockNeighbors, nearestNodeNeighbors, queryDepth, targetSplitSi
     binArgs += " -maxSplitSize=" + str(maxSplitSize)
     binArgs += " -searchNeighbors=" + str(searchNeighbors)
     binArgs += " -searchDepth=" + str(searchDepth)
-    binArgs += " -maxSearchesQueued=" + str(10)
+    binArgs += " -maxSearchesQueued=" + str(searchQueue)
     
+    results = [0,0,0]
+    #for i in range(5):    
     output = subprocess.run("./Bin/nndescent " + binArgs, shell=True, cwd="../", capture_output = True, text=True)
+    print(output)
     splitOut =  output.stdout.split("\n")
-    results = [float(x) for x in splitOut[0:-1]]
+    tmpResults = [float(x) for x in splitOut[0:-1]]
+    results[0] += tmpResults[0]
+    results[1] += tmpResults[1]
+    results[2] += tmpResults[2]
+        
+    #results[0] /= 5
+    #results[1] /= 5
+    #results[2] /= 5
     return results
 
-
+def PrintCommand(blockNeighbors, nearestNodeNeighbors, queryDepth, targetSplitSize, searchNeighbors, searchDepth, searchQueue):
+    comNeighbors = nearestNodeNeighbors + 5
+    minSplitSize = math.floor(targetSplitSize * 0.6)
+    maxSplitSize = math.ceil(targetSplitSize * 1.4)
+    binArgs = "-blockGraphNeighbors=" + str(blockNeighbors)
+    binArgs += " -COMNeighbors=" + str(comNeighbors)
+    binArgs += " -nearestNodeNeighbors=" + str(nearestNodeNeighbors)
+    binArgs += " -queryDepth=" + str(queryDepth)
+    binArgs += " -targetSplitSize=" + str(targetSplitSize)
+    binArgs += " -minSplitSize=" + str(minSplitSize)
+    binArgs += " -maxSplitSize=" + str(maxSplitSize)
+    binArgs += " -searchNeighbors=" + str(searchNeighbors)
+    binArgs += " -searchDepth=" + str(searchDepth)
+    binArgs += " -maxSearchesQueued=" + str(searchQueue)
+    print(binArgs)
 
 class MyProblem(Problem):
 
     def __init__(self):
-        super().__init__(n_var=6, n_obj=2, n_constr=0, xl=[5,3,1,60,10,1], xu=[25,40,5,240,25,10], type_var=int, elementwise_evaluation = True)
+        super().__init__(n_var=6, n_obj=2, n_constr=0, xl=[5,3,1,60,1,1], xu=[25,40,10,480,10,20], type_var=int, elementwise_evaluation = True)
 
     def _evaluate(self, x, out, *args, **kwargs):
-        runResult = RunNNDescent(x[0],x[1],x[2],x[3],x[4],x[5])
+        print(x)
+        runResult = RunNNDescent(x[0],x[1],x[2],x[3],max(10, x[5]),x[4], x[5])
         out["F"] = np.array([runResult[1], 100-runResult[2]])
         
 
@@ -60,7 +85,7 @@ method = get_algorithm("ga",
                        eliminate_duplicates=True)
 
 
-termination = get_termination("time", "2:30:00")
+termination = get_termination("time", "8:00:00")
 
 results = minimize(problem, method, termination)
 

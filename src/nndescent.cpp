@@ -181,7 +181,8 @@ enum class Options{
     searchDepth,
     maxSearchesQueued,
     additionalInitSearches,
-    parallelIndexBuild
+    parallelIndexBuild,
+    parallelSearch
 };
 
 
@@ -198,14 +199,15 @@ static const std::unordered_map<std::string, Options> optionNumber = {
     {"-searchDepth"s,            Options::searchDepth},
     {"-maxSearchesQueued"s,      Options::maxSearchesQueued},
     {"-additionalInitSearches"s, Options::additionalInitSearches},
-    {"-parallelIndexBuild"s,     Options::parallelIndexBuild}
+    {"-parallelIndexBuild"s,     Options::parallelIndexBuild},
+    {"-parallelSearch"s,         Options::parallelIndexBuild}
 };
 
 
 
 int main(int argc, char *argv[]){
     
-    static const std::endian dataEndianness = std::endian::big;
+    static const std::endian dataEndianness = std::endian::native;
 
     /*
     IndexParamters indexParams{5, 10, 3, 2};
@@ -322,6 +324,15 @@ int main(int argc, char *argv[]){
                 } else{
                     std::cout << "parallelIndexBuild input (" << option.substr(nameEnd+1) << ") does not evaluate to 'true' or 'false'" << std::endl;
                 }
+                break;
+            case Options::parallelSearch:
+                if (option.substr(nameEnd+1) == "true"){
+                    parallelSearch = true;
+                } else if (option.substr(nameEnd+1) == "false"){
+                    parallelSearch = false;
+                } else{
+                    std::cout << "parallelIndexBuild input (" << option.substr(nameEnd+1) << ") does not evaluate to 'true' or 'false'" << std::endl;
+                }
                 /*
                     searchNeighbors,
                     searchDepth,
@@ -427,40 +438,12 @@ int main(int argc, char *argv[]){
     };
     CrawlLeaves(rpTrees, accumulateSplits);
 
-    EuclidianScheme<AlignedArray<float>, AlignedArray<float>> transformingScheme(mnistFashionTest);
-
-    transformingScheme.splittingVectors = std::move(splittingVectors);
-
-    std::unique_ptr<size_t[]> testIndecies = std::make_unique<size_t[]>(mnistFashionTest.size());
-    std::iota(testIndecies.get(), testIndecies.get()+mnistFashionTest.size(), 0);
-
-    
-    /*
-    for (auto& leaf: rpTreesTrain.treeLeaves){
-        if(leaf.children.first == 0 && leaf.children.second == 0) continue;
-        splittingIndicies.insert(leaf.splittingIndex);
-    }
-    */
-
-    //TransformingSplittingScheme transformingFunc(transformingScheme);
-
-    //std::mt19937_64 testRngEngine(0);
-    //std::uniform_int_distribution<size_t> testDist(size_t(0), mnistFashionTest.size() - 1);
-    RngFunctor testFunctor(size_t(0), mnistFashionTest.size() - 1);
-
-    ForestBuilder testBuilder{std::move(testFunctor), splitParams, transformingScheme};
-
-
-    RandomProjectionForest rpTreesTest = testBuilder(std::move(testIndecies), mnistFashionTest.size(), splittingIndicies);
-
-
-    //std::chrono::time_point<std::chrono::steady_clock> rpTestEnd = std::chrono::steady_clock::now();
-    //std::cout << std::chrono::duration_cast<std::chrono::duration<float>>(rpTestEnd - runStart2).count() << "s total for test set rpTrees " << std::endl;
-
-    //RandomProjectionForest rpTreesTest(mnistFashionTest.numberOfSamples, transformingFunc, splittingIndicies);
-
     
 
+    RandomProjectionForest rpTreesTest = (parallelSearch) ?
+                                         RPTransformData(mnistFashionTest, splittingIndicies, std::move(splittingVectors)) : 
+                                         RPTransformData(std::execution::par_unseq ,mnistFashionTest, splittingIndicies, std::move(splittingVectors), 12);
+    
 
     size_t numberSearchBlocks = dataBlocks.size();
 

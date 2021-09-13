@@ -745,9 +745,9 @@ RandomProjectionForest ForestBuilder<SplittingScheme>::operator()(std::unique_pt
             auto splittingFunction = getSplitComponents(builder.refNode->splittingIndex, transformTag);
 
 
-            auto beginIt = samples.begin() + builder.refNode->splitRange.first;
-            auto endIt = samples.begin() + builder.refNode->splitRange.second;
-            auto toBegin = workSpace.begin() + builder.refNode->splitRange.first;
+            auto beginIt = samples.data() + builder.refNode->splitRange.first;
+            auto endIt = samples.data() + builder.refNode->splitRange.second;
+            auto toBegin = workSpace.data() + builder.refNode->splitRange.first;
             auto toEnd = workSpace.data() + builder.refNode->splitRange.second;
             
 
@@ -1029,7 +1029,7 @@ std::pair<RandomProjectionForest, typename SplittingScheme::SplittingVectors> Bu
     
 }
 
-/*
+
 RandomProjectionForest RPTransformData(const DataSet<AlignedArray<float>>& testSet,
                      const std::unordered_set<size_t>& splittingIndecies,
                      std::unordered_map<size_t, std::pair<AlignedArray<float>, AlignedArray<float>::value_type>>&& splittingVectors){
@@ -1043,13 +1043,39 @@ RandomProjectionForest RPTransformData(const DataSet<AlignedArray<float>>& testS
 
     RngFunctor testFunctor(size_t(0), testSet.size() - 1);
 
-    ForestBuilder testBuilder{std::move(testFunctor), splitParams, transformingScheme};
+    ForestBuilder testBuilder{std::move(testFunctor), SplittingHeurisitcs{}, transformingScheme};
 
 
     return testBuilder(std::move(testIndecies), testSet.size(), splittingIndecies);
 
 }
-*/
+
+RandomProjectionForest RPTransformData(std::execution::parallel_unsequenced_policy,
+                     const DataSet<AlignedArray<float>>& testSet,
+                     const std::unordered_set<size_t>& splittingIndecies,
+                     std::unordered_map<size_t, std::pair<AlignedArray<float>, AlignedArray<float>::value_type>>&& splittingVectors,
+                     const size_t numThreads){
+
+    EuclidianScheme<AlignedArray<float>, AlignedArray<float>> transformingScheme(testSet);
+
+    transformingScheme.splittingVectors = std::move(splittingVectors);
+
+    std::unique_ptr<size_t[]> testIndecies = std::make_unique<size_t[]>(testSet.size());
+    std::iota(testIndecies.get(), testIndecies.get()+testSet.size(), 0);
+
+    RngFunctor testFunctor(size_t(0), testSet.size() - 1);
+
+    ForestBuilder testBuilder{std::move(testFunctor), SplittingHeurisitcs{}, transformingScheme};
+
+    ThreadPool<TreeRef> pool(numThreads);
+    pool.StartThreads();
+    RandomProjectionForest retForest = testBuilder(std::move(testIndecies), testSet.size(), splittingIndecies, pool);
+    pool.StopThreads();
+
+    return retForest;
+
+}
+
 
 }
 #endif //RPT_FOREST_HPP
