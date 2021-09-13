@@ -1,6 +1,6 @@
 # Recursive Nearest Neighbor Descent (rNND)
 
-Took a ton of figuring out, but finished parallelizing the index build while avoiding data races!
+Parallelized the search algorithm. Rest of parallelizing the algorithm is mostly part of the clean up. Very close to what a theoretical beta release would look like (with A LOT of cleaning up). 
 
 ![Sample MNIST Fashion Results](MNIST-Fashion-9-1-21.png)
 
@@ -40,12 +40,13 @@ To tackle these weaknesses, rNND uses the results of RPTrees to cluster the enti
 So far, a serial version of NND has been implemented. This project has a lot further to go before being usable, including:
 
 Currently in progress:
-- Parallelize RP-Trees
-- Parallelize Search
-- Second pass on searching algorithm
+- Parallelize RP-Trees (Almost done)
+- Angular RP-Trees
+- Inner Product Metric
+- MetaGraph Recursion
 
 Upcoming:
-- MetaGraph Recursion
+
 - Index I/O
 
 Further down the road (post big-ANN):
