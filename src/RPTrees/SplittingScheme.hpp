@@ -14,6 +14,7 @@ https://github.com/AnabelSMRuggiero/NNDescent.cpp
 #include <type_traits>
 #include <functional>
 #include <thread>
+#include <numeric>
 
 #include "Utilities/Metrics/SpaceMetrics.hpp"
 #include "Utilities/Data.hpp"
@@ -36,6 +37,20 @@ AlignedArray<DistType> EuclidianSplittingPlaneNormal(const DataEntry& pointA, co
 
     return splittingLine;
 }
+
+template<size_t p, typename DataEntry, typename RetValue = double>
+RetValue PNorm(const DataEntry& point){
+    using Extent = typename DataEntry::value_type;
+    RetValue acc = std::transform_reduce(point.begin(),
+                          point.end(),
+                          RetValue(0),
+                          std::plus<RetValue>(),
+                          [](const Extent& extent)->RetValue{ return std::pow(extent, p);});
+
+    return std::pow(acc, 1.0/p);
+}
+
+
 
 
 
@@ -129,6 +144,7 @@ struct ParallelEuclidianScheme{
     using OffSetType = typename SplittingVector::value_type;
     using SplittingView = typename DefaultDataView<SplittingVector>::ViewType;
     using SplittingVectors = std::unordered_map<size_t, std::pair<SplittingVector, OffSetType>>;
+    //Using EntryView
 
     using ParallelScheme = std::true_type;
     using SerialScheme = std::false_type;
@@ -227,28 +243,101 @@ struct ParallelEuclidianScheme{
     }
 };
 
+template<typename DataEntry, typename DistType>
+AlignedArray<DistType> AngularSplittingPlane(const DataEntry& pointA, const DataEntry& pointB){
+    AlignedArray<DistType> splittingLine(pointA.size());
 
-/*
+
+    double normA = PNorm<2>(pointA);
+    double normB = PNorm<2>(pointB);
+
+    for (size_t i = 0; i < pointA.size(); i += 1){
+        splittingLine[i] = DistType(pointA[i])/normA - DistType(pointB[i])/normB;
+    }
+
+    double splitterNorm = PNorm<2>(splittingLine);
+
+    for(auto& extent: splittingLine) extent /= splitterNorm;
+
+    return splittingLine;
+}
+
 template<typename DataEntry, typename SplittingVector>
-struct EuclidianTransform{
-
+struct AngularScheme{
     using OffSetType = typename SplittingVector::value_type;
-    using SplittingView = DefaultDataView<SplittingVector>;
+    using SplittingView = typename DefaultDataView<SplittingVector>::ViewType;
+    using SplittingVectors = std::unordered_map<size_t, std::pair<SplittingVector, OffSetType>>;
 
+    using ParallelScheme = std::false_type;
+    using SerialScheme = std::true_type;
+    
     const DataSet<DataEntry>& dataSource;
-    std::unordered_map<size_t, std::pair<SplittingVector, OffSetType>>& splittingVectors;
-    
+    std::unordered_map<size_t, SplittingVector> splittingVectors;
+    //DistType projectionOffset;
 
-    EuclidianTransform(const DataSet<DataEntry>& data,
-                       std::unordered_map<size_t, std::pair<SplittingVector, typename SplittingVector::value_type>>& splits):
-                       splittingVectors(splits),
-                       dataSource(data){};
+    AngularScheme(const DataSet<DataEntry>& data) : dataSource(data), splittingVectors(){};
 
-    
-    
+    auto operator()(size_t splitIndex, std::pair<size_t, size_t> splittingPoints){
+        
+        
+        // For right now at least, in the serial case I want to be able to get a new splitting vector
+        //if (splittingVectors.find(splitIndex) == splittingVectors.end()){
+        SplittingVector splittingVector = AngularSplittingPlane<DataEntry, OffSetType>(dataSource[splittingPoints.first], dataSource[splittingPoints.second]);
 
+
+        OffSetType projectionOffset = 0;
+        for (size_t i = 0; i<dataSource[splittingPoints.first].size(); i+=1){
+            projectionOffset -= splittingVector[i] * OffSetType(dataSource[splittingPoints.first][i] + dataSource[splittingPoints.second][i])/2.0;
+        };
+
+        splittingVectors[splitIndex] = std::pair<SplittingVector, OffSetType>(std::move(splittingVector), projectionOffset);
+
+        //};
+        if constexpr(isAlignedArray_v<SplittingVector>){
+            auto comparisonFunction = [=, 
+                                    &data = std::as_const(this->dataSource), 
+                                    splitter = SplittingView(splittingVectors[splitIndex].first)]
+                                    (size_t comparisonIndex) -> bool{
+                    return 0.0 < Dot(data[comparisonIndex], splitter);
+            };
+            return comparisonFunction;
+        } else {
+            auto comparisonFunction = [=, 
+                                    &data = std::as_const(this->dataSource), 
+                                    splitter = SplittingView(splittingVectors[splitIndex].first.begin(), splittingVectors[splitIndex].first.end())]
+                                    (size_t comparisonIndex) -> bool{
+                    return 0.0 < Dot(data[comparisonIndex], splitter);
+            };
+            return comparisonFunction;
+        }
+
+        
+    };
+
+    auto operator()(size_t splitIndex, TransformTag){
+        SplittingVector& splittingVec = splittingVectors.at(splitIndex);
+        if constexpr(isAlignedArray_v<SplittingVector>){
+            auto comparisonFunction = [=, 
+                                    &data = std::as_const(this->dataSource), 
+                                    splitter = SplittingView(splittingVec)]
+                                    (size_t comparisonIndex) -> bool{
+                    return 0.0 < Dot(data[comparisonIndex], splitter);
+            };
+            return comparisonFunction;
+        } else {
+            auto comparisonFunction = [=, 
+                                    &data = std::as_const(this->dataSource), 
+                                    splitter = SplittingView(splittingVec.begin(), splittingVec.size())]
+                                    (size_t comparisonIndex) -> bool{
+                    return 0.0 < Dot(data[comparisonIndex], splitter);
+            };
+            return comparisonFunction;
+        }
+
+        
+    };
+    
 };
-*/
 
 }
 #endif //RPT_SPLITTINGSCHEME_HPP

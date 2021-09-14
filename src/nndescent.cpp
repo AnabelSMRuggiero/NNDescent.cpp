@@ -232,7 +232,7 @@ int main(int argc, char *argv[]){
     size_t maxNearestNodes = 35;
     size_t queryDepth = 6;
 
-    SearchParameters searchParams{10, 6, 10};
+    SearchParameters searchParams{10, 6, 5};
     size_t numberSearchNeighbors = 10;
     size_t searchQueryDepth = 6;
     size_t maxNewSearches = 10;

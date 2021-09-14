@@ -322,12 +322,24 @@ std::pair<TreeLeaf*, TreeLeaf*> AddLeaves(TreeRef& nodeRef,
                                           const std::unordered_set<size_t>& splitIndicies){
     
     std::pair<TreeLeaf*, TreeLeaf*> retPtrs = {nullptr, nullptr};
+    if (numTrue == 0){
+        nodeRef.refNode->splittingIndex = nodeRef.refNode->splittingIndex * 2 + 2;
+        auto result = splitIndicies.find(nodeRef.refNode->splittingIndex);
+        if (result != splitIndicies.end()) queue.push_back(nodeRef.refNode);
+        return retPtrs;
+    }
+    if(numTrue == (nodeRef.refNode->splitRange.second - nodeRef.refNode->splitRange.first)){
+        nodeRef.refNode->splittingIndex = nodeRef.refNode->splittingIndex * 2 + 1;
+        auto result = splitIndicies.find(nodeRef.refNode->splittingIndex);
+        if (result != splitIndicies.end()) queue.push_back(nodeRef.refNode);
+        return retPtrs;
+    }
 
     TreeLeaf* leftSplit = nodeRef.AddLeftLeaf(std::pair<size_t, size_t>(nodeRef.refNode->splitRange.first, nodeRef.refNode->splitRange.first + numTrue),
                                                         nodeRef.refNode->splittingIndex * 2 + 1);
 
     auto result = splitIndicies.find(leftSplit->splittingIndex);
-    if ((result == splitIndicies.end()) || ((leftSplit->splitRange.second - leftSplit->splitRange.first) <= 1)){
+    if ((result == splitIndicies.end()) || ((leftSplit->splitRange.second - leftSplit->splitRange.first) == 1)){
         
         if (result != splitIndicies.end()) retPtrs.first = leftSplit;
         
@@ -346,7 +358,7 @@ std::pair<TreeLeaf*, TreeLeaf*> AddLeaves(TreeRef& nodeRef,
         nodeRef.refNode->splittingIndex * 2 + 2);
         
     result = splitIndicies.find(rightSplit->splittingIndex);
-    if ((result == splitIndicies.end()) || ((rightSplit->splitRange.second - rightSplit->splitRange.first) <= 1)){
+    if ((result == splitIndicies.end()) || ((rightSplit->splitRange.second - rightSplit->splitRange.first) == 1)){
         
         if (result != splitIndicies.end()) retPtrs.second = rightSplit;
         

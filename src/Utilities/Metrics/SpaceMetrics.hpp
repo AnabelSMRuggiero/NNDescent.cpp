@@ -27,7 +27,7 @@ namespace nnd{
 
 
 
-template<typename VectorA, typename VectorB, typename RetType=double>
+template<typename VectorA, typename VectorB, typename RetType=float>
 RetType Dot(const VectorA& pointA, const VectorB& pointB){
     using ExtentA = typename VectorA::value_type;
     using ExtentB = typename VectorB::value_type;
@@ -36,9 +36,9 @@ RetType Dot(const VectorA& pointA, const VectorB& pointB){
     };
 
     RetType accum = std::transform_reduce(std::execution::unseq,
-                                    std::begin(pointA),
-                                    std::end(pointA),
-                                    std::begin(pointB),
+                                    pointA.begin(),
+                                    pointA.end(),
+                                    pointB.begin(),
                                     RetType(0),
                                     std::plus<RetType>(),
                                     transformFunc);
