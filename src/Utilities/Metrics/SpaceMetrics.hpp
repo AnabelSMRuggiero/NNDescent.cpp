@@ -24,7 +24,25 @@ https://github.com/AnabelSMRuggiero/NNDescent.cpp
 namespace nnd{
 
 
+template<size_t p, typename DataEntry, typename RetValue = double>
+RetValue PNorm(const DataEntry& point){
+    using Extent = typename DataEntry::value_type;
+    RetValue acc = std::transform_reduce(point.begin(),
+                          point.end(),
+                          RetValue(0),
+                          std::plus<RetValue>(),
+                          [](const Extent& extent)->RetValue{ return std::pow(extent, p);});
 
+    return std::pow(acc, 1.0/p);
+}
+
+template<typename DataEntry>
+void Normalize(DataEntry& entry){
+    using Extent = typename DataEntry::value_type;
+    Extent norm = PNorm<2, DataEntry, Extent>(entry);
+
+    for(auto& component: entry) component /= norm;
+}
 
 
 template<typename VectorA, typename VectorB, typename RetType=float>

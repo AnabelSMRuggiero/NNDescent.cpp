@@ -22,6 +22,7 @@ https://github.com/AnabelSMRuggiero/NNDescent.cpp
 
 
 #include "Utilities/DataSerialization.hpp"
+#include "Utilities/Metrics/SpaceMetrics.hpp"
 #include "Type.hpp"
 
 namespace nnd{
@@ -32,6 +33,8 @@ struct DataSet{
     using ElementType = typename DataEntry::value_type;
     using DataView = typename DefaultDataView<DataEntry>::ViewType;
     
+    using iterator = typename std::vector<DataEntry>::iterator;
+    using const_iterator = typename std::vector<DataEntry>::const_iterator;
     //std::valarray<unsigned char> rawData;
 
     std::vector<DataEntry> samples;
@@ -69,6 +72,37 @@ struct DataSet{
         return samples.size();
     }
 
+    constexpr iterator begin() noexcept{
+        return samples.begin();
+    }
+
+    constexpr const_iterator begin() const noexcept{
+        return samples.begin();
+    }
+
+    constexpr const_iterator cbegin() const noexcept{
+        return samples.cbegin();
+    }
+
+    constexpr iterator end() noexcept{
+        return samples.end();
+    }
+
+    constexpr const_iterator end() const noexcept{
+        return samples.end();
+    }
+
+    constexpr const_iterator cend() const noexcept{
+        return samples.cend();
+    }
+
+};
+
+template<typename DataEntry>
+void NormalizeDataSet(DataSet<DataEntry>& dataSet){
+    for (auto& entry: dataSet){
+        Normalize(entry);
+    }
 };
 
 //Conceptual layout

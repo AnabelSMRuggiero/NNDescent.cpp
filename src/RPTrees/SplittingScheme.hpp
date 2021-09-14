@@ -38,17 +38,6 @@ AlignedArray<DistType> EuclidianSplittingPlaneNormal(const DataEntry& pointA, co
     return splittingLine;
 }
 
-template<size_t p, typename DataEntry, typename RetValue = double>
-RetValue PNorm(const DataEntry& point){
-    using Extent = typename DataEntry::value_type;
-    RetValue acc = std::transform_reduce(point.begin(),
-                          point.end(),
-                          RetValue(0),
-                          std::plus<RetValue>(),
-                          [](const Extent& extent)->RetValue{ return std::pow(extent, p);});
-
-    return std::pow(acc, 1.0/p);
-}
 
 
 
@@ -63,6 +52,8 @@ struct EuclidianScheme{
     using OffSetType = typename SplittingVector::value_type;
     using SplittingView = typename DefaultDataView<SplittingVector>::ViewType;
     using SplittingVectors = std::unordered_map<size_t, std::pair<SplittingVector, OffSetType>>;
+
+    //using DataView = typename DefaultDataView<DataEntry>::ViewType;
 
     using ParallelScheme = std::false_type;
     using SerialScheme = std::true_type;
@@ -144,6 +135,8 @@ struct ParallelEuclidianScheme{
     using OffSetType = typename SplittingVector::value_type;
     using SplittingView = typename DefaultDataView<SplittingVector>::ViewType;
     using SplittingVectors = std::unordered_map<size_t, std::pair<SplittingVector, OffSetType>>;
+
+    //using DataView = typename DefaultDataView<DataEntry>::ViewType;
     //Using EntryView
 
     using ParallelScheme = std::true_type;
@@ -279,18 +272,12 @@ struct AngularScheme{
 
     auto operator()(size_t splitIndex, std::pair<size_t, size_t> splittingPoints){
         
-        
-        // For right now at least, in the serial case I want to be able to get a new splitting vector
-        //if (splittingVectors.find(splitIndex) == splittingVectors.end()){
+
         SplittingVector splittingVector = AngularSplittingPlane<DataEntry, OffSetType>(dataSource[splittingPoints.first], dataSource[splittingPoints.second]);
 
 
-        OffSetType projectionOffset = 0;
-        for (size_t i = 0; i<dataSource[splittingPoints.first].size(); i+=1){
-            projectionOffset -= splittingVector[i] * OffSetType(dataSource[splittingPoints.first][i] + dataSource[splittingPoints.second][i])/2.0;
-        };
 
-        splittingVectors[splitIndex] = std::pair<SplittingVector, OffSetType>(std::move(splittingVector), projectionOffset);
+        splittingVectors[splitIndex] = std::move(splittingVector);
 
         //};
         if constexpr(isAlignedArray_v<SplittingVector>){

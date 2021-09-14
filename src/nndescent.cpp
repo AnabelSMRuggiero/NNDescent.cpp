@@ -237,8 +237,10 @@ int main(int argc, char *argv[]){
     size_t searchQueryDepth = 6;
     size_t maxNewSearches = 10;
 
-    SplittingHeurisitcs splitParams= {16, 2500, 1500, 3500};
-    //SplittingHeurisitcs splitParams= {16, 205, 123, 287};
+    //SplittingHeurisitcs splitParams= {16, 2500, 1500, 3500};
+    SplittingHeurisitcs splitParams= {16, 205, 123, 287};
+
+    //SplittingHeurisitcs splitParams= {16, 20, 12, 28};
 
     size_t additionalInitSearches = 8;
 
@@ -358,6 +360,7 @@ int main(int argc, char *argv[]){
     DataSet<AlignedArray<uint32_t>> mnistFashionTestNeighbors(testNeighborsFilePath, 100, 10'000, &ExtractNumericArray<AlignedArray<uint32_t>,dataEndianness>);
     */
 
+    /*
     std::string trainDataFilePath("./TestData/SIFT-Train.bin");
     DataSet<AlignedArray<float>> mnistFashionTrain(trainDataFilePath, 128, 1'000'000, &ExtractNumericArray<AlignedArray<float>,dataEndianness>);
 
@@ -366,8 +369,15 @@ int main(int argc, char *argv[]){
     std::string testNeighborsFilePath("./TestData/SIFT-Neighbors.bin");
     DataSet<AlignedArray<float>> mnistFashionTest(testDataFilePath, 128, 10'000, &ExtractNumericArray<AlignedArray<float>,dataEndianness>);
     DataSet<AlignedArray<uint32_t>> mnistFashionTestNeighbors(testNeighborsFilePath, 100, 10'000, &ExtractNumericArray<AlignedArray<uint32_t>,dataEndianness>);
+    */
 
+    std::string trainDataFilePath("./TestData/NYTimes-Angular-Train.bin");
+    DataSet<AlignedArray<float>> mnistFashionTrain(trainDataFilePath, 256, 290'000, &ExtractNumericArray<AlignedArray<float>,dataEndianness>);
 
+    std::string testDataFilePath("./TestData/NYTimes-Angular-Test.bin");
+    std::string testNeighborsFilePath("./TestData/NYTimes-Angular-Neighbors.bin");
+    DataSet<AlignedArray<float>> mnistFashionTest(testDataFilePath, 256, 10'000, &ExtractNumericArray<AlignedArray<float>,dataEndianness>);
+    DataSet<AlignedArray<uint32_t>> mnistFashionTestNeighbors(testNeighborsFilePath, 100, 10'000, &ExtractNumericArray<AlignedArray<uint32_t>,dataEndianness>);
 
     //std::cout << "I/O done." << std::endl;
 
@@ -460,10 +470,6 @@ int main(int argc, char *argv[]){
 
     size_t numberSearchBlocks = dataBlocks.size();
 
-    GraphVertex<BlockIndecies, float> nullVertex;
-    for(size_t i = 0; i<numberSearchNeighbors; i+=1){
-        nullVertex.push_back({{size_t(0),size_t(0)}, std::numeric_limits<float>::max()});
-    }
 
     for (auto& context: blockUpdateContexts){
         context.queryContext.querySearchDepth = searchQueryDepth;
