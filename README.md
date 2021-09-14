@@ -40,7 +40,7 @@ To tackle these weaknesses, rNND uses the results of RPTrees to cluster the enti
 So far, a serial version of NND has been implemented. This project has a lot further to go before being usable, including:
 
 Currently in progress:
-- Parallelize RP-Trees (Almost done)
+- Fix search algo assumptions
 - Angular RP-Trees
 - Inner Product Metric
 - MetaGraph Recursion

@@ -197,6 +197,37 @@ struct DataMapper{
         dataBlocks.push_back(construct(dataSource, indicies, blockCounter++));
     };
 };
+
+template<typename DataEntry>
+struct DataMapper<DataEntry, void, void>{
+
+    const DataSet<DataEntry>& dataSource;
+    size_t blockCounter;
+    std::unordered_map<size_t, size_t> splitToBlockNum;
+    std::unordered_map<BlockIndecies, size_t> blockIndexToSource;
+    std::vector<BlockIndecies> sourceToBlockIndex;
+    std::vector<size_t> sourceToSplitIndex;
+    
+
+    DataMapper(const DataSet<DataEntry>& source, const size_t startIndex = 0):
+        dataSource(source),
+        blockCounter(startIndex),
+        sourceToBlockIndex(dataSource.numberOfSamples),
+        sourceToSplitIndex(dataSource.numberOfSamples) {};
+
+    void operator()(size_t splittingIndex, std::span<const size_t> indicies){
+        //[[unlikely]]if (indicies.size() == 0) return;
+        splitToBlockNum[splittingIndex] = blockCounter;
+        for (size_t i = 0; i<indicies.size(); i += 1){
+            size_t index = indicies[i];
+            sourceToBlockIndex[index] = BlockIndecies{blockCounter, i};
+            sourceToSplitIndex[index] = splittingIndex;
+            blockIndexToSource[BlockIndecies{blockCounter, i}] = index;
+        }
+        blockCounter++;
+    };
+};
+
 /*
 template<typename DataEntry, typename DataStructure>
 struct DataMapper<DataEntry, DataStructure>{
