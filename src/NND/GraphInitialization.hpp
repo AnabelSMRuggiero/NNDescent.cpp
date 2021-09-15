@@ -130,7 +130,7 @@ template<typename DistType>
 std::pair<Graph<size_t, DistType>, InitialJoinHints<DistType>> NearestNodeDistances(std::span<const BlockUpdateContext<DistType>> blockUpdateContexts,
                                                         const MetaGraph<DistType>& metaGraph,
                                                         const size_t maxNearestNodeNeighbors,
-                                                        DispatchFunctor<DistType> distanceFunctor){
+                                                        DispatchFunctor<DistType>& distanceFunctor){
 
     std::unordered_set<ComparisonKey<size_t>> nearestNodeDistQueue;
     //const size_t startIndex = blockUpdateContexts[0].queryContext.blockNumber;

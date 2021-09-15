@@ -97,7 +97,9 @@ JoinResults<size_t, DistType> BlockwiseJoin(const JoinHints<size_t>& startJoins,
         //std::vector<std::pair<size_t, GraphVertex<size_t, DistType>>> newJoins;
         for(auto& result: joinResults){
             //std::heap_sort(result.second.begin(), result.second.end(), NeighborDistanceComparison<size_t, DistType>);
-            bool newNeighbor = false;
+            //bool newNeighbor = false;
+            EraseRemove(result.second, currentGraphState[result.first].PushThreshold());
+            /*
             GraphVertex<size_t, DistType> updatedResult;
             for (const auto& neighborCandidate: result.second){
                 if (neighborCandidate.second < currentGraphState[result.first].PushThreshold()){
@@ -105,7 +107,8 @@ JoinResults<size_t, DistType> BlockwiseJoin(const JoinHints<size_t>& startJoins,
                     updatedResult.push_back(neighborCandidate);
                 }
             }
-            if (newNeighbor){   
+            */
+            if (result.second.size()>0){   
                 
                 for(const auto& leafNeighbor: searchSubgraph[result.first]){
                     if(!nodesJoined[leafNeighbor.first]){
@@ -114,7 +117,7 @@ JoinResults<size_t, DistType> BlockwiseJoin(const JoinHints<size_t>& startJoins,
                         nodesJoined[leafNeighbor.first] = true;
                     }
                 }
-                retResults.push_back({result.first, std::move(updatedResult)});
+                retResults.push_back({result.first, std::move(result.second)});
             }
             //result.second = updatedResult;
         }

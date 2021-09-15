@@ -262,8 +262,8 @@ struct QueryContext{
                              nodesVisited);
             
         }
-        GraphVertex<size_t, DistType> compareTargets;
-        compareTargets.resize(querySearchDepth);
+        //GraphVertex<size_t, DistType> compareTargets;
+        //compareTargets.resize(querySearchDepth);
 
         std::vector<size_t> joinQueue;
         const size_t maxBatch = internal::maxBatch;
@@ -273,12 +273,13 @@ struct QueryContext{
 
         bool breakVar = true;
         while (breakVar){
-            std::partial_sort_copy(initVertex.begin(), initVertex.end(), compareTargets.begin(), compareTargets.end(), NeighborDistanceComparison<size_t, DistType>);
+            //std::partial_sort_copy(initVertex.begin(), initVertex.end(), compareTargets.begin(), compareTargets.end(), NeighborDistanceComparison<size_t, DistType>);
             breakVar = false;
             size_t numCompared = 0;
-            for (const auto& neighbor: compareTargets){
+            for (; numCompared<querySearchDepth; numCompared+=1){
+                const auto& neighbor = initVertex[numCompared];
                 if (nodesCompared[neighbor.first]){
-                    numCompared += 1;
+                    //numCompared += 1;
                     continue;
                 }
                 const std::vector<size_t>& currentNeighbor = subGraph[neighbor.first];
@@ -296,7 +297,7 @@ struct QueryContext{
                     */
                 }
                 nodesCompared[neighbor.first] = true;
-                numCompared += 1;
+                //numCompared += 1;
             }
             computeBatch:
             std::vector<DistType> distances = queryFunctor(queryIndex, joinQueue);
@@ -349,8 +350,8 @@ struct QueryContext{
         for (size_t i = 0; i<initVertex.size(); i+=1){
             initVertex[i].second = initDistances[i];
         }
-
-        std::make_heap(initVertex.begin(), initVertex.end(), NeighborDistanceComparison<size_t, DistType>);
+        initVertex.JoinPrep();
+        //std::make_heap(initVertex.begin(), initVertex.end(), NeighborDistanceComparison<size_t, DistType>);
         //if sizeDif is positive, reduce to numCandidates
         //for (int i = 0; i < sizeDif; i+=1){
         //    std::pop_heap(initVertex.begin(), initVertex.end(), NeighborDistanceComparison<size_t, DistType>);
@@ -394,9 +395,9 @@ struct QueryContext{
         //NodeTracker nodesVisitedA(subGraphA.dataBlock.size());
         //NodeTracker nodesVisitedB(subGraphB.dataBlock.size());
 
-        for(const auto& starterA: this->queryHint.neighbors){
+        for(const auto& starterA: this->queryHint){
             //nodesVisitedA[starterA.first] = true;
-            for (const auto& starterB: rhs.queryHint.neighbors){
+            for (const auto& starterB: rhs.queryHint){
                 //nodesVisitedB[starterB.first] = true;
                 DistType distance = distanceFunctor(starterA.first, starterB.first);
                 if (distance < bestDistance){

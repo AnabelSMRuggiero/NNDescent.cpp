@@ -20,6 +20,7 @@ https://github.com/AnabelSMRuggiero/NNDescent.cpp
 #include <execution>
 #include <array>
 #include <utility>
+#include <cstring>
 
 #include "UtilityFunctions.hpp"
 
@@ -55,34 +56,76 @@ struct GraphVertex{
     //GraphVertex(GraphVertex&& rval): neighbors(std::forward<std::vector<std::pair<IndexType, FloatType>>>(rval.neighbors)){};
     //Incorporate size checking in here?
     bool PushNeighbor(std::pair<IndexType, FloatType> newNeighbor){
-        if (newNeighbor.second > neighbors[0].second) return false;
+        if (newNeighbor.second > neighbors.back().second) return false;
+        
+        size_t index = neighbors.size();
+        for ( ; index>0; index -= 1){
+            if (NeighborDistanceComparison<IndexType, FloatType>(neighbors[index-1], newNeighbor)) break;
+        }
+        
         neighbors.push_back(newNeighbor);
-        std::push_heap(neighbors.begin(), neighbors.end(), NeighborDistanceComparison<IndexType, FloatType>);
-        std::pop_heap(neighbors.begin(), neighbors.end(), NeighborDistanceComparison<IndexType, FloatType>);
+        std::memmove(&neighbors[index+1], &neighbors[index], sizeof(std::pair<IndexType, FloatType>)*(neighbors.size()-1 - index));
+        neighbors[index] = newNeighbor;
+        
         neighbors.pop_back();
         return true;
     };
 
     std::pair<IndexType, FloatType> PushNeighbor(std::pair<IndexType, FloatType> newNeighbor, ReturnRemoved){
-        if (newNeighbor.second > neighbors[0].second) return newNeighbor;
+        if (newNeighbor.second > neighbors.back().second) return newNeighbor;
+        
+        size_t index = neighbors.size();
+        for ( ; index>0; index -= 1){
+            if (NeighborDistanceComparison<IndexType, FloatType>(neighbors[index-1], newNeighbor)) break;
+        }
+
         neighbors.push_back(newNeighbor);
-        std::push_heap(neighbors.begin(), neighbors.end(), NeighborDistanceComparison<IndexType, FloatType>);
-        std::pop_heap(neighbors.begin(), neighbors.end(), NeighborDistanceComparison<IndexType, FloatType>);
+        std::memmove(&neighbors[index+1], &neighbors[index], sizeof(std::pair<IndexType, FloatType>)*(neighbors.size()-1 - index));
+        neighbors[index] = newNeighbor;
+
         std::pair<IndexType, FloatType> retValue = neighbors.back();
         neighbors.pop_back();
+
         return retValue;
     };
 
     void JoinPrep(){
-        std::make_heap(neighbors.begin(), neighbors.end(), NeighborDistanceComparison<IndexType, FloatType>);
+        std::sort(neighbors.begin(), neighbors.end(), NeighborDistanceComparison<IndexType, FloatType>);
     }
 
     void UnPrep(){
-        std::sort_heap(neighbors.begin(), neighbors.end(), NeighborDistanceComparison<IndexType, FloatType>);
+        //std::sort_heap(neighbors.begin(), neighbors.end(), NeighborDistanceComparison<IndexType, FloatType>);
+        return; //noop
     }
     
     FloatType PushThreshold() const noexcept{
-        return neighbors[0].second;
+        return neighbors.back().second;
+    }
+    
+    size_t FindIndexBack(const FloatType dist) const noexcept{
+        size_t index = neighbors.size();
+        for ( ; index>0; index -= 1){
+            if (neighbors[index-1].second < dist) break;
+        }
+        return index;
+    }
+
+    template<typename OtherIndex>
+    size_t FindIndexBack(const std::pair<OtherIndex, FloatType>& neighbor) const noexcept{
+        return FindIndexBack(neighbor.second);
+    }
+
+    size_t FindIndexFront(const FloatType dist) const noexcept{
+        size_t index = 0;
+        for ( ; index<neighbors.size(); index += 1){
+            if (neighbors[index].second > dist) break;
+        }
+        return index;
+    }
+
+    template<typename OtherIndex>
+    size_t FindIndexFront(const std::pair<OtherIndex, FloatType>& neighbor) const noexcept{
+        return FindIndexFront(neighbor.second);
     }
 
     //Object Composition stuff below here
@@ -160,17 +203,21 @@ struct GraphVertex{
 
 template<typename IndexType, typename DistType>
 void EraseRemove(GraphVertex<IndexType, DistType>& vertex, DistType minValue){
-    NeighborOverDist<DistType> comparison(minValue);
-    vertex.erase(std::remove_if(vertex.begin(),
-                                vertex.end(),
-                                comparison),
-                    vertex.end());
+
+    size_t index = vertex.FindIndexFront(minValue);
+    vertex.erase(vertex.begin()+index, vertex.end());
+    //NeighborOverDist<DistType> comparison(minValue);
+    //vertex.erase(std::remove_if(vertex.begin(),
+    //                            vertex.end(),
+    //                            comparison),
+    //                vertex.end());
 }
 
 //Rewrite as stream operator?
 template<typename DistType>
 unsigned int ConsumeVertex(GraphVertex<BlockIndecies, DistType>& consumer, GraphVertex<BlockIndecies, DistType>& consumee){
-    std::sort(consumee.begin(), consumee.end(), NeighborDistanceComparison<BlockIndecies, DistType>);
+    //std::sort(consumee.begin(), consumee.end(), NeighborDistanceComparison<BlockIndecies, DistType>);
+    consumee.UnPrep();
     unsigned int neighborsAdded(0);
     for (auto& pair: consumee){
         if (pair.second >= consumer.PushThreshold()) return neighborsAdded;
@@ -182,7 +229,8 @@ unsigned int ConsumeVertex(GraphVertex<BlockIndecies, DistType>& consumer, Graph
 
 template<typename DistType>
 unsigned int ConsumeVertex(GraphVertex<BlockIndecies, DistType>& consumer, GraphVertex<BlockIndecies, DistType>&& consumee){
-    std::sort(consumee.begin(), consumee.end(), NeighborDistanceComparison<BlockIndecies, DistType>);
+    //std::sort(consumee.begin(), consumee.end(), NeighborDistanceComparison<BlockIndecies, DistType>);
+    consumee.UnPrep();
     unsigned int neighborsAdded(0);
     for (auto& pair: consumee){
         if (pair.second >= consumer.PushThreshold()) return neighborsAdded;
@@ -194,7 +242,8 @@ unsigned int ConsumeVertex(GraphVertex<BlockIndecies, DistType>& consumer, Graph
 
 template<TriviallyCopyable OtherIndex, typename OtherDist, typename ConsumerDist>
 unsigned int ConsumeVertex(GraphVertex<BlockIndecies, ConsumerDist>& consumer, GraphVertex<OtherIndex, OtherDist>& consumee, size_t consumeeBlockNum){
-    std::sort(consumee.begin(), consumee.end(), NeighborDistanceComparison<OtherIndex, OtherDist>);
+    //std::sort(consumee.begin(), consumee.end(), NeighborDistanceComparison<OtherIndex, OtherDist>);
+    consumee.UnPrep();
     unsigned int neighborsAdded(0);
     for (auto& pair: consumee){
         if (pair.second >= consumer.PushThreshold()) return neighborsAdded;
@@ -208,7 +257,8 @@ unsigned int ConsumeVertex(GraphVertex<BlockIndecies, ConsumerDist>& consumer, G
 
 template<TriviallyCopyable OtherIndex, typename OtherDist, typename ConsumerDist>
 unsigned int ConsumeVertex(GraphVertex<std::pair<BlockIndecies, bool>, ConsumerDist>& consumer, GraphVertex<OtherIndex, OtherDist>& consumee, size_t consumeeBlockNum){
-    std::sort(consumee.begin(), consumee.end(), NeighborDistanceComparison<OtherIndex, OtherDist>);
+    //std::sort(consumee.begin(), consumee.end(), NeighborDistanceComparison<OtherIndex, OtherDist>);
+    consumee.UnPrep();
     unsigned int neighborsAdded(0);
     for (auto& pair: consumee){
         if (pair.second >= consumer.PushThreshold()) return neighborsAdded;

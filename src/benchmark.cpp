@@ -60,6 +60,7 @@ struct SortedVertex{
         for ( ; index>0; index -= 1){
             if (NeighborDistanceComparison<IndexType, FloatType>(neighbors[index-1], newNeighbor)) break;
         }
+        
         neighbors.push_back(newNeighbor);
         std::memmove(&neighbors[index+1], &neighbors[index], sizeof(std::pair<IndexType, FloatType>)*(neighbors.size()-1 - index));
         neighbors[index] = newNeighbor;
@@ -75,11 +76,20 @@ struct SortedVertex{
 
     std::pair<IndexType, FloatType> PushNeighbor(std::pair<IndexType, FloatType> newNeighbor, ReturnRemoved){
         if (newNeighbor.second > neighbors[0].second) return newNeighbor;
+        //neighbors.push_back(newNeighbor);
+
+        size_t index = neighbors.size();
+        for ( ; index>0; index -= 1){
+            if (NeighborDistanceComparison<IndexType, FloatType>(neighbors[index-1], newNeighbor)) break;
+        }
+
         neighbors.push_back(newNeighbor);
-        auto insertionPoint = std::upper_bound(neighbors.begin(), neighbors.end()-1, neighbors.back(), NeighborDistanceComparison<IndexType, FloatType>);
-        std::rotate(insertionPoint, neighbors.end()-1, neighbors.end());
+        std::memmove(&neighbors[index+1], &neighbors[index], sizeof(std::pair<IndexType, FloatType>)*(neighbors.size()-1 - index));
+        neighbors[index] = newNeighbor;
+
         std::pair<IndexType, FloatType> retValue = neighbors.back();
         neighbors.pop_back();
+
         return retValue;
     };
 
