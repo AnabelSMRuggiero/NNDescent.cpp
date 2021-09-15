@@ -82,7 +82,8 @@ GraphVertex<size_t, DistType> QueryCOMNeighbors(const size_t pointIndex,
                                 distanceFunctor(pointIndex, i)));
         nodesVisited[i] = true;
     }
-    std::make_heap(COMneighbors.neighbors.begin(), COMneighbors.neighbors.end(), NeighborDistanceComparison<size_t, COMExtent>);
+    COMneighbors.JoinPrep();
+    //std::make_heap(COMneighbors.begin(), COMneighbors.neighbors.end(), NeighborDistanceComparison<size_t, COMExtent>);
 
     bool breakVar = false;
     GraphVertex<size_t, COMExtent> newState(COMneighbors);

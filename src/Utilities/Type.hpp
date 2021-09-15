@@ -162,10 +162,10 @@ template<typename Type, typename OtherType>
 concept IsNot = !std::same_as<Type, OtherType>;
 
 struct SplittingHeurisitcs{
-    int splits = 16;
-    int splitThreshold = 80;
-    int childThreshold = 32;
-    int maxTreeSize = 130;
+    u_int32_t splitThreshold = 80;
+    u_int32_t childThreshold = 32;
+    u_int32_t maxTreeSize = 130;
+    float maxSplitFraction = 0.0f;
 };
 
 

@@ -63,7 +63,8 @@ void BruteForceGraph(Graph<size_t, FloatType>& uninitGraph, size_t numNeighbors,
             if (uninitGraph[i].size() < numNeighbors){
                 uninitGraph[i].push_back(std::pair<size_t, FloatType>(j, distance));
                 if (uninitGraph[i].size() == numNeighbors){
-                    std::make_heap(uninitGraph[i].neighbors.begin(), uninitGraph[i].neighbors.end(), NeighborDistanceComparison<size_t, FloatType>);
+                    uninitGraph[i].JoinPrep();
+                    //std::make_heap(uninitGraph[i].neighbors.begin(), uninitGraph[i].neighbors.end(), NeighborDistanceComparison<size_t, FloatType>);
                 }
             } else if (distance < uninitGraph[i].PushThreshold()){
                 uninitGraph[i].PushNeighbor(std::pair<size_t, FloatType>(j, distance));
@@ -71,7 +72,8 @@ void BruteForceGraph(Graph<size_t, FloatType>& uninitGraph, size_t numNeighbors,
             if (uninitGraph[j].size() < numNeighbors){
                 uninitGraph[j].push_back(std::pair<size_t, FloatType>(i, distance));
                 if (uninitGraph[j].size() == numNeighbors){
-                    std::make_heap(uninitGraph[j].begin(), uninitGraph[j].end(), NeighborDistanceComparison<size_t, FloatType>);
+                    uninitGraph[j].JoinPrep();
+                    //std::make_heap(uninitGraph[j].begin(), uninitGraph[j].end(), NeighborDistanceComparison<size_t, FloatType>);
                 }
             } else if (distance < uninitGraph[j].PushThreshold()){
                 uninitGraph[j].PushNeighbor(std::pair<size_t, FloatType>(i, distance));

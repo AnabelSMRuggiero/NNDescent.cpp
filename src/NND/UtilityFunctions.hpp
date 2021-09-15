@@ -17,12 +17,12 @@ https://github.com/AnabelSMRuggiero/NNDescent.cpp
 namespace nnd{
 
 template<TriviallyCopyable IndexType, typename FloatType>
-bool constexpr NeighborDistanceComparison(const std::pair<IndexType, FloatType>& neighborA, const std::pair<IndexType, FloatType>& neighborB){
+bool constexpr NeighborDistanceComparison(const std::pair<IndexType, FloatType>& neighborA, const std::pair<IndexType, FloatType>& neighborB) noexcept{
     return neighborA.second < neighborB.second;
 };
 
 template<TriviallyCopyable IndexType, typename FloatType>
-bool constexpr NeighborIdentityCheck(const std::pair<IndexType, FloatType>& neighborA, const std::pair<IndexType, FloatType>& neighborB){
+bool constexpr NeighborIdentityCheck(const std::pair<IndexType, FloatType>& neighborA, const std::pair<IndexType, FloatType>& neighborB) noexcept{
     return neighborA.first == neighborB.first;
 };
 

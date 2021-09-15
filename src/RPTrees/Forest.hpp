@@ -231,11 +231,34 @@ struct TreeRef{
 
 };
 
+enum class SplitQuality{
+    done = 0,
+    accept = 1,
+    reject
+};
+
+SplitQuality EvaluateSplit(const SplittingHeurisitcs& heuristics, const size_t rangeSize, const size_t splitSize){
+    size_t smallerSide = std::min(splitSize, rangeSize-splitSize);
+    double splitFraction = double(smallerSide)/double(rangeSize);
+
+    if (smallerSide>heuristics.childThreshold && splitFraction>heuristics.maxSplitFraction){
+
+        return SplitQuality::accept;
+        //done/accept rightSplit->splitRange.second - rightSplit->splitRange.first > splitThreshold
+                
+    } else if (rangeSize < heuristics.maxTreeSize){
+        return SplitQuality::done;
+    } else {
+        return SplitQuality::reject;
+    }
+
+}
+
 //SplittingHeurisitcs test = {8, 64, 8};
 template<typename SplittingScheme>
 struct ForestBuilder{
 
-    constexpr static bool debugRPTrees = true;
+    constexpr static bool debugRPTrees = false;
 
     //std::vector<size_t> indexArray;
     RngFunctor rngFunctor;
@@ -284,6 +307,7 @@ struct ForestBuilder{
 //Training version
 void AddLeaves(TreeRef& nodeRef, std::span<size_t> samples, std::span<size_t> workSpace, const size_t numTrue, std::vector<TreeLeaf*>& queue, const size_t splitThreshold){
     
+
     TreeLeaf* leftSplit = nodeRef.AddLeftLeaf(std::pair<size_t, size_t>(nodeRef.refNode->splitRange.first, nodeRef.refNode->splitRange.first + numTrue),
                                                         nodeRef.refNode->splittingIndex * 2 + 1);
             
@@ -448,7 +472,19 @@ RandomProjectionForest ForestBuilder<SplittingScheme>::operator()(std::unique_pt
             
 
             size_t numSplit = Split(beginIt, endIt, toBegin, toRev, splittingFunction);
-
+            size_t splitRange = builder.refNode->splitRange.second - builder.refNode->splitRange.first;
+            SplitQuality splitQual = EvaluateSplit(this->heurisitics, splitRange, numSplit);
+            switch(splitQual){
+                case SplitQuality::accept:
+                    AddLeaves(builder, samples, workSpace, numSplit, splitQueue2, heurisitics.splitThreshold);
+                    break;
+                case SplitQuality::reject:
+                    splitQueue2.push_back(builder.refNode);
+                    break;
+                default:
+                    break;
+            }
+            /*
             if (numSplit>heurisitics.childThreshold &&
                 (builder.refNode->splitRange.second - builder.refNode->splitRange.first - numSplit)>heurisitics.childThreshold){
 
@@ -457,6 +493,7 @@ RandomProjectionForest ForestBuilder<SplittingScheme>::operator()(std::unique_pt
             } else if ((builder.refNode->splitRange.second - builder.refNode->splitRange.first) > heurisitics.maxTreeSize){
                 splitQueue2.push_back(builder.refNode);
             }
+            */
             splitQueue1.pop_back();
 
         } //end while
@@ -528,14 +565,27 @@ RandomProjectionForest ForestBuilder<SplittingScheme>::operator()(std::unique_pt
             std::future<size_t> result = splitState->result.get_future();
             size_t numSplit = result.get();
             builder.refNode = nodePtr;
-            if (numSplit>heurisitics.childThreshold &&
-                (builder.refNode->splitRange.second - builder.refNode->splitRange.first - numSplit)>heurisitics.childThreshold){
+            size_t splitRange = builder.refNode->splitRange.second - builder.refNode->splitRange.first;
+            SplitQuality splitQual = EvaluateSplit(this->heurisitics, splitRange, numSplit);
+            switch(splitQual){
+                case SplitQuality::accept:
+                    AddLeaves(builder, samples, workSpace, numSplit, splitQueue2, heurisitics.splitThreshold);
+                    break;
+                case SplitQuality::reject:
+                    splitQueue2.push_back(builder.refNode);
+                    break;
+                default:
+                    break;
+            }
+            /*
+            if (splitQual){
 
                 AddLeaves(builder, samples, workSpace, numSplit, splitQueue2, heurisitics.splitThreshold);
                 
             } else if ((builder.refNode->splitRange.second - builder.refNode->splitRange.first) > heurisitics.maxTreeSize){
                 splitQueue2.push_back(builder.refNode);
             }
+            */
             
         }
         std::swap(samples, workSpace);
@@ -588,6 +638,19 @@ RandomProjectionForest ForestBuilder<SplittingScheme>::operator()(std::unique_pt
 
                     size_t numSplit = Split(beginIt, endIt, toBegin, toRev, splittingFunction);
 
+                    size_t splitRange = nodeBuilder.refNode->splitRange.second - nodeBuilder.refNode->splitRange.first;
+                    SplitQuality splitQual = EvaluateSplit(heurisitics, splitRange, numSplit);
+                    switch(splitQual){
+                        case SplitQuality::accept:
+                            AddLeaves(nodeBuilder, samples, workSpace, numSplit, splitQueue2, heurisitics.splitThreshold);
+                            break;
+                        case SplitQuality::reject:
+                            goto retry;
+                            break;
+                        default:
+                            break;
+                    }
+                    /*
                     if (numSplit>heurisitics.childThreshold &&
                         (nodeBuilder.refNode->splitRange.second - nodeBuilder.refNode->splitRange.first - numSplit)>heurisitics.childThreshold){
 
@@ -597,6 +660,7 @@ RandomProjectionForest ForestBuilder<SplittingScheme>::operator()(std::unique_pt
                         // I know, gross. This is a (hopefully) a place holder for a more robust way to handle rejected splits.
                         goto retry;
                     }
+                    */
                     splitQueue1.pop_back();
                 }
                 std::swap(samples, workSpace);

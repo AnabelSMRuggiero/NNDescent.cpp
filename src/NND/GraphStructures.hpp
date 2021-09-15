@@ -597,6 +597,9 @@ struct CachingFunctor{
 
     std::vector<DistType> operator()(const size_t queryIndex, const std::vector<size_t>& targetIndecies){
         std::vector<DistType> distances = this->metricFunctor(queryIndex, targetIndecies);
+
+        
+        
         for (size_t i = 0; i<targetIndecies.size(); i+=1){
             cachedGraphSize = std::max(targetIndecies[i], cachedGraphSize);
             if(reverseGraph[targetIndecies[i]].size() == numNeighbors){
@@ -609,6 +612,7 @@ struct CachingFunctor{
             }
             nodesJoined[targetIndecies[i]][queryIndex] = true;
         }
+        
         return distances;
     };
 

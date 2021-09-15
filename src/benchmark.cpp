@@ -19,6 +19,7 @@ https://github.com/AnabelSMRuggiero/NNDescent.cpp
 #include <array>
 #include <memory>
 #include <type_traits>
+#include <cstring>
 
 #include <immintrin.h>
 
@@ -28,11 +29,145 @@ https://github.com/AnabelSMRuggiero/NNDescent.cpp
 #include "Utilities/Data.hpp"
 #include "Utilities/DataDeserialization.hpp"
 
+#include "NND/GraphStructures.hpp"
+#include "NND/UtilityFunctions.hpp"
 
 using namespace nnd;
 
 
+template<typename IndexType, typename FloatType>
+struct SortedVertex{
 
+    using iterator = typename std::vector<std::pair<IndexType, FloatType>>::iterator;
+    using const_iterator = typename std::vector<std::pair<IndexType, FloatType>>::const_iterator;
+    std::vector<std::pair<IndexType, FloatType>> neighbors;
+    //std::vector<size_t> reverseNeighbor;
+
+    SortedVertex(): neighbors(0){};
+
+    SortedVertex(size_t numNeighbors): neighbors(0) {
+        this->neighbors.reserve(numNeighbors + 1);
+    };
+
+    //GraphVertex(GraphVertex&& rval): neighbors(std::forward<std::vector<std::pair<IndexType, FloatType>>>(rval.neighbors)){};
+    //Incorporate size checking in here?
+    bool PushNeighbor(std::pair<IndexType, FloatType> newNeighbor){
+        if (newNeighbor.second > neighbors.back().second) return false;
+        //neighbors.push_back(newNeighbor);
+        //[&](std::pair<IndexType, FloatType>& elementToCompare){return NeighborDistanceComparison<IndexType, FloatType>()}
+        //auto insertionPoint = std::upper_bound(neighbors.begin(), neighbors.end()-1, neighbors.back(), NeighborDistanceComparison<IndexType, FloatType>);
+        size_t index = neighbors.size();
+        for ( ; index>0; index -= 1){
+            if (NeighborDistanceComparison<IndexType, FloatType>(neighbors[index-1], newNeighbor)) break;
+        }
+        neighbors.push_back(newNeighbor);
+        std::memmove(&neighbors[index+1], &neighbors[index], sizeof(std::pair<IndexType, FloatType>)*(neighbors.size()-1 - index));
+        neighbors[index] = newNeighbor;
+        //size_t index = std::transform_reduce(std::execution::unseq, neighbors.begin(), neighbors.end()-1, size_t(0), std::plus<size_t>(),
+        //    [&](std::pair<IndexType,FloatType>& entry){
+        //        return NeighborDistanceComparison<IndexType, FloatType>(entry, newNeighbor);
+        //    });
+        //std::rotate(std::execution::unseq, neighbors.begin()+index, neighbors.end()-1, neighbors.end());
+        //std::rotate(std::execution::unseq, insertionPoint, neighbors.end()-1, neighbors.end());
+        neighbors.pop_back();
+        return true;
+    };
+
+    std::pair<IndexType, FloatType> PushNeighbor(std::pair<IndexType, FloatType> newNeighbor, ReturnRemoved){
+        if (newNeighbor.second > neighbors[0].second) return newNeighbor;
+        neighbors.push_back(newNeighbor);
+        auto insertionPoint = std::upper_bound(neighbors.begin(), neighbors.end()-1, neighbors.back(), NeighborDistanceComparison<IndexType, FloatType>);
+        std::rotate(insertionPoint, neighbors.end()-1, neighbors.end());
+        std::pair<IndexType, FloatType> retValue = neighbors.back();
+        neighbors.pop_back();
+        return retValue;
+    };
+
+    void JoinPrep(){
+        std::sort(neighbors.begin(), neighbors.end(), NeighborDistanceComparison<IndexType, FloatType>);
+    }
+
+    void UnPrep(){
+        //std::sort_heap(neighbors.begin(), neighbors.end(), NeighborDistanceComparison<IndexType, FloatType>);
+        return; //noop
+    }
+    
+    FloatType PushThreshold() const noexcept{
+        return neighbors.back().second;
+    }
+
+    //Object Composition stuff below here
+
+    constexpr void pop_back(){
+        neighbors.pop_back();
+    }
+
+    constexpr void push_back(const std::pair<IndexType, FloatType>& value){
+        neighbors.push_back(value);
+    }
+
+    //template<typename PairReferenceType>
+    constexpr void push_back(std::pair<IndexType, FloatType>&& value){
+        neighbors.push_back(std::forward<std::pair<IndexType, FloatType>>(value));
+    }
+
+    constexpr std::pair<IndexType, FloatType>& operator[](size_t i){
+        return neighbors[i];
+    }
+
+    constexpr const std::pair<IndexType, FloatType>& operator[](size_t i) const{
+        return neighbors[i];
+    }
+
+    constexpr std::pair<IndexType, FloatType>& operator[](BlockIndecies i){
+        // I'm assuming the block number is correct
+        return neighbors[i.dataIndex];
+    }
+
+    constexpr const std::pair<IndexType, FloatType>& operator[](BlockIndecies i) const{
+        // I'm assuming the block number is correct
+        return neighbors[i.dataIndex];
+    }
+
+    size_t size() const noexcept{
+        return neighbors.size();
+    }
+    
+    constexpr iterator begin() noexcept{
+        return neighbors.begin();
+    }
+
+    constexpr const_iterator begin() const noexcept{
+        return neighbors.begin();
+    }
+
+    constexpr const_iterator cbegin() const noexcept{
+        return neighbors.cbegin();
+    }
+
+    constexpr iterator end() noexcept{
+        return neighbors.end();
+    }
+
+    constexpr const_iterator end() const noexcept{
+        return neighbors.end();
+    }
+
+    constexpr const_iterator cend() const noexcept{
+        return neighbors.cend();
+    }
+
+    constexpr void resize(size_t count){
+        neighbors.resize(count);
+    }
+
+    constexpr iterator erase(const_iterator first, const_iterator last) {
+        return neighbors.erase(first, last);
+    }
+
+    //private:
+    
+};
 
 
 
@@ -61,24 +196,55 @@ static void clobber(){
 int main(){
     //std::unique_ptr<float[]>test(new (std::align_val_t(32)) float[8]);
     static const std::endian dataEndianness = std::endian::big;
-    AlignedArray<float> (*test)(std::ifstream&, size_t) =  &nnd::ExtractNumericArray<AlignedArray<float>, dataEndianness>;
-    std::string trainDataFilePath("./TestData/MNIST-Fashion-Train.bin");
-    nnd::DataSet<AlignedArray<float>> mnistFashionTrain(trainDataFilePath, 28*28, 60'000, &nnd::ExtractNumericArray<AlignedArray<float>, dataEndianness>);
+    
 
     std::mt19937_64 rngEngine(0);
-    std::uniform_int_distribution<size_t> rngDist(size_t(0), mnistFashionTrain.numberOfSamples - 1);
+    std::uniform_real_distribution<float> rngDist(0.1, 0.9);
 
-    std::chrono::time_point<std::chrono::steady_clock> runStart, runEnd;
+    SortedVertex<BlockIndecies, float> sorted(10);
 
-    std::vector<size_t> targetPoints(8);
+    SortedVertex<BlockIndecies, float> sortedCopy(10);
+
+    GraphVertex<BlockIndecies, float> heaped(10);
+
+    GraphVertex<BlockIndecies, float> heapedCopy(10);
     
-    std::vector<AlignedSpan<const float>> targetSpans;
-    for (auto& point: targetPoints){
-        point = rngDist(rngEngine);
-        targetSpans.push_back(AlignedSpan<const float>(mnistFashionTrain[point]));
+    for (size_t i = 0; i<10; i+=1){
+        sortedCopy.push_back({{0,0}, 0.9});
+        heapedCopy.push_back({{0,0}, 0.9});
     }
-    escape(targetSpans.data());
+        
+    sorted = sortedCopy;
+    heaped = heapedCopy;
 
+    std::chrono::time_point<std::chrono::steady_clock> runStart = std::chrono::steady_clock::now();
+    for (size_t i = 0; i < 10'000; i+=1){
+        escape(sorted.neighbors.data());
+        for (size_t j = 0; j < 100'000; j+=1){
+            sorted.PushNeighbor({{0,0}, rngDist(rngEngine)});
+            escape(sorted.neighbors.data());
+        }
+        sorted = sortedCopy;
+    }
+    std::chrono::time_point<std::chrono::steady_clock> runEnd = std::chrono::steady_clock::now();
+    std::cout << std::chrono::duration_cast<std::chrono::duration<float>>(runEnd - runStart).count() << "s total for sorted pushes" << std::endl;
+
+    rngEngine.seed(0);
+
+    std::chrono::time_point<std::chrono::steady_clock> heapedStart = std::chrono::steady_clock::now();
+    for (size_t i = 0; i < 10'000; i+=1){
+        escape(heaped.neighbors.data());
+        for (size_t j = 0; j < 100'000; j+=1){
+            heaped.PushNeighbor({{0,0}, rngDist(rngEngine)});
+            escape(heaped.neighbors.data());
+        }
+        heaped = heapedCopy;
+    }
+    std::chrono::time_point<std::chrono::steady_clock> heapedEnd = std::chrono::steady_clock::now();
+    std::cout << std::chrono::duration_cast<std::chrono::duration<float>>(heapedEnd - heapedStart).count() << "s total for heaped pushes" << std::endl;
+
+    
+    /*
     runStart = std::chrono::steady_clock::now();
     for(size_t i = 0; i<1'000'000; i+=1){
         
@@ -91,7 +257,7 @@ int main(){
     }
     runEnd = std::chrono::steady_clock::now();
     std::cout << std::chrono::duration_cast<std::chrono::duration<float>>(runEnd - runStart).count() << "s total for 8 dist at a time (no prefetch)" << std::endl;
-
+    */
     
     /*
     runStart = std::chrono::steady_clock::now();

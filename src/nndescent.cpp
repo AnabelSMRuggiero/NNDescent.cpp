@@ -70,52 +70,7 @@ struct OptionsValues{
 };
 */
 
-template<typename DataEntry, typename DistType, typename COMExtent>
-std::vector<BlockUpdateContext<float>> BuildGraph(const std::vector<DataBlock<DataEntry>>& dataBlocks,
-                                                                          const MetaGraph<COMExtent>& metaGraph,
-                                                                          DispatchFunctor<DistType>& dispatch,
-                                                                          std::vector<size_t>&& sizes,
-                                                                          const HyperParameterValues& hyperParams,
-                                                                          std::execution::sequenced_policy){
 
-
-    std::vector<Graph<size_t, float>> blockGraphs = InitializeBlockGraphs<float>(dataBlocks.size(), sizes, hyperParams.indexParams.blockGraphNeighbors, dispatch);
-
-    DataComDistance<DataEntry, COMExtent, EuclideanMetricPair> comFunctor(metaGraph, dataBlocks);
-
-    Graph<size_t, float> queryHints = GenerateQueryHints<float, float>(blockGraphs, metaGraph, hyperParams.indexParams.blockGraphNeighbors, comFunctor);
-
-
-    std::vector<BlockUpdateContext<float>> blockUpdateContexts = InitializeBlockContexts<DistType, COMExtent>(blockGraphs, 
-                                                                                         metaGraph,
-                                                                                         queryHints,
-                                                                                         hyperParams.indexParams.queryDepth);
-    
-
-    CachingFunctor<float> cacher(dispatch, hyperParams.splitParams.maxTreeSize, hyperParams.indexParams.blockGraphNeighbors);
-
-    auto [nearestNodeDistances, stitchHints] = NearestNodeDistances(blockUpdateContexts, metaGraph, hyperParams.indexParams.nearestNodeNeighbors, dispatch);
-    StitchBlocks(nearestNodeDistances, stitchHints, blockUpdateContexts, cacher);
-    
-    
-    //int iteration(1);
-    int graphUpdates(1);
-    while(graphUpdates>0){
-        graphUpdates = 0;
-        for(size_t i = 0; i<blockUpdateContexts.size(); i+=1){
-            for (auto& joinList: blockUpdateContexts[i].joinsToDo){
-                graphUpdates += UpdateBlocks(blockUpdateContexts[i], blockUpdateContexts[joinList.first], cacher);
-                blockUpdateContexts[joinList.first].joinsToDo.erase(i);
-            }
-        }
-        for (auto& context: blockUpdateContexts){
-            context.SetNextJoins();
-        }
-
-    }
-
-    return blockUpdateContexts;
-}
 
 template<typename DistType>
 std::vector<BlockIndecies> VertexToIndex(const GraphVertex<BlockIndecies, DistType>& vertex, const size_t blockNumber){
@@ -237,10 +192,10 @@ int main(int argc, char *argv[]){
     size_t searchQueryDepth = 6;
     size_t maxNewSearches = 10;
 
-    //SplittingHeurisitcs splitParams= {16, 2500, 1500, 3500};
-    SplittingHeurisitcs splitParams= {16, 205, 123, 287};
+    SplittingHeurisitcs splitParams= {2500, 1500, 3500, 0.0f};
+    //SplittingHeurisitcs splitParams= {205, 123, 287, 0.0f};
 
-    //SplittingHeurisitcs splitParams= {16, 20, 12, 28};
+    //SplittingHeurisitcs splitParams= {20, 12, 28, 0.0f};
 
     size_t additionalInitSearches = 8;
 
@@ -349,7 +304,7 @@ int main(int argc, char *argv[]){
 
     static const std::endian dataEndianness = std::endian::native;
 
-    /*
+        
     std::string trainDataFilePath("./TestData/MNIST-Fashion-Train.bin");
     DataSet<AlignedArray<float>> mnistFashionTrain(trainDataFilePath, 28*28, 60'000, &ExtractNumericArray<AlignedArray<float>,dataEndianness>);
 
@@ -358,7 +313,7 @@ int main(int argc, char *argv[]){
     std::string testNeighborsFilePath("./TestData/MNIST-Fashion-Neighbors.bin");
     DataSet<AlignedArray<float>> mnistFashionTest(testDataFilePath, 28*28, 10'000, &ExtractNumericArray<AlignedArray<float>,dataEndianness>);
     DataSet<AlignedArray<uint32_t>> mnistFashionTestNeighbors(testNeighborsFilePath, 100, 10'000, &ExtractNumericArray<AlignedArray<uint32_t>,dataEndianness>);
-    */
+    
 
     /*
     std::string trainDataFilePath("./TestData/SIFT-Train.bin");
@@ -371,6 +326,7 @@ int main(int argc, char *argv[]){
     DataSet<AlignedArray<uint32_t>> mnistFashionTestNeighbors(testNeighborsFilePath, 100, 10'000, &ExtractNumericArray<AlignedArray<uint32_t>,dataEndianness>);
     */
 
+    /*
     std::string trainDataFilePath("./TestData/NYTimes-Angular-Train.bin");
     DataSet<AlignedArray<float>> mnistFashionTrain(trainDataFilePath, 256, 290'000, &ExtractNumericArray<AlignedArray<float>,dataEndianness>);
 
@@ -378,7 +334,7 @@ int main(int argc, char *argv[]){
     std::string testNeighborsFilePath("./TestData/NYTimes-Angular-Neighbors.bin");
     DataSet<AlignedArray<float>> mnistFashionTest(testDataFilePath, 256, 10'000, &ExtractNumericArray<AlignedArray<float>,dataEndianness>);
     DataSet<AlignedArray<uint32_t>> mnistFashionTestNeighbors(testNeighborsFilePath, 100, 10'000, &ExtractNumericArray<AlignedArray<uint32_t>,dataEndianness>);
-
+    */
     //std::cout << "I/O done." << std::endl;
 
 
@@ -425,7 +381,7 @@ int main(int argc, char *argv[]){
     DataComDistance<AlignedArray<float>, float, EuclideanMetricPair> comFunctor(metaGraph, dataBlocks);
     
     //hacky but not a long term thing
-    std::vector<BlockUpdateContext<float>> blockContextVec;
+    //std::vector<BlockUpdateContext<float>> blockContextVec;
     std::unique_ptr<BlockUpdateContext<float>[]> blockContextArr;
     std::span<BlockUpdateContext<float>> blockUpdateContexts;
 
@@ -436,8 +392,8 @@ int main(int argc, char *argv[]){
         blockUpdateContexts = {blockContextArr.get(), dataBlocks.size()};
         pool.StopThreads();
     } else {
-        blockContextVec = BuildGraph<AlignedArray<float>, float, float>(dataBlocks, metaGraph, testDispatch, std::move(sizes), parameters, std::execution::seq);
-        blockUpdateContexts = {blockContextVec.data(), blockContextVec.size()};
+        blockContextArr = BuildGraph<AlignedArray<float>, float, float>(dataBlocks, metaGraph, testDispatch, std::move(sizes), parameters, std::execution::seq);
+        blockUpdateContexts = {blockContextArr.get(), dataBlocks.size()};
     }
     
     

@@ -91,14 +91,14 @@ Graph<size_t, DistType> GenerateQueryHints(const std::vector<Graph<size_t, DistT
 
 
 template<typename DistType, typename COMExtent>
-std::vector<BlockUpdateContext<DistType>> InitializeBlockContexts(std::vector<Graph<size_t, DistType>>& blockGraphs,
+std::unique_ptr<BlockUpdateContext<DistType>[]> InitializeBlockContexts(std::vector<Graph<size_t, DistType>>& blockGraphs,
                                                                   const MetaGraph<COMExtent>& metaGraph,
                                                                   Graph<size_t, DistType>& queryHints,
                                                                   const int queryDepth,
                                                                   const size_t startIndex = 0){
                                                                         
-    std::vector<BlockUpdateContext<DistType>> blockUpdateContexts;
-    blockUpdateContexts.reserve(blockGraphs.size());
+    std::unique_ptr<BlockUpdateContext<DistType>[]> blockUpdateContexts = std::make_unique<BlockUpdateContext<DistType>[]>(blockGraphs.size());
+    //blockUpdateContexts.reserve(blockGraphs.size());
     //template<typename size_t, typename DataEntry, typename DistType, typename COMExtentType>
     for (size_t i = 0; i<blockGraphs.size(); i+=1){
 
@@ -108,12 +108,16 @@ std::vector<BlockUpdateContext<DistType>> InitializeBlockContexts(std::vector<Gr
                                             i + startIndex,
                                             blockGraphs[i].size());
 
-        blockUpdateContexts.emplace_back(std::move(blockGraphs[i]),
-                                         std::move(queryContext),
-                                         metaGraph.verticies.size());
+        
+        BlockUpdateContext<DistType>* blockLocation = &blockUpdateContexts[i];
+
+        blockLocation->~BlockUpdateContext<DistType>();
+        new(blockLocation) BlockUpdateContext<DistType>(std::move(blockGraphs[i]),
+                                                        std::move(queryContext),
+                                                        metaGraph.verticies.size());
 
         //blockUpdateContexts.back().currentGraph = ToBlockIndecies(blockGraphs[i], i);
-        blockUpdateContexts.back().blockJoinTracker[i] = true;
+        blockUpdateContexts[i].blockJoinTracker[i] = true;
     }
 
     return blockUpdateContexts;
@@ -123,7 +127,7 @@ template<typename DistType>
 using InitialJoinHints = std::unordered_map<ComparisonKey<size_t>, std::tuple<size_t, size_t, DistType>>;
 
 template<typename DistType>
-std::pair<Graph<size_t, DistType>, InitialJoinHints<DistType>> NearestNodeDistances(const std::vector<BlockUpdateContext<DistType>>& blockUpdateContexts,
+std::pair<Graph<size_t, DistType>, InitialJoinHints<DistType>> NearestNodeDistances(std::span<const BlockUpdateContext<DistType>> blockUpdateContexts,
                                                         const MetaGraph<DistType>& metaGraph,
                                                         const size_t maxNearestNodeNeighbors,
                                                         DispatchFunctor<DistType> distanceFunctor){
@@ -181,7 +185,7 @@ std::pair<Graph<size_t, DistType>, InitialJoinHints<DistType>> NearestNodeDistan
 template<typename DistType>
 void StitchBlocks(const Graph<size_t, DistType>& nearestNodeDistances,
                   const InitialJoinHints<DistType>& stitchHints,
-                  std::vector<BlockUpdateContext<DistType>>& blockUpdateContexts,
+                  std::span<BlockUpdateContext<DistType>> blockUpdateContexts,
                   CachingFunctor<DistType>& cachingFunctor){
 
     std::unordered_set<ComparisonKey<size_t>> initBlockJoinQueue;
@@ -233,11 +237,14 @@ void StitchBlocks(const Graph<size_t, DistType>& nearestNodeDistances,
                          cachingFunctor.metricFunctor);
         
         for(size_t i = 0; auto& vertex: cachingFunctor.reverseGraph){
+            EraseRemove(vertex, blockRHS.currentGraph[i].PushThreshold());
+            /*
             NeighborOverDist<DistType> comparison(blockRHS.currentGraph[i].PushThreshold());
             vertex.erase(std::remove_if(vertex.begin(),
                                         vertex.end(),
                                         comparison),
                         vertex.end());
+            */
         }
         for(size_t i = 0; const auto& vertex: cachingFunctor.reverseGraph){
             if(vertex.size()>0){
@@ -284,6 +291,55 @@ void StitchBlocks(const Graph<size_t, DistType>& nearestNodeDistances,
         blockUpdateContexts[i].joinsToDo = InitializeJoinMap<DistType>(blockUpdateContexts, comparisonMap, blockUpdateContexts[i].blockJoinTracker);
     }
 }
+
+template<typename DataEntry, typename DistType, typename COMExtent>
+std::unique_ptr<BlockUpdateContext<DistType>[]> BuildGraph(const std::vector<DataBlock<DataEntry>>& dataBlocks,
+                                                                          const MetaGraph<COMExtent>& metaGraph,
+                                                                          DispatchFunctor<DistType>& dispatch,
+                                                                          std::vector<size_t>&& sizes,
+                                                                          const HyperParameterValues& hyperParams,
+                                                                          std::execution::sequenced_policy){
+
+
+    std::vector<Graph<size_t, float>> blockGraphs = InitializeBlockGraphs<float>(dataBlocks.size(), sizes, hyperParams.indexParams.blockGraphNeighbors, dispatch);
+
+    DataComDistance<DataEntry, COMExtent, EuclideanMetricPair> comFunctor(metaGraph, dataBlocks);
+
+    Graph<size_t, float> queryHints = GenerateQueryHints<float, float>(blockGraphs, metaGraph, hyperParams.indexParams.blockGraphNeighbors, comFunctor);
+
+
+    std::unique_ptr<BlockUpdateContext<DistType>[]> blockUpdateContexts = InitializeBlockContexts<DistType, COMExtent>(blockGraphs, 
+                                                                                         metaGraph,
+                                                                                         queryHints,
+                                                                                         hyperParams.indexParams.queryDepth);
+    
+    std::span<BlockUpdateContext<DistType>> blockSpan(blockUpdateContexts.get(), blockGraphs.size());
+    std::span<const BlockUpdateContext<DistType>> constBlockSpan(blockUpdateContexts.get(), blockGraphs.size());
+    CachingFunctor<float> cacher(dispatch, hyperParams.splitParams.maxTreeSize, hyperParams.indexParams.blockGraphNeighbors);
+
+    auto [nearestNodeDistances, stitchHints] = NearestNodeDistances(constBlockSpan, metaGraph, hyperParams.indexParams.nearestNodeNeighbors, dispatch);
+    StitchBlocks(nearestNodeDistances, stitchHints, blockSpan, cacher);
+    
+    
+    //int iteration(1);
+    int graphUpdates(1);
+    while(graphUpdates>0){
+        graphUpdates = 0;
+        for(size_t i = 0; i<blockSpan.size(); i+=1){
+            for (auto& joinList: blockUpdateContexts[i].joinsToDo){
+                graphUpdates += UpdateBlocks(blockUpdateContexts[i], blockUpdateContexts[joinList.first], cacher);
+                blockUpdateContexts[joinList.first].joinsToDo.erase(i);
+            }
+        }
+        for (auto& context: blockSpan){
+            context.SetNextJoins();
+        }
+
+    }
+
+    return blockUpdateContexts;
+}
+
 
 }
 

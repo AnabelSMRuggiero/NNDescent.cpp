@@ -366,11 +366,14 @@ int UpdateBlocks(BlockUpdateContext<DistType>& blockLHS,
                             cachingFunctor.metricFunctor);
         
         for(size_t i = 0; auto& vertex: cachingFunctor.reverseGraph){
+            EraseRemove(vertex, blockRHS.currentGraph[i].PushThreshold());
+            /*
             NeighborOverDist<DistType> comparison(blockRHS.currentGraph[i].PushThreshold());
             vertex.erase(std::remove_if(vertex.begin(),
                                         vertex.end(),
                                         comparison),
                         vertex.end());
+            */
         }
         NewJoinQueues<float>(cachingFunctor.reverseGraph, blockRHS.blockJoinTracker, blockLHS.currentGraph, blockRHS.newJoins);
 

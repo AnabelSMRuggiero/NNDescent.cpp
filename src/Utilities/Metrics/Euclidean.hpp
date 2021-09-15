@@ -286,6 +286,17 @@ std::vector<float> EuclideanBatcher(const AlignedSpan<const float>& pointFrom, c
 }
 
 
+struct EuclideanMetricPair{
+    using DistType = float;
+    float operator()(const AlignedSpan<const float> lhsVector, const AlignedSpan<const float> rhsVector) const{
+        return EuclideanNorm<AlignedSpan<const float>, AlignedSpan<const float>, float>(lhsVector, rhsVector);
+    };
+    
+    std::vector<float> operator()(AlignedSpan<const float> lhsVector, const std::vector<AlignedSpan<const float>>& rhsVectors) const{
+        return EuclideanBatcher(lhsVector, rhsVectors);
+    };
+};
+
 
 
 }
