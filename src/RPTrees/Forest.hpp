@@ -1126,6 +1126,20 @@ std::pair<RandomProjectionForest, typename SplittingScheme::SplittingVectors> Bu
 }
 
 template<typename SplittingScheme, typename DataEntry>
+    requires std::is_same_v<std::true_type, typename SplittingScheme::SerialScheme>
+std::pair<RandomProjectionForest, typename SplittingScheme::SplittingVectors> BuildRPForest(std::execution::sequenced_policy, const DataSet<DataEntry>& data,std::unique_ptr<size_t[]>&& indecies, const SplittingHeurisitcs params, std::pmr::memory_resource* upstream = std::pmr::get_default_resource()){
+    
+
+    RngFunctor rngFunctor(data.IndexStart(), data.size() - data.IndexStart());
+
+    SplittingScheme splittingScheme(data);
+    ForestBuilder builder{std::move(rngFunctor), params, splittingScheme};
+    RandomProjectionForest rpTrees = builder(std::move(indecies), data.size(), upstream);
+
+    return {std::move(rpTrees), std::move(splittingScheme.splittingVectors)};
+}
+
+template<typename SplittingScheme, typename DataEntry>
     requires std::is_same_v<std::true_type, typename SplittingScheme::ParallelScheme>
 std::pair<RandomProjectionForest, typename SplittingScheme::SplittingVectors> BuildRPForest(std::execution::parallel_unsequenced_policy, const DataSet<DataEntry>& data, const SplittingHeurisitcs params, const size_t numThreads, std::pmr::memory_resource* upstream = std::pmr::get_default_resource()){
     

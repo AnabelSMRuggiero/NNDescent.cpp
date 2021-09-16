@@ -16,6 +16,7 @@ https://github.com/AnabelSMRuggiero/NNDescent.cpp
 #include <memory>
 #include <type_traits>
 #include <concepts>
+#include <memory_resource>
 
 #include "Utilities/Type.hpp"
 #include "Utilities/Data.hpp"
@@ -51,7 +52,10 @@ struct MetricFunctor{
     };
     
     std::vector<DistType> operator()(const size_t lhsIndex, const std::vector<size_t>& rhsIndecies) const {
-        std::vector<DataView> rhsData;
+        char stackBuffer[sizeof(DataView)*20];
+        std::pmr::monotonic_buffer_resource stackResource(stackBuffer, sizeof(DataView)*20);
+        std::pmr::vector<DataView> rhsData(&stackResource);
+        rhsData.reserve(20);
         for(const auto& index: rhsIndecies){
             rhsData.push_back((*rhsBlock)[index]);
         }

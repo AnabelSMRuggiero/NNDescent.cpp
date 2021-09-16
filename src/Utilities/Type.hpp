@@ -21,6 +21,7 @@ https://github.com/AnabelSMRuggiero/NNDescent.cpp
 #include <utility>
 #include <span>
 #include <new>
+#include <type_traits>
 #include <cstdint>
 
 namespace nnd{
@@ -155,6 +156,110 @@ struct BlockIndecies{
     // The index within that block
     size_t dataIndex;
 
+};
+
+template<std::ranges::range TopRange, std::ranges::range BotRange>
+struct ZipSentinel{
+    using TopSentinel = std::ranges::sentinel_t<TopRange>;
+    using BotSentinel = std::ranges::sentinel_t<BotRange>;
+
+    TopSentinel topSent;
+    BotSentinel botSent;
+
+    ZipSentinel(TopRange& topRange, BotRange& botRange): topSent(std::ranges::end(topRange)), botSent(std::ranges::end(botRange)) {};
+
+    
+
+    bool operator==(ZipSentinel& other){
+        return (topSent == other.topSent) && (botSent == other.botSent);
+    }
+    /*
+    bool operator==(ZipIterator<TopRange, BotRange>& other){
+        return (topSent == other.topItr) && (botSent == other.botItr);
+    }
+    */
+};
+
+template<std::ranges::range TopRange, std::ranges::range BotRange>
+struct ZipIterator{
+    using TopIterator = std::ranges::iterator_t<TopRange>;
+    using TopValue = std::ranges::range_value_t<TopRange>;
+    using TopRef = std::ranges::range_reference_t<TopRange>;
+
+    using BotIterator = std::ranges::iterator_t<BotRange>;    
+    using BotValue = std::ranges::range_value_t<BotRange>;
+    using BotRef = std::ranges::range_reference_t<BotRange>;
+
+    TopIterator topItr;
+    BotIterator botItr;
+
+    ZipIterator(TopRange& topRange, BotRange& botRange): topItr(std::ranges::begin(topRange)), botItr(std::ranges::begin(botRange)) {};
+
+    std::pair<TopRef, BotRef> operator*(){
+        /*
+        if constexpr (std::is_const_v<TopRange> && std::is_const_v<BotRange>){
+            return std::pair<std::reference_wrapper<const TopValue>, std::reference_wrapper<const BotValue>> (*topItr, *botItr);
+
+        } else if (std::is_const_v<TopRange>){
+            return std::pair<std::reference_wrapper<const TopValue>, std::reference_wrapper<BotValue>> (*topItr, *botItr);
+
+        } else if (std::is_const_v<BotRange>){
+            return std::make_pair<std::reference_wrapper<TopValue>, std::reference_wrapper<const BotValue>>(*topItr, *botItr);
+
+        } else {
+            return std::pair<std::reference_wrapper<TopValue>, std::reference_wrapper<BotValue>> (*topItr, *botItr);
+        }
+        */
+        return std::make_pair(std::reference_wrapper(*topItr), std::reference_wrapper(*botItr));
+    }
+
+    ZipIterator& operator++(){
+        ++topItr;
+        ++botItr;
+        return *this;
+    }
+
+    ZipIterator operator++(int){
+        ZipIterator copy = *this;
+        operator++();
+        return copy;
+    }
+
+    ZipIterator& operator--(){
+        --topItr;
+        --botItr;
+        return *this;
+    }
+
+    ZipIterator operator--(int){
+        ZipIterator copy = *this;
+        operator--();
+        return copy;
+    }
+
+    bool operator==(ZipIterator& other){
+        return (topItr == other.topItr) && (botItr == other.botItr);
+    }
+
+    bool operator==(ZipSentinel<TopRange, BotRange>& other){
+        return (topItr == other.topSent) && (botItr == other.botSent);
+    }
+};
+
+template<std::ranges::range TopRange, std::ranges::range BotRange>
+struct ZipRange{
+    TopRange& topRange;
+    BotRange& botRange;
+
+    ZipRange(TopRange& top, BotRange& bot): topRange(top), botRange(bot) {};
+
+    ZipIterator<TopRange, BotRange> begin(){
+        return ZipIterator(topRange, botRange);
+    }
+
+    ZipSentinel<TopRange, BotRange> end(){
+        return ZipSentinel(topRange, botRange);
+    }
 };
 
 

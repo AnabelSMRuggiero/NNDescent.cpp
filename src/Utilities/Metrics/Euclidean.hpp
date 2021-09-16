@@ -37,8 +37,8 @@ RetType EuclideanNorm(const VectorA& pointA, const VectorB& pointB){
 };
 
 
-template<size_t numPointsTo, size_t prefetchPeriod>
-std::vector<float> BatchEuclideanNorm(const std::vector<AlignedSpan<const float>>& pointsTo, const AlignedSpan<const float>& pointB){
+template<size_t numPointsTo, size_t prefetchPeriod, typename Alloc = std::allocator<AlignedSpan<const float>>>
+std::vector<float> BatchEuclideanNorm(const std::vector<AlignedSpan<const float>, Alloc>& pointsTo, const AlignedSpan<const float>& pointB){
     static_assert(numPointsTo<=7 && numPointsTo>=2);
     //size_t prefetchPeriod = 16;
     //assert(pointsTo.size() == 7);
@@ -132,8 +132,8 @@ std::vector<float> BatchEuclideanNorm(const std::vector<AlignedSpan<const float>
 
 }
 
-template<size_t numPointsTo>
-std::vector<float> BatchEuclideanNorm(const std::vector<AlignedSpan<const float>>& pointsTo, const AlignedSpan<const float>& pointB){
+template<size_t numPointsTo, typename Alloc = std::allocator<AlignedSpan<const float>>>
+std::vector<float> BatchEuclideanNorm(const std::vector<AlignedSpan<const float>, Alloc>& pointsTo, const AlignedSpan<const float>& pointB){
     static_assert(numPointsTo<=7 && numPointsTo>=2);
     //size_t prefetchPeriod = 16;
     //assert(pointsTo.size() == 7);
@@ -230,7 +230,8 @@ namespace internal{
 //const Container<DataIndexType>& LHSIndecies, DataIndexType RHSIndex, const DataEntry& queryData
 //lhsData, queryData
 //template<typename VectorSetA, typename VectorB, typename RetType = std::vector<double>>
-std::vector<float> EuclideanBatcher(const AlignedSpan<const float>& pointFrom, const std::vector<AlignedSpan<const float>>& pointsTo){
+template<typename Alloc = std::allocator<AlignedSpan<const float>>>
+std::vector<float> EuclideanBatcher(const AlignedSpan<const float>& pointFrom, const std::vector<AlignedSpan<const float>, Alloc>& pointsTo){
     
     std::vector<float> retVector;
     switch(pointsTo.size()){
@@ -292,7 +293,8 @@ struct EuclideanMetricPair{
         return EuclideanNorm<AlignedSpan<const float>, AlignedSpan<const float>, float>(lhsVector, rhsVector);
     };
     
-    std::vector<float> operator()(AlignedSpan<const float> lhsVector, const std::vector<AlignedSpan<const float>>& rhsVectors) const{
+    template<typename Alloc = std::allocator<AlignedSpan<const float>>>
+    std::vector<float> operator()(AlignedSpan<const float> lhsVector, const std::vector<AlignedSpan<const float>, Alloc>& rhsVectors) const{
         return EuclideanBatcher(lhsVector, rhsVectors);
     };
 };

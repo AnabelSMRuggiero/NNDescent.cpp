@@ -155,7 +155,7 @@ static const std::unordered_map<std::string, Options> optionNumber = {
     {"-maxSearchesQueued"s,      Options::maxSearchesQueued},
     {"-additionalInitSearches"s, Options::additionalInitSearches},
     {"-parallelIndexBuild"s,     Options::parallelIndexBuild},
-    {"-parallelSearch"s,         Options::parallelIndexBuild}
+    {"-parallelSearch"s,         Options::parallelSearch}
 };
 
 
@@ -289,7 +289,7 @@ int main(int argc, char *argv[]){
                 } else if (option.substr(nameEnd+1) == "false"){
                     parallelSearch = false;
                 } else{
-                    std::cout << "parallelIndexBuild input (" << option.substr(nameEnd+1) << ") does not evaluate to 'true' or 'false'" << std::endl;
+                    std::cout << "parallelSearch input (" << option.substr(nameEnd+1) << ") does not evaluate to 'true' or 'false'" << std::endl;
                 }
                 /*
                     searchNeighbors,
@@ -304,7 +304,7 @@ int main(int argc, char *argv[]){
 
     static const std::endian dataEndianness = std::endian::native;
 
-    /*  
+    /*
     std::string trainDataFilePath("./TestData/MNIST-Fashion-Train.bin");
     DataSet<AlignedArray<float>> mnistFashionTrain(trainDataFilePath, 28*28, 60'000, &ExtractNumericArray<AlignedArray<float>,dataEndianness>);
 

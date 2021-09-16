@@ -13,6 +13,10 @@ https://github.com/AnabelSMRuggiero/NNDescent.cpp
 #include <memory_resource>
 #include <execution>
 #include <functional>
+#include <array>
+#include <iostream>
+#include <ranges>
+#include <type_traits>
 
 #include "Utilities/Type.hpp"
 #include "Utilities/Data.hpp"
@@ -36,9 +40,10 @@ int main(int argc, char *argv[]){
 
     SplittingHeurisitcs firstSplitParams= {125'000, 75'000, 175'000, 0.4f};
 
+    SplittingHeurisitcs splitParams= {205, 123, 287, 0.0f};
 
     static const std::endian dataEndianness = std::endian::native;
-
+    
     std::string trainDataFilePath("./TestData/SIFT-Train.bin");
     DataSet<AlignedArray<float>> trainData(trainDataFilePath, 128, 1'000'000, &ExtractNumericArray<AlignedArray<float>,dataEndianness>);
 
@@ -59,6 +64,27 @@ int main(int argc, char *argv[]){
     };
 
     CrawlTerminalLeaves(forest, indexArrayMaker);
+
+    std::vector<RandomProjectionForest> forests;
+    std::vector<std::remove_reference_t<decltype(splittingVectors)>> splitters;
+    for (auto& section: subSections){
+        auto [subforest, subSplitters] = BuildRPForest<EuclidianScheme<AlignedArray<float>, AlignedArray<float>>>(std::execution::seq, trainData, std::move(section), splitParams);
+
+        forests.push_back(std::move(subforest));
+        splitters.push_back(std::move(subSplitters));
+
+    }
+    using BlockSet = std::vector<DataBlock<AlignedArray<float>>>;
+    std::vector<BlockSet> blocks;
+    auto blockContructor = [&blocks, &trainData, blockNum = 0ul](size_t, std::span<const size_t> dataPoints)mutable->auto{ 
+        blocks.back().emplace_back(trainData, dataPoints, blockNum++);
+    };
+    for (auto& subForest: forests){
+        blocks.emplace_back();
+        CrawlTerminalLeaves(subForest, blockContructor);
+    }
+    //CrawlTerminalLeaves()
+
 
     return 0;
 }
