@@ -103,7 +103,7 @@ struct TaskThread<void>{
 
     
 
-    TaskThread(TaskThread&& other) = default;
+    TaskThread(TaskThread<void>&& other) = default;
 
 
     
@@ -143,9 +143,9 @@ struct TaskThread<void>{
 
 
     private:
-    TaskThread(const TaskThread&) = default;
-    TaskThread& operator=(const TaskThread&) = default;
-    bool running;
+    TaskThread(const TaskThread<void>&) = default;
+    TaskThread<void>& operator=(const TaskThread<void>&) = default;
+    bool running = false;
 
 };
 /*
@@ -181,7 +181,7 @@ struct ThreadPool{
                                          delegationCounter(0),
                                          threadStates(std::make_unique<TaskThread<ThreadState>[]>(numThreads)), 
                                          threadHandles(std::make_unique<std::jthread[]>(numThreads)) {};
-
+    
     template<typename ...ThreadStateArgs>
     ThreadPool(const size_t numThreads, ThreadStateArgs... args): numThreads(numThreads),
                                          delegationCounter(0),
@@ -329,7 +329,9 @@ struct ThreadPool<void>{
             delegationCounter = (delegationCounter+1)%numThreads;
         }
         if (numQueuesChecked == numThreads){
-            while(!pred(threadStates[delegationCounter].workQueue.WaitOnCount()));
+            while(!pred(threadStates[delegationCounter].workQueue.WaitOnCount())){
+                delegationCounter = (delegationCounter+1)%numThreads;
+            };
         }
         threadStates[delegationCounter].workQueue.Put(std::move(task));
         delegationCounter = (delegationCounter+1)%numThreads;

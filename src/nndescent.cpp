@@ -341,7 +341,7 @@ int main(int argc, char *argv[]){
     std::chrono::time_point<std::chrono::steady_clock> runStart = std::chrono::steady_clock::now();
 
 
-
+    //
     RngFunctor rngFunctor(0, mnistFashionTrain.size() - 1);
 
     
@@ -357,12 +357,14 @@ int main(int argc, char *argv[]){
 
     //std::vector<size_t> trainClassifications(mnistFashionTrain.numberOfSamples);
     
+    ThreadPool<void> blockBuilder(12);
 
-
-    auto [indexMappings, dataBlocks] = PartitionData<AlignedArray<float>>(rpTrees, mnistFashionTrain);
+    auto [indexMappings, dataBlocks] = (parallelIndexBuild) ? 
+                                        PartitionData<AlignedArray<float>>(rpTrees, mnistFashionTrain, blockBuilder):
+                                        PartitionData<AlignedArray<float>>(rpTrees, mnistFashionTrain);
 
     
-    MetricFunctor<AlignedArray<float>, EuclideanMetricPair> euclideanFunctor(dataBlocks);
+    MetricFunctor<float, EuclideanMetricPair> euclideanFunctor(dataBlocks);
     DispatchFunctor<float> testDispatch(euclideanFunctor);
 
     std::vector<size_t> sizes;
@@ -377,8 +379,8 @@ int main(int argc, char *argv[]){
     
     
     
-    MetaGraph<float> metaGraph(dataBlocks, parameters.indexParams.COMNeighbors, EuclideanMetricPair());
-    DataComDistance<AlignedArray<float>, float, EuclideanMetricPair> comFunctor(metaGraph, dataBlocks);
+    MetaGraph<float> metaGraph(dataBlocks, parameters.indexParams.COMNeighbors, EuclideanMetricPair(), EuclideanCOM<float, float>);
+    DataComDistance<float, float, EuclideanMetricPair> comFunctor(metaGraph, dataBlocks);
     
     //hacky but not a long term thing
     //std::vector<BlockUpdateContext<float>> blockContextVec;
@@ -392,10 +394,10 @@ int main(int argc, char *argv[]){
         blockUpdateContexts = {blockContextArr.get(), dataBlocks.size()};
         pool.StopThreads();
     } else {
-        blockContextArr = BuildGraph<AlignedArray<float>, float, float>(dataBlocks, metaGraph, testDispatch, std::move(sizes), parameters, std::execution::seq);
+        blockContextArr = BuildGraph<float, float, float>(dataBlocks, metaGraph, testDispatch, std::move(sizes), parameters, std::execution::seq);
         blockUpdateContexts = {blockContextArr.get(), dataBlocks.size()};
     }
-    
+    //
     
     std::chrono::time_point<std::chrono::steady_clock> runEnd = std::chrono::steady_clock::now();
     //std::cout << std::chrono::duration_cast<std::chrono::duration<float>>(runEnd - runStart).count() << "s total for index building " << std::endl;
@@ -432,7 +434,7 @@ int main(int argc, char *argv[]){
         context.queryContext.querySize = numberSearchNeighbors;
     }
 
-    SearchFunctor<AlignedArray<float>, EuclideanMetricPair> searchDist(dataBlocks, mnistFashionTest);
+    SearchFunctor<float, DataSet<AlignedArray<float>>, EuclideanMetricPair> searchDist(dataBlocks, mnistFashionTest);
     SinglePointFunctor<float> searchFunctor(searchDist);
 
     
@@ -500,10 +502,10 @@ int main(int argc, char *argv[]){
         for (size_t i = 0; auto& [blockNum, testBlock]: searchContexts){
             for (size_t j = 0; auto& context: testBlock){
                 GraphVertex<BlockIndecies, float>& result = context.currentNeighbors;
-                size_t testIndex = testMappings.blockIndexToSource[{i, j}];
+                size_t testIndex = testMappings.blockIndexToSource[i][j];
                 //std::sort_heap(result.begin(), result.end(), NeighborDistanceComparison<BlockIndecies, float>);
                 for (const auto& neighbor: result){
-                    results[testIndex].push_back(indexMappings.blockIndexToSource[neighbor.first]);
+                    results[testIndex].push_back(indexMappings.blockIndexToSource[neighbor.first.blockNumber][neighbor.first.dataIndex]);
                 }
                 j++;
             }
@@ -556,7 +558,7 @@ int main(int argc, char *argv[]){
                 size_t testIndex = context.dataIndex;
                 //std::sort_heap(result.begin(), result.end(), NeighborDistanceComparison<BlockIndecies, float>);
                 for (const auto& neighbor: result){
-                    results[testIndex].push_back(indexMappings.blockIndexToSource[neighbor.first]);
+                    results[testIndex].push_back(indexMappings.blockIndexToSource[neighbor.first.blockNumber][neighbor.first.dataIndex]);
                 }
                 j++;
             }

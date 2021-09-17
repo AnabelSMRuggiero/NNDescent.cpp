@@ -40,6 +40,8 @@ struct IntegralPairHasher{
 template<typename DistType>
 using DistanceCache = std::unordered_map<std::pair<size_t, size_t>, DistType, IntegralPairHasher<size_t>>;
 
+template<typename ValueType, size_t align>
+struct AlignedPtr;
 
 template<typename ValueType, size_t align=32>
 struct AlignedArray{
@@ -97,8 +99,44 @@ struct AlignedArray{
 
     const ValueType& operator[](size_t index) const{ return data[index]; }
 
+    AlignedPtr<ValueType, align> GetAlignedPtr(size_t entriesToJump);
 
+    AlignedPtr<const ValueType, align> GetAlignedPtr(size_t entriesToJump) const;
 };
+
+template<typename ValueType, size_t align>
+struct AlignedPtr{
+    
+    //template<typename ArrayType>
+    friend AlignedArray<std::remove_cv_t<ValueType>, align>;
+
+
+    AlignedPtr& operator+=(const std::ptrdiff_t amount){
+        ptr = ptr + amount * entriesToMove;
+        return *this;
+    }
+
+    operator ValueType*() const{
+        return ptr;
+    }
+
+    private:
+    
+    ValueType* ptr;
+    size_t entriesToMove;
+
+    AlignedPtr(ValueType* ptr, size_t entriesToMove): ptr(ptr), entriesToMove(entriesToMove){}
+};
+
+template<typename ValueType, size_t align>
+AlignedPtr<ValueType, align> AlignedArray<ValueType, align>::GetAlignedPtr(size_t entriesToJump){
+    return AlignedPtr<ValueType, align>(begin(), entriesToJump);
+}
+
+template<typename ValueType, size_t align>
+AlignedPtr<const ValueType, align> AlignedArray<ValueType, align>::GetAlignedPtr(size_t entriesToJump) const{
+    return AlignedPtr<const ValueType, align>(begin(), entriesToJump);
+}
 
 template<typename ElementType, size_t align=32>
 struct AlignedSpan{
@@ -115,7 +153,10 @@ struct AlignedSpan{
     AlignedSpan(const AlignedArray<ConvertableToElement, alignment>& dataToView): data(dataToView.begin()), extent(dataToView.size()){};
 
     template<typename ConvertableToElement>
-    AlignedSpan(const AlignedSpan<ConvertableToElement>& spanToCopy): data(spanToCopy.data), extent(spanToCopy.extent){};
+    AlignedSpan(const AlignedSpan<ConvertableToElement, alignment>& spanToCopy): data(spanToCopy.data), extent(spanToCopy.extent){};
+
+    template<typename ConvertableToElement>
+    AlignedSpan(const AlignedPtr<ConvertableToElement, alignment> spanBegin, const size_t extent): data(spanBegin), extent(extent){};
 
     ElementType* begin() const { return std::assume_aligned<alignment>(data); }
 
@@ -156,6 +197,12 @@ struct BlockIndecies{
     // The index within that block
     size_t dataIndex;
 
+};
+
+struct MetaGraphIndex{
+    u_int32_t metaGraphIndex;
+    u_int16_t blockNumber;
+    u_int16_t dataIndex;
 };
 
 template<std::ranges::range TopRange, std::ranges::range BotRange>

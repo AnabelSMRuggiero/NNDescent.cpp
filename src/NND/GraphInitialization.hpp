@@ -14,6 +14,7 @@ https://github.com/AnabelSMRuggiero/NNDescent.cpp
 #include <utility>
 #include <vector>
 #include <algorithm>
+#include <future>
 
 #include "../RPTrees/Forest.hpp"
 
@@ -30,16 +31,78 @@ https://github.com/AnabelSMRuggiero/NNDescent.cpp
 namespace nnd{
 
 template<typename DataEntry>
-std::pair<IndexMaps<size_t>, std::vector<DataBlock<DataEntry>>> PartitionData(const RandomProjectionForest& treeToMap, const DataSet<DataEntry>& sourceData, const size_t startIndex=0){
+std::pair<IndexMaps<size_t>, std::vector<DataBlock<typename DataEntry::value_type>>> PartitionData(const RandomProjectionForest& treeToMap, const DataSet<DataEntry>& sourceData, const size_t startIndex=0){
     //There might be a more elegant way to do this with templates. I tried.
+
+    using DataType = typename DataEntry::value_type;
+
+    auto boundContructor = [entryLength = sourceData.sampleLength](const DataSet<DataEntry>& dataSource, std::span<const size_t> dataPoints, size_t blockNumber){ 
+        return DataBlock<DataType>(dataSource, dataPoints, entryLength, blockNumber);
+    };
+    
+    DataMapper<DataEntry, DataBlock<DataType>, decltype(boundContructor)> dataMapper(sourceData, boundContructor, startIndex);
+    CrawlTerminalLeaves(treeToMap, dataMapper);
+    
+    std::vector<DataBlock<DataType>> retBlocks = std::move(dataMapper.dataBlocks);
+    IndexMaps<size_t> retMaps = {
+        std::move(dataMapper.splitToBlockNum),
+        std::move(dataMapper.blockIndexToSource),
+        std::move(dataMapper.sourceToBlockIndex),
+        std::move(dataMapper.sourceToSplitIndex)
+    };
+
+
+    
+    return {retMaps, std::move(retBlocks)};
+}
+
+template<typename DataEntry, typename Pool>
+std::pair<IndexMaps<size_t>, std::vector<DataBlock<typename DataEntry::value_type>>> PartitionData(const RandomProjectionForest& treeToMap, const DataSet<DataEntry>& sourceData, Pool& threadPool,  const size_t startIndex=0){
+    //There might be a more elegant way to do this with templates. I tried.
+
+    /*
     auto boundContructor = [](const DataSet<DataEntry>& dataSource, std::span<const size_t> dataPoints, size_t blockNumber){ 
         return DataBlock<DataEntry>(dataSource, dataPoints, blockNumber);
     };
+    */
     
-    DataMapper<DataEntry, DataBlock<DataEntry>, decltype(boundContructor)> dataMapper(sourceData, boundContructor, startIndex);
-    CrawlTerminalLeaves(treeToMap, dataMapper);
+    using DataType = typename DataEntry::value_type;
+
+    threadPool.StartThreads();
+
+    DataMapper<DataEntry, void, void> dataMapper(sourceData, startIndex);
     
-    std::vector<DataBlock<DataEntry>> retBlocks = std::move(dataMapper.dataBlocks);
+    auto mapTask = [&]()mutable{
+        CrawlTerminalLeaves(treeToMap, dataMapper);    
+    };
+    
+    threadPool.DelegateTask(mapTask);
+
+    std::vector<std::unique_ptr<std::promise<DataBlock<DataType>>>> blockPromise;
+    
+    auto constructorGenerator = [&, i = startIndex](const size_t splitIdx, std::span<const size_t> indecies)mutable{
+        blockPromise.push_back(std::make_unique<std::promise<DataBlock<DataType>>>());
+
+        auto blockBuilder = [&, &promise = *(blockPromise.back()), indecies, i](){
+            promise.set_value(DataBlock<DataType>(sourceData, indecies, sourceData.sampleLength, i));
+        };
+
+        threadPool.DelegateTask(blockBuilder);
+
+        i++;
+    };
+
+    CrawlTerminalLeaves(treeToMap, constructorGenerator);
+    
+    std::vector<DataBlock<DataType>> retBlocks;
+    for(auto& promisePtr: blockPromise){
+        std::future<DataBlock<DataType>> blockFuture = promisePtr->get_future();
+        retBlocks.push_back(blockFuture.get());
+    }
+
+    threadPool.StopThreads();
+
+    //std::vector<DataBlock<DataEntry>> retBlocks = std::move(dataMapper.dataBlocks);
     IndexMaps<size_t> retMaps = {
         std::move(dataMapper.splitToBlockNum),
         std::move(dataMapper.blockIndexToSource),
@@ -292,8 +355,8 @@ void StitchBlocks(const Graph<size_t, DistType>& nearestNodeDistances,
     }
 }
 
-template<typename DataEntry, typename DistType, typename COMExtent>
-std::unique_ptr<BlockUpdateContext<DistType>[]> BuildGraph(const std::vector<DataBlock<DataEntry>>& dataBlocks,
+template<typename DataType, typename DistType, typename COMExtent>
+std::unique_ptr<BlockUpdateContext<DistType>[]> BuildGraph(const std::vector<DataBlock<DataType>>& dataBlocks,
                                                                           const MetaGraph<COMExtent>& metaGraph,
                                                                           DispatchFunctor<DistType>& dispatch,
                                                                           std::vector<size_t>&& sizes,
@@ -301,9 +364,9 @@ std::unique_ptr<BlockUpdateContext<DistType>[]> BuildGraph(const std::vector<Dat
                                                                           std::execution::sequenced_policy){
 
 
-    std::vector<Graph<size_t, float>> blockGraphs = InitializeBlockGraphs<float>(dataBlocks.size(), sizes, hyperParams.indexParams.blockGraphNeighbors, dispatch);
+    std::vector<Graph<size_t, float>> blockGraphs = InitializeBlockGraphs<float>(sizes.size(), sizes, hyperParams.indexParams.blockGraphNeighbors, dispatch);
 
-    DataComDistance<DataEntry, COMExtent, EuclideanMetricPair> comFunctor(metaGraph, dataBlocks);
+    DataComDistance<DataType, COMExtent, EuclideanMetricPair> comFunctor(metaGraph, dataBlocks);
 
     Graph<size_t, float> queryHints = GenerateQueryHints<float, float>(blockGraphs, metaGraph, hyperParams.indexParams.blockGraphNeighbors, comFunctor);
 

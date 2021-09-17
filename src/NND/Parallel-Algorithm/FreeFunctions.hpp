@@ -145,7 +145,7 @@ void ParallelBlockJoins(std::span<BlockUpdateContext<DistType>> blocks, std::uni
         if(blocks[i].joinsToDo.size()==0) doneBlocks++;
     }
     
-    
+    mainLoop:
     while(doneBlocks<blocks.size()){
         //doneBlocks = 0;
         for(size_t i = 0; i<blocks.size(); i+=1){
@@ -178,6 +178,14 @@ void ParallelBlockJoins(std::span<BlockUpdateContext<DistType>> blocks, std::uni
         
     }
     pool.Latch();
+
+    for (size_t i = 0; i<blocks.size(); i +=1){
+        if(blocks[i].joinsToDo.size()!=0 || blocks[i].newJoins.size() !=0){
+            doneBlocks--;
+            if(blocks[i].joinsToDo.size()==0) blocks[i].SetNextJoins();
+        }
+    }
+    if (doneBlocks < blocks.size()) goto mainLoop;
 }
 
 template<typename DistType, typename COMExtent>

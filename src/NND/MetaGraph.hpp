@@ -17,6 +17,7 @@ https://github.com/AnabelSMRuggiero/NNDescent.cpp
 #include <span>
 #include <concepts>
 #include <execution>
+#include <algorithm>
 
 #include "../Utilities/Data.hpp"
 #include "GraphStructures.hpp"
@@ -33,17 +34,17 @@ struct MetaPoint{
 
 
 
-template<std::ranges::random_access_range DataEntry, typename COMExtent>
-AlignedArray<COMExtent> CalculateCOM(const DataBlock<DataEntry>& dataBlock){
+template<typename DataType, typename COMExtent>
+AlignedArray<COMExtent> CalculateCOM(const DataBlock<DataType>& dataBlock){
 
     
     //retPoint.weight = dataBlock.size();
     AlignedArray<COMExtent> retPoint(std::ranges::size(dataBlock[0]));
     //retPoint.distanceFunctor = distanceFunctor;
     
-    for (size_t i = 0; i<dataBlock.blockData.size(); i += 1){
-        for(size_t j = 0; j<dataBlock.blockData[i].size(); j += 1){
-            retPoint[j] += static_cast<COMExtent>(dataBlock.blockData[i][j]);
+    for (size_t i = 0; i<dataBlock.size(); i += 1){
+        for(size_t j = 0; j<dataBlock[i].size(); j += 1){
+            retPoint[j] += static_cast<COMExtent>(dataBlock[i][j]);
         }
     }
 
@@ -53,8 +54,23 @@ AlignedArray<COMExtent> CalculateCOM(const DataBlock<DataEntry>& dataBlock){
     return retPoint;
 }
 
+template<typename DataType, typename COMExtent>
+void EuclideanCOM(const DataBlock<DataType>& dataBlock, AlignedSpan<COMExtent> writeLocation){
+    
+    for (size_t i = 0; i<dataBlock.size(); i += 1){
+        for(size_t j = 0; j<dataBlock[i].size(); j += 1){
+            writeLocation[j] += static_cast<COMExtent>(dataBlock[i][j]);
+        }
+    }
+
+    //divide the COM by the weight to put it in the center of the cluster
+    for(auto& extent: writeLocation) extent /= dataBlock.size();
+
+    //return retPoint;
+}
+
 template<typename FloatType, typename Metric>
-void BruteForceGraph(Graph<size_t, FloatType>& uninitGraph, size_t numNeighbors, const std::vector<AlignedArray<FloatType>>& dataVector, Metric distanceFunctor){
+void BruteForceGraph(Graph<size_t, FloatType>& uninitGraph, size_t numNeighbors, const DataBlock<FloatType>& dataVector, Metric distanceFunctor){
     
     // I can make this branchless. Check to see if /O2 or /O3 can make this branchless (I really doubt it)
     for (size_t i = 0; i < dataVector.size(); i += 1){
@@ -86,17 +102,20 @@ template<typename COMExtent>
 struct MetaGraph{
     //std::vector<MetaPoint<COMExtent>> points;
     std::vector<int> weights;
-    std::vector<AlignedArray<COMExtent>> points;
+    DataBlock<COMExtent> points;
     Graph<size_t, COMExtent> verticies;
 
-    template<typename DataEntry, typename Metric>
-    MetaGraph(const std::vector<DataBlock<DataEntry>>& dataBlocks, const size_t numNeighbors, Metric metricFunctor): weights(0), points(0), verticies(dataBlocks.size(), numNeighbors){
+    template<typename DataType, typename Metric, typename COMFunctor>
+    MetaGraph(const std::vector<DataBlock<DataType>>& dataBlocks, const size_t numNeighbors, Metric metricFunctor, COMFunctor COMCalculator):
+        weights(0), 
+        points(dataBlocks.size(), dataBlocks[0].entryLength, 0),
+        verticies(dataBlocks.size(), numNeighbors){
         //SinglePointFunctor<COMExtent> functor(DataComDistance<DataEntry, COMExtent, MetricPair>(*this, dataBlocks, metricFunctor));
         weights.reserve(dataBlocks.size());
-        points.reserve(dataBlocks.size());
-        for (const auto& dataBlock: dataBlocks){
+        for (size_t i = 0; const auto& dataBlock: dataBlocks){
             weights.push_back(dataBlock.size());
-            points.push_back(CalculateCOM<DataEntry, COMExtent>(dataBlock));
+            COMCalculator(dataBlock, points[i]);
+            i++;
         }
         BruteForceGraph<COMExtent, Metric>(verticies, numNeighbors, points, metricFunctor);
         for(auto& vertex: verticies){
@@ -162,7 +181,7 @@ template<std::integral BlockNumberType>//, std::integral DataIndexType>
 struct IndexMaps{
 
     std::unordered_map<size_t, BlockNumberType> splitToBlockNum;
-    std::unordered_map<BlockIndecies, size_t> blockIndexToSource;
+    std::vector<std::vector<size_t>> blockIndexToSource;
     std::vector<BlockIndecies> sourceToBlockIndex;
     std::vector<size_t> sourceToSplitIndex;
 
@@ -175,7 +194,7 @@ struct DataMapper{
     size_t blockCounter;
     std::vector<DataStructure> dataBlocks;
     std::unordered_map<size_t, size_t> splitToBlockNum;
-    std::unordered_map<BlockIndecies, size_t> blockIndexToSource;
+    std::vector<std::vector<size_t>> blockIndexToSource;
     std::vector<BlockIndecies> sourceToBlockIndex;
     std::vector<size_t> sourceToSplitIndex;
     BoundConstructor construct;
@@ -190,11 +209,13 @@ struct DataMapper{
     void operator()(size_t splittingIndex, std::span<const size_t> indicies){
         //[[unlikely]]if (indicies.size() == 0) return;
         splitToBlockNum[splittingIndex] = blockCounter;
+        std::vector<size_t> indeciesInBlock(indicies.size());
+        std::copy(indicies.begin(), indicies.end(), indeciesInBlock.begin());
+        blockIndexToSource.push_back(std::move(indeciesInBlock));
         for (size_t i = 0; i<indicies.size(); i += 1){
             size_t index = indicies[i];
             sourceToBlockIndex[index] = BlockIndecies{blockCounter, i};
             sourceToSplitIndex[index] = splittingIndex;
-            blockIndexToSource[BlockIndecies{blockCounter, i}] = index;
         }
         dataBlocks.push_back(construct(dataSource, indicies, blockCounter++));
     };
@@ -206,7 +227,7 @@ struct DataMapper<DataEntry, void, void>{
     const DataSet<DataEntry>& dataSource;
     size_t blockCounter;
     std::unordered_map<size_t, size_t> splitToBlockNum;
-    std::unordered_map<BlockIndecies, size_t> blockIndexToSource;
+    std::vector<std::vector<size_t>> blockIndexToSource;
     std::vector<BlockIndecies> sourceToBlockIndex;
     std::vector<size_t> sourceToSplitIndex;
     
@@ -220,11 +241,15 @@ struct DataMapper<DataEntry, void, void>{
     void operator()(size_t splittingIndex, std::span<const size_t> indicies){
         //[[unlikely]]if (indicies.size() == 0) return;
         splitToBlockNum[splittingIndex] = blockCounter;
+        std::vector<size_t> indeciesInBlock(indicies.size());
+        std::copy(indicies.begin(), indicies.end(), indeciesInBlock.begin());
+        blockIndexToSource.push_back(std::move(indeciesInBlock));
         for (size_t i = 0; i<indicies.size(); i += 1){
             size_t index = indicies[i];
             sourceToBlockIndex[index] = BlockIndecies{blockCounter, i};
             sourceToSplitIndex[index] = splittingIndex;
-            blockIndexToSource[BlockIndecies{blockCounter, i}] = index;
+            //blockIndexToSource[BlockIndecies{blockCounter, i}] = index;
+            
         }
         blockCounter++;
     };

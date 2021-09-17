@@ -19,6 +19,8 @@ https://github.com/AnabelSMRuggiero/NNDescent.cpp
 #include <fstream>
 #include <type_traits>
 #include <span>
+#include <cassert>
+#include <algorithm>
 
 
 #include "Utilities/DataSerialization.hpp"
@@ -55,6 +57,7 @@ struct DataSet{
                 //dataStream.read(reinterpret_cast<char *>(&(samples[i][0])), vectorLength);
             };
     }
+
 
     size_t IndexStart() const{
         return indexStart;
@@ -126,48 +129,95 @@ inline bool operator==(const BlockIndecies lhs, const BlockIndecies& rhs){
     return (lhs.blockNumber == rhs.blockNumber) && (lhs.dataIndex == rhs.dataIndex);
 }
 
+template<typename DataEntry, size_t alignment>
+size_t EntryPadding(const size_t entryLength){
+    size_t entryBytes = sizeof(DataEntry)*entryLength;
+    size_t excessBytes = entryBytes%alignment;
+    if (excessBytes == 0) return 0;
+    size_t paddingBytes = alignment - excessBytes;
+    size_t paddingEntires = paddingBytes/sizeof(DataEntry);
+    assert(paddingEntires*sizeof(DataEntry) == paddingBytes);
+    return paddingBytes/sizeof(DataEntry);
+    //((sizeof(DataType)*entryLength)%alignment > 0) ? alignment - entryLength%alignment : 0
+}
+
 
 //Presumably, each project would only need to instantiate for a single FloatType
-template<typename DataEntry>
+template<typename DataType, size_t align = 32>
+    requires (alignof(DataType) <= sizeof(DataType))
 struct DataBlock{
-    using ElementType = typename DataEntry::value_type;
-    using DataView = typename DefaultDataView<DataEntry>::ViewType;
+    using value_type = DataType;
+    using DataView = AlignedSpan<DataType, align>;
+    using ConstDataView = AlignedSpan<const DataType, align>;
+
+    static constexpr size_t alignment = align;
 
     size_t blockNumber;
-    std::vector<DataEntry> blockData;
+    size_t numEntries;
+    size_t entryLength;
+    size_t lengthWithPadding;
+    AlignedArray<DataType, alignment> blockData;
+    //std::vector<DataEntry> blockData;
 
-    DataBlock(): blockNumber(0), blockData(0){};
 
-    DataBlock(const DataSet<DataEntry>& dataSource, std::span<const size_t> dataPoints, size_t blockNumber):
-    blockNumber(blockNumber), blockData(){
-        blockData.reserve(dataPoints.size());
-        for (const size_t& index : dataPoints){
-            blockData.push_back(dataSource.samples[index]);
+    DataBlock() = default;
+
+    DataBlock(const size_t numEntries, const size_t entryLength, size_t blockNumber):
+        blockNumber(blockNumber), 
+        numEntries(numEntries),
+        entryLength(entryLength),
+        lengthWithPadding(entryLength + EntryPadding<DataType, alignment>(entryLength)),
+        blockData(lengthWithPadding*numEntries){};
+
+    template<typename DataEntry>
+        requires std::same_as<typename DataEntry::value_type, DataType>
+    DataBlock(const DataSet<DataEntry>& dataSource, std::span<const size_t> dataPoints, const size_t entryLength, size_t blockNumber):
+        blockNumber(blockNumber), 
+        numEntries(dataPoints.size()),
+        entryLength(entryLength),
+        lengthWithPadding(entryLength + EntryPadding<DataType, alignment>(entryLength)),
+        blockData(lengthWithPadding*dataPoints.size()){
+        //blockData = AlignedArray<DataType, alignment>((entryLength + entryPadding));
+        //blockData.reserve(dataPoints.size());
+        for (DataType* ptrIntoBlock = blockData.begin(); const size_t& index : dataPoints){
+            //blockData.push_back(dataSource.samples[index]);
+            const DataEntry& pointToCopy = dataSource.samples[index];
+            std::copy(pointToCopy.begin(), pointToCopy.end(), ptrIntoBlock);
+            ptrIntoBlock += lengthWithPadding;
         }
     }
 
+    DataBlock(DataBlock&& rhs) = default;
+
+    DataBlock& operator=(DataBlock&& rhs) = default;
+
     //DataBlock()
 
-    DataEntry& operator[](size_t i){
-        return blockData[i];
+    DataView operator[](size_t i){
+        AlignedPtr<value_type, alignment> ptr = blockData.GetAlignedPtr(lengthWithPadding);
+        ptr += i;
+        return DataView(ptr, entryLength);
+        //return blockData[i];
     }
 
-    DataEntry& operator[](BlockIndecies i){
-        static_assert(i.blockNumber == blockNumber);
-        return blockData[i.dataIndex];
-    }
-
-    const DataEntry& operator[](size_t i) const{
-        return blockData[i];
-    }
-
-    const DataEntry& operator[](BlockIndecies i) const{
+    DataView operator[](BlockIndecies i){
         //static_assert(i.blockNumber == blockNumber);
-        return blockData[i.dataIndex];
+        return operator[](i.dataIndex);
+    }
+
+    ConstDataView operator[](size_t i) const{
+        AlignedPtr<const value_type, alignment> ptr = blockData.GetAlignedPtr(lengthWithPadding);
+        ptr += i;
+        return ConstDataView(ptr, entryLength);
+    }
+
+    ConstDataView operator[](BlockIndecies i) const{
+        //static_assert(i.blockNumber == blockNumber);
+        return operator[](i.dataIndex);
     }
 
     size_t size() const{
-        return blockData.size();
+        return numEntries;
     }
 
     /*

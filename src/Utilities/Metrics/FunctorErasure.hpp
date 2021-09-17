@@ -29,20 +29,20 @@ namespace nnd{
 
 
 
-template<typename DataEntry, typename MetricPair>
+template<typename DataType, typename MetricPair>
 struct MetricFunctor{
     using DistType = typename MetricPair::DistType;
-    using DataView = typename DataBlock<DataEntry>::DataView;
+    using ConstDataView = typename DataBlock<DataType>::ConstDataView;
 
     [[no_unique_address]] MetricPair metricPair;
-    const DataBlock<DataEntry>* lhsBlock;
-    const DataBlock<DataEntry>* rhsBlock;
-    const std::vector<DataBlock<DataEntry>>& blocks;
+    const DataBlock<DataType>* lhsBlock;
+    const DataBlock<DataType>* rhsBlock;
+    const std::vector<DataBlock<DataType>>& blocks;
     //size_t lhsBlockNum, rhsBlockNum;
     
-    MetricFunctor(const std::vector<DataBlock<DataEntry>>& blocks): metricPair(MetricPair()), blocks(blocks) {};
+    MetricFunctor(const std::vector<DataBlock<DataType>>& blocks): metricPair(MetricPair()), blocks(blocks) {};
 
-    MetricFunctor(MetricPair metricPair, const std::vector<DataBlock<DataEntry>>& blocks):metricPair(metricPair), blocks(blocks) {};
+    MetricFunctor(MetricPair metricPair, const std::vector<DataBlock<DataType>>& blocks):metricPair(metricPair), blocks(blocks) {};
 
     
 
@@ -52,9 +52,9 @@ struct MetricFunctor{
     };
     
     std::vector<DistType> operator()(const size_t lhsIndex, const std::vector<size_t>& rhsIndecies) const {
-        char stackBuffer[sizeof(DataView)*20];
-        std::pmr::monotonic_buffer_resource stackResource(stackBuffer, sizeof(DataView)*20);
-        std::pmr::vector<DataView> rhsData(&stackResource);
+        char stackBuffer[sizeof(ConstDataView)*20];
+        std::pmr::monotonic_buffer_resource stackResource(stackBuffer, sizeof(ConstDataView)*20);
+        std::pmr::vector<ConstDataView> rhsData(&stackResource);
         rhsData.reserve(20);
         for(const auto& index: rhsIndecies){
             rhsData.push_back((*rhsBlock)[index]);
@@ -146,19 +146,19 @@ struct EuclideanComDistance{
 template<typename COMExtent>
 struct MetaGraph;
 
-template<typename DataEntry, typename COMExtent, typename MetricPair>
+template<typename DataType, typename COMExtent, typename MetricPair>
 struct DataComDistance{
     using DistType = typename MetricPair::DistType;
-    using DataView = typename DataBlock<DataEntry>::DataView;
+    using ConstDataView = typename DataBlock<DataType>::ConstDataView;
     //Reference to Com?
     const MetaGraph<COMExtent>& centersOfMass;
-    const DataBlock<DataEntry>* targetBlock;
-    const std::vector<DataBlock<DataEntry>>& blocks;
+    const DataBlock<DataType>* targetBlock;
+    const std::vector<DataBlock<DataType>>& blocks;
     [[no_unique_address]] MetricPair functor;
 
-    DataComDistance(const MetaGraph<COMExtent>& centersOfMass, const std::vector<DataBlock<DataEntry>>& blocks): centersOfMass(centersOfMass), blocks(blocks), functor(){};
+    DataComDistance(const MetaGraph<COMExtent>& centersOfMass, const std::vector<DataBlock<DataType>>& blocks): centersOfMass(centersOfMass), blocks(blocks), functor(){};
 
-    DataComDistance(const MetaGraph<COMExtent>& centersOfMass, const std::vector<DataBlock<DataEntry>>& blocks, MetricPair functor):
+    DataComDistance(const MetaGraph<COMExtent>& centersOfMass, const std::vector<DataBlock<DataType>>& blocks, MetricPair functor):
                         centersOfMass(centersOfMass), blocks(blocks), functor(functor){};
 
     float operator()(const size_t metagraphIndex, const size_t dataIndex) const{
@@ -166,7 +166,7 @@ struct DataComDistance{
     };
     
     std::vector<float> operator()(const size_t metagraphIndex, const std::vector<size_t>& rhsIndecies) const{
-        std::vector<DataView> rhsData;
+        std::vector<ConstDataView> rhsData;
         for(const auto& index: rhsIndecies){
             rhsData.push_back((*targetBlock)[index]);
         }
@@ -179,27 +179,30 @@ struct DataComDistance{
     
 };
 
-template<typename DataEntry, typename MetricPair>
+template<typename DataType, typename DataSet, typename MetricPair>
 struct SearchFunctor{
     using DistType = typename MetricPair::DistType;
-    using DataView = typename DataBlock<DataEntry>::DataView;
-    const DataBlock<DataEntry>* targetBlock;
-    const std::vector<DataBlock<DataEntry>>& blocks;
-    const DataSet<DataEntry>& points;
+    using ConstDataView = typename DataBlock<DataType>::ConstDataView;
+    const DataBlock<DataType>* targetBlock;
+    const std::vector<DataBlock<DataType>>& blocks;
+    const DataSet& points;
     [[no_unique_address]] MetricPair functor;
 
-    SearchFunctor(const std::vector<DataBlock<DataEntry>>& blocks, const DataSet<DataEntry>& points):
+    SearchFunctor(const std::vector<DataBlock<DataType>>& blocks, const DataSet& points):
         blocks(blocks), points(points), functor(){};
 
-    SearchFunctor(const std::vector<DataBlock<DataEntry>>& blocks, const DataSet<DataEntry>& points, MetricPair functor):
+    SearchFunctor(const std::vector<DataBlock<DataType>>& blocks, const DataSet& points, MetricPair functor):
                         blocks(blocks), points(points), functor(functor){};
 
     float operator()(const size_t searchIndex, const size_t targetIndex) const{
         return functor(points[searchIndex], (*targetBlock)[targetIndex]);
     };
     
-    std::vector<float> operator()(const size_t searchIndex, const std::vector<size_t>& targetIndecies) const{
-        std::vector<DataView> targetData;
+    std::vector<typename MetricPair::DistType> operator()(const size_t searchIndex, const std::vector<size_t>& targetIndecies) const{
+        char stackBuffer[sizeof(ConstDataView)*20];
+        std::pmr::monotonic_buffer_resource stackResource(stackBuffer, sizeof(ConstDataView)*20);
+        std::pmr::vector<ConstDataView> targetData(&stackResource);
+        targetData.reserve(20);
         for(const auto& index: targetIndecies){
             targetData.push_back((*targetBlock)[index]);
         }

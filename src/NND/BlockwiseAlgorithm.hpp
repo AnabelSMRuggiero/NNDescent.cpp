@@ -70,7 +70,7 @@ using JoinResults = std::vector<std::pair<DataIndexType, GraphVertex<DataIndexTy
 template<typename DistType, typename QueryFunctor>
 JoinResults<size_t, DistType> BlockwiseJoin(const JoinHints<size_t>& startJoins,
                    const Graph<BlockIndecies, DistType>& currentGraphState,
-                   const Graph<size_t, DistType>& searchSubgraph,
+                   const DirectedGraph<size_t>& searchSubgraph,
                    const QueryContext<DistType>& targetBlock,
                    QueryFunctor& queryFunctor){
     
@@ -111,10 +111,10 @@ JoinResults<size_t, DistType> BlockwiseJoin(const JoinHints<size_t>& startJoins,
             if (result.second.size()>0){   
                 
                 for(const auto& leafNeighbor: searchSubgraph[result.first]){
-                    if(!nodesJoined[leafNeighbor.first]){
-                        joinHints.push_back({leafNeighbor.first, result.second});
+                    if(!nodesJoined[leafNeighbor]){
+                        joinHints.push_back({leafNeighbor, result.second});
                         //We can add these to nodesJoined a touch early to prevent dupes
-                        nodesJoined[leafNeighbor.first] = true;
+                        nodesJoined[leafNeighbor] = true;
                     }
                 }
                 retResults.push_back({result.first, std::move(result.second)});
@@ -129,7 +129,7 @@ JoinResults<size_t, DistType> BlockwiseJoin(const JoinHints<size_t>& startJoins,
 template<typename DistType, typename DistanceFunctor>
 void ReverseBlockJoin(const JoinHints<size_t>& startJoins,
                    const Graph<BlockIndecies, DistType>& currentGraphState,
-                   const Graph<size_t, DistType>& searchSubgraph,
+                   const DirectedGraph<size_t>& searchSubgraph,
                    const QueryContext<DistType>& targetBlock,
                    CachingFunctor<DistType>& cache,
                    DistanceFunctor& queryFunctor){
@@ -179,12 +179,12 @@ void ReverseBlockJoin(const JoinHints<size_t>& startJoins,
     std::vector<size_t> joinQueue;
     for (auto success: successfulJoins){
         for (const auto& leafNeighbor: searchSubgraph[success]){
-            if(!nodesJoined[leafNeighbor.first]){
-                joinQueue.push_back(leafNeighbor.first);
+            if(!nodesJoined[leafNeighbor]){
+                joinQueue.push_back(leafNeighbor);
 
                 
                 //We can add these to nodesJoined a touch early to prevent dupes
-                nodesJoined[leafNeighbor.first] = true;
+                nodesJoined[leafNeighbor] = true;
             }
         }
     }
@@ -207,11 +207,11 @@ void ReverseBlockJoin(const JoinHints<size_t>& startJoins,
         for(auto& success: successfulJoins){
             
             for(const auto& leafNeighbor: searchSubgraph[success]){
-                if(!nodesJoined[leafNeighbor.first]){
-                    joinQueue.push_back(leafNeighbor.first);
+                if(!nodesJoined[leafNeighbor]){
+                    joinQueue.push_back(leafNeighbor);
 
                     //We can add these to nodesJoined a touch early to prevent dupes
-                    nodesJoined[leafNeighbor.first] = true;
+                    nodesJoined[leafNeighbor] = true;
                 }
             }
         }
@@ -267,16 +267,17 @@ struct BlockUpdateContext {
     JoinMap<size_t, size_t> joinsToDo;
     JoinMap<size_t, size_t> newJoins;
     QueryContext<DistType> queryContext;
-    Graph<size_t, DistType> joinPropagation;
     Graph<BlockIndecies, DistType> currentGraph;
+    DirectedGraph<size_t> joinPropagation;
+    //Graph<BlockIndecies, DistType> currentGraph;
 
     BlockUpdateContext() = default;
 
     BlockUpdateContext(Graph<size_t, DistType>&& blockGraph, QueryContext<DistType>&& queryContext, const size_t numberOfBlocksToJoin):
         blockJoinTracker(numberOfBlocksToJoin),
         queryContext(std::move(queryContext)),
-        joinPropagation(std::forward<Graph<size_t, DistType>>(blockGraph)),
-        currentGraph(ToBlockIndecies(joinPropagation, queryContext.blockNumber)) {
+        currentGraph(ToBlockIndecies(blockGraph, queryContext.blockNumber)),
+        joinPropagation(std::forward<Graph<size_t, DistType>>(blockGraph)){
             blockJoinTracker[queryContext.blockNumber] = true;
     };
 
