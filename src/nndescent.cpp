@@ -180,11 +180,16 @@ int main(int argc, char *argv[]){
     SplittingHeurisitcs splitParams= {16, 140, 60, 180};
     */
 
-    IndexParamters indexParams{12, 40, 35, 6};
+    constexpr size_t numThreads = 4;
+
+    //IndexParamters indexParams{12, 40, 35, 6};
+    IndexParamters indexParams{12, 20, 15, 6};
 
     size_t numBlockGraphNeighbors = 12;
-    size_t numCOMNeighbors = 40;
-    size_t maxNearestNodes = 35;
+    //size_t numCOMNeighbors = 40;
+    //size_t maxNearestNodes = 35;
+    size_t numCOMNeighbors = 20;
+    size_t maxNearestNodes = 15;
     size_t queryDepth = 6;
 
     SearchParameters searchParams{10, 6, 5};
@@ -203,6 +208,7 @@ int main(int argc, char *argv[]){
     //additionalInitSearches <= numCOMNeighbors
     //searchDepths <= numBlockGraphsNeighbors
     // something about splitParams
+    //COMNeighbors<NumBlocks
 
     bool parallelIndexBuild = true;
     bool parallelSearch = true;
@@ -302,20 +308,20 @@ int main(int argc, char *argv[]){
 
     HyperParameterValues parameters{splitParams, indexParams, searchParams};
 
-    static const std::endian dataEndianness = std::endian::native;
+    static const std::endian dataEndianness = std::endian::big;
 
-    /*
+    
     std::string trainDataFilePath("./TestData/MNIST-Fashion-Train.bin");
     DataSet<AlignedArray<float>> mnistFashionTrain(trainDataFilePath, 28*28, 60'000, &ExtractNumericArray<AlignedArray<float>,dataEndianness>);
 
 
-    std::string testDataFilePath("./TestData/MNIST-Fashion-Test.bin");
+    std::string testDataFilePath("./TestData/MNIST-Fashion-Data.bin");
     std::string testNeighborsFilePath("./TestData/MNIST-Fashion-Neighbors.bin");
     DataSet<AlignedArray<float>> mnistFashionTest(testDataFilePath, 28*28, 10'000, &ExtractNumericArray<AlignedArray<float>,dataEndianness>);
     DataSet<AlignedArray<uint32_t>> mnistFashionTestNeighbors(testNeighborsFilePath, 100, 10'000, &ExtractNumericArray<AlignedArray<uint32_t>,dataEndianness>);
-    */
-
     
+
+    /*
     std::string trainDataFilePath("./TestData/SIFT-Train.bin");
     DataSet<AlignedArray<float>> mnistFashionTrain(trainDataFilePath, 128, 1'000'000, &ExtractNumericArray<AlignedArray<float>,dataEndianness>);
 
@@ -324,7 +330,7 @@ int main(int argc, char *argv[]){
     std::string testNeighborsFilePath("./TestData/SIFT-Neighbors.bin");
     DataSet<AlignedArray<float>> mnistFashionTest(testDataFilePath, 128, 10'000, &ExtractNumericArray<AlignedArray<float>,dataEndianness>);
     DataSet<AlignedArray<uint32_t>> mnistFashionTestNeighbors(testNeighborsFilePath, 100, 10'000, &ExtractNumericArray<AlignedArray<uint32_t>,dataEndianness>);
-    
+    */
 
     /*
     std::string trainDataFilePath("./TestData/NYTimes-Angular-Train.bin");
@@ -347,7 +353,7 @@ int main(int argc, char *argv[]){
     
 
     auto [rpTrees, splittingVectors] = (parallelIndexBuild) ? 
-                                        BuildRPForest<ParallelEuclidianScheme<AlignedArray<float>, AlignedArray<float>>>(std::execution::par_unseq, mnistFashionTrain, parameters.splitParams, 12) :
+                                        BuildRPForest<ParallelEuclidianScheme<AlignedArray<float>, AlignedArray<float>>>(std::execution::par_unseq, mnistFashionTrain, parameters.splitParams, numThreads) :
                                         BuildRPForest<EuclidianScheme<AlignedArray<float>, AlignedArray<float>>>(std::execution::seq, mnistFashionTrain, parameters.splitParams);
                                         
 
@@ -357,7 +363,7 @@ int main(int argc, char *argv[]){
 
     //std::vector<size_t> trainClassifications(mnistFashionTrain.numberOfSamples);
     
-    ThreadPool<void> blockBuilder(12);
+    ThreadPool<void> blockBuilder(numThreads);
 
     auto [indexMappings, dataBlocks] = (parallelIndexBuild) ? 
                                         PartitionData<AlignedArray<float>>(rpTrees, mnistFashionTrain, blockBuilder):
@@ -388,7 +394,7 @@ int main(int argc, char *argv[]){
     std::span<BlockUpdateContext<float>> blockUpdateContexts;
 
     if (parallelIndexBuild){
-        ThreadPool<ThreadFunctors<float, float>> pool(12, euclideanFunctor, comFunctor, splitParams.maxTreeSize, parameters.indexParams.blockGraphNeighbors);
+        ThreadPool<ThreadFunctors<float, float>> pool(numThreads, euclideanFunctor, comFunctor, splitParams.maxTreeSize, parameters.indexParams.blockGraphNeighbors);
         pool.StartThreads();
         blockContextArr = BuildGraph(std::move(sizes), metaGraph, parameters, pool);
         blockUpdateContexts = {blockContextArr.get(), dataBlocks.size()};
@@ -421,7 +427,7 @@ int main(int argc, char *argv[]){
     
 
     RandomProjectionForest rpTreesTest = (parallelSearch) ?
-                                         RPTransformData(std::execution::par_unseq ,mnistFashionTest, splittingIndicies, std::move(splittingVectors), 12):
+                                         RPTransformData(std::execution::par_unseq ,mnistFashionTest, splittingIndicies, std::move(splittingVectors), numThreads):
                                          RPTransformData(mnistFashionTest, splittingIndicies, std::move(splittingVectors)) ;
                                          
     
@@ -443,7 +449,7 @@ int main(int argc, char *argv[]){
     IndexMaps<size_t> testMappings;
 
     if(parallelSearch){
-        ThreadPool<SinglePointFunctor<float>> searchPool(12, searchDist);
+        ThreadPool<SinglePointFunctor<float>> searchPool(numThreads, searchDist);
 
         DataMapper<AlignedArray<float>, void, void> testMapper(mnistFashionTest);
         std::vector<ParallelContextBlock<float>> searchContexts;
@@ -502,7 +508,8 @@ int main(int argc, char *argv[]){
         for (size_t i = 0; auto& [blockNum, testBlock]: searchContexts){
             for (size_t j = 0; auto& context: testBlock){
                 GraphVertex<BlockIndecies, float>& result = context.currentNeighbors;
-                size_t testIndex = testMappings.blockIndexToSource[i][j];
+                //size_t testIndex = testMappings.blockIndexToSource[i][j];
+                size_t testIndex = context.dataIndex;
                 //std::sort_heap(result.begin(), result.end(), NeighborDistanceComparison<BlockIndecies, float>);
                 for (const auto& neighbor: result){
                     results[testIndex].push_back(indexMappings.blockIndexToSource[neighbor.first.blockNumber][neighbor.first.dataIndex]);

@@ -100,7 +100,7 @@ int main(int argc, char *argv[]){
         for(const auto& block: blockSet){
             sizes.push_back(block.size());
         }
-        MetaGraph<float> metaGraph(blockSet, indexParams.COMNeighbors, EuclideanMetricPair());
+        MetaGraph<float> metaGraph(blockSet, indexParams.COMNeighbors, EuclideanMetricPair(), EuclideanCOM<float, float>);
         DataComDistance<float, float, EuclideanMetricPair> comFunctor(metaGraph, blockSet);
         
         std::unique_ptr<BlockUpdateContext<float>[]> blockContextArr;

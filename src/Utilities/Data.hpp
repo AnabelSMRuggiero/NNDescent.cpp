@@ -50,10 +50,12 @@ struct DataSet{
         numberOfSamples(numSamples),
         indexStart(0){
             std::ifstream dataStream;
-            dataStream.open(dataLocation, std::ios_base::binary);        
+            dataStream.open(dataLocation, std::ios_base::binary);
+            //std::cout << dataStream.is_open();      
             samples.reserve(numberOfSamples);
             for (size_t i = 0; i < numberOfSamples; i+=1){
                 samples.push_back(extractionFunction(dataStream, entryLength));
+                //for (auto& entry: samples.back()) std::cout << entry << std::endl;
                 //dataStream.read(reinterpret_cast<char *>(&(samples[i][0])), vectorLength);
             };
     }

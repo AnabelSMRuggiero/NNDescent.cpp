@@ -200,9 +200,9 @@ struct BlockIndecies{
 };
 
 struct MetaGraphIndex{
-    u_int32_t metaGraphIndex;
-    u_int16_t blockNumber;
-    u_int16_t dataIndex;
+    uint32_t metaGraphIndex;
+    uint16_t blockNumber;
+    uint16_t dataIndex;
 };
 
 template<std::ranges::range TopRange, std::ranges::range BotRange>
@@ -314,10 +314,69 @@ template<typename Type, typename OtherType>
 concept IsNot = !std::same_as<Type, OtherType>;
 
 struct SplittingHeurisitcs{
-    u_int32_t splitThreshold = 80;
-    u_int32_t childThreshold = 32;
-    u_int32_t maxTreeSize = 130;
+    uint32_t splitThreshold = 80;
+    uint32_t childThreshold = 32;
+    uint32_t maxTreeSize = 130;
     float maxSplitFraction = 0.0f;
+};
+
+template<typename ElementType>
+struct OffsetSpan{
+    using value_type = ElementType;
+    using iterator = typename std::span<ElementType>::iterator;
+    using const_iterator = typename std::span<ElementType>::const_iterator;
+
+    std::span<ElementType> arrView;
+    size_t indexOffset;
+
+    OffsetSpan() = default;
+
+    OffsetSpan(ElementType* arr, size_t arrSize, size_t indexOffset): 
+        arrView(arr, arrSize), 
+        indexOffset(indexOffset){}
+
+    OffsetSpan(std::span<ElementType> arrView, size_t indexOffset = 0): arrView(arrView), indexOffset(indexOffset) {}
+
+    size_t Offset(){
+        return indexOffset;
+    }
+
+    ElementType& operator[](size_t i){
+        return arrView[i-indexOffset];
+    }
+
+    const ElementType& operator[](size_t i) const{
+        return arrView[i - indexOffset];
+    }
+
+    iterator begin(){
+        return arrView.begin();
+    }
+
+    iterator end(){
+        return arrView.end();
+    }
+
+    const_iterator begin() const{
+        return arrView.begin();
+    }
+
+    const_iterator end() const{
+        return arrView.end();
+    }
+
+    const_iterator cbegin() const{
+        return arrView.begin();
+    }
+
+    const_iterator cend() const{
+        return arrView.end();
+    }
+
+    size_t size(){
+        return arrView.size();
+    }
+
 };
 
 

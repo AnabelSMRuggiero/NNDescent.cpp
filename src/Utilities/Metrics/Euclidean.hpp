@@ -13,6 +13,7 @@ https://github.com/AnabelSMRuggiero/NNDescent.cpp
 
 #include <immintrin.h>
 #include <type_traits>
+#include <bit>
 
 #include "../Type.hpp"
 
@@ -132,6 +133,8 @@ std::vector<float> BatchEuclideanNorm(const std::vector<AlignedSpan<const float>
 
 }
 
+
+
 template<size_t numPointsTo, typename Alloc = std::allocator<AlignedSpan<const float>>>
 std::vector<float> BatchEuclideanNorm(const std::vector<AlignedSpan<const float>, Alloc>& pointsTo, const AlignedSpan<const float>& pointB){
     static_assert(numPointsTo<=7 && numPointsTo>=2);
@@ -154,8 +157,10 @@ std::vector<float> BatchEuclideanNorm(const std::vector<AlignedSpan<const float>
     [[likely]] if(pointB.size()>=8){
         //Pre load first set of elements
         fromComponent1 = _mm256_load_ps(&(pointB[0]));
+        //fromComponent1 = NTLoadFloat(&(pointB[0]));
         for (size_t i = 0; i < numPointsTo; i+=1){
-            toComponents[i] = _mm256_load_ps(&(pointsTo[i][0]));
+            //toComponents[i] = _mm256_load_ps(&(pointsTo[i][0]));
+            toComponents[i] = NTLoadFloat(&(pointsTo[i][0]));
         }
         
 
@@ -168,8 +173,8 @@ std::vector<float> BatchEuclideanNorm(const std::vector<AlignedSpan<const float>
             for(size_t j = 0; j<numPointsTo; j+=1) accumulators[j] = _mm256_fmadd_ps(toComponents[j], toComponents[j], accumulators[j]);
                 
             //Load for next iteration
-            for(size_t j = 0; j<numPointsTo; j+=1) toComponents[j] = _mm256_load_ps(&(pointsTo[j][index+8]));
-
+            //for(size_t j = 0; j<numPointsTo; j+=1) toComponents[j] = _mm256_load_ps(&(pointsTo[j][index+8]));
+            for(size_t j = 0; j<numPointsTo; j+=1) toComponents[j] = NTLoadFloat(&(pointsTo[j][index+8]));
             fromComponent1 = fromComponent2;
         }
         

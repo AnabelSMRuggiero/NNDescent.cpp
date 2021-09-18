@@ -106,9 +106,9 @@ struct MetaGraph{
     Graph<size_t, COMExtent> verticies;
 
     template<typename DataType, typename Metric, typename COMFunctor>
-    MetaGraph(const std::vector<DataBlock<DataType>>& dataBlocks, const size_t numNeighbors, Metric metricFunctor, COMFunctor COMCalculator):
+    MetaGraph(const std::vector<DataBlock<DataType>>& dataBlocks, const size_t numNeighbors, Metric metricFunctor, COMFunctor COMCalculator, size_t blockNumOffset = 0):
         weights(0), 
-        points(dataBlocks.size(), dataBlocks[0].entryLength, 0),
+        points(dataBlocks.size(), dataBlocks[0].entryLength, blockNumOffset),
         verticies(dataBlocks.size(), numNeighbors){
         //SinglePointFunctor<COMExtent> functor(DataComDistance<DataEntry, COMExtent, MetricPair>(*this, dataBlocks, metricFunctor));
         weights.reserve(dataBlocks.size());
@@ -121,6 +121,10 @@ struct MetaGraph{
         for(auto& vertex: verticies){
             std::sort(vertex.begin(), vertex.end(), NeighborDistanceComparison<size_t, COMExtent>);
         }
+    }
+
+    size_t GetBlockOffset(){
+        return points.blockNumber;
     }
     /*
     DataComDistance(const ComView& centerOfMass, const std::vector<DataBlock<DataEntry>>& blocks): centerOfMass(centerOfMass), blocks(blocks), functor(){};
