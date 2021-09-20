@@ -70,12 +70,12 @@ void EuclideanCOM(const DataBlock<DataType>& dataBlock, AlignedSpan<COMExtent> w
 }
 
 template<typename FloatType, typename Metric>
-void BruteForceGraph(Graph<size_t, FloatType>& uninitGraph, size_t numNeighbors, const DataBlock<FloatType>& dataVector, Metric distanceFunctor){
+void BruteForceGraph(OffsetSpan<GraphVertex<size_t, FloatType>> uninitGraph, size_t numNeighbors, const DataBlock<FloatType>& dataVector, Metric distanceFunctor){
     
     // I can make this branchless. Check to see if /O2 or /O3 can make this branchless (I really doubt it)
-    for (size_t i = 0; i < dataVector.size(); i += 1){
-        for (size_t j = i+1; j < dataVector.size(); j += 1){
-            FloatType distance = distanceFunctor(dataVector[i], dataVector[j]);
+    for (size_t i = uninitGraph.Offset(); i < uninitGraph.StopIndex(); i += 1){
+        for (size_t j = i+1; j < uninitGraph.StopIndex(); j += 1){
+            FloatType distance = distanceFunctor(dataVector[i-uninitGraph.Offset()], dataVector[j - uninitGraph.Offset()]);
             if (uninitGraph[i].size() < numNeighbors){
                 uninitGraph[i].push_back(std::pair<size_t, FloatType>(j, distance));
                 if (uninitGraph[i].size() == numNeighbors){
@@ -106,7 +106,7 @@ struct MetaGraph{
     Graph<size_t, COMExtent> verticies;
 
     template<typename DataType, typename Metric, typename COMFunctor>
-    MetaGraph(const std::vector<DataBlock<DataType>>& dataBlocks, const size_t numNeighbors, Metric metricFunctor, COMFunctor COMCalculator, size_t blockNumOffset = 0):
+    MetaGraph(const std::vector<DataBlock<DataType>>& dataBlocks, const size_t numNeighbors, Metric metricFunctor, COMFunctor COMCalculator, size_t blockNumOffset):
         weights(0), 
         points(dataBlocks.size(), dataBlocks[0].entryLength, blockNumOffset),
         verticies(dataBlocks.size(), numNeighbors){
@@ -117,14 +117,18 @@ struct MetaGraph{
             COMCalculator(dataBlock, points[i]);
             i++;
         }
-        BruteForceGraph<COMExtent, Metric>(verticies, numNeighbors, points, metricFunctor);
+        BruteForceGraph<COMExtent, Metric>(verticies.GetOffsetView(GetBlockOffset()), numNeighbors, points, metricFunctor);
         for(auto& vertex: verticies){
             std::sort(vertex.begin(), vertex.end(), NeighborDistanceComparison<size_t, COMExtent>);
         }
     }
 
-    size_t GetBlockOffset(){
+    size_t GetBlockOffset() const{
         return points.blockNumber;
+    }
+
+    size_t size() const{
+        return points.numEntries;
     }
     /*
     DataComDistance(const ComView& centerOfMass, const std::vector<DataBlock<DataEntry>>& blocks): centerOfMass(centerOfMass), blocks(blocks), functor(){};

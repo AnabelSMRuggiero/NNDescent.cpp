@@ -32,8 +32,8 @@ struct NearestNodesGenerator{
     
     using TaskArgs = ComparisonKey<size_t>;
     
-    NearestNodesGenerator(std::span<BlockUpdateContext<DistType>> blockSpan,
-                          std::span<std::atomic<bool>> blockStates)://,
+    NearestNodesGenerator(OffsetSpan<BlockUpdateContext<DistType>> blockSpan,
+                          OffsetSpan<std::atomic<bool>> blockStates)://,
                           //std::vector<std::optional<ComparisonKey<size_t>>>& nnToDo):
         blocks(blockSpan),
         readyBlocks(blockStates),
@@ -111,8 +111,8 @@ struct NearestNodesGenerator{
 
 
     //std::span<AtomicUniquePtr<BlockUpdateContext<DistType>>> blocks;
-    std::span<BlockUpdateContext<DistType>> blocks;
-    std::span<std::atomic<bool>> readyBlocks;
+    OffsetSpan<BlockUpdateContext<DistType>> blocks;
+    OffsetSpan<std::atomic<bool>> readyBlocks;
     //std::vector<std::optional<ComparisonKey<size_t>>>& distancesToCompute;
     size_t nullCounter;
 };
@@ -128,19 +128,20 @@ struct NearestNodesConsumer{
 
     NearestNodesConsumer() = default;
 
-    NearestNodesConsumer(std::unique_ptr<size_t[]>&& distanceCounts, const size_t numBlocks, const size_t numNeighbors): 
+    NearestNodesConsumer(std::unique_ptr<size_t[]>&& distanceCounts, const size_t numBlocks, const size_t numNeighbors, const size_t offset): 
                             distancesPerBlock(std::move(distanceCounts)),
                             nnNumNeighbors(numNeighbors),
                             nnGraph(numBlocks, numNeighbors),
+                            blockOffset(offset),
                             blocksDone(0),
                             joinsPerBlock(std::make_unique<size_t[]>(numBlocks)) {};
 
     bool operator()(std::pair<ComparisonKey<size_t>, std::tuple<size_t, size_t, DistType>> result){
         joinHints[result.first] = result.second;
 
-        nnGraph[result.first.first].push_back({result.first.second, std::get<2>(result.second)});
-        if (distancesPerBlock[result.first.first] == nnGraph[result.first.first].size()){
-            GraphVertex<size_t, DistType>& vertex = nnGraph[result.first.first];
+        nnGraph[result.first.first - blockOffset].push_back({result.first.second, std::get<2>(result.second)});
+        if (distancesPerBlock[result.first.first - blockOffset] == nnGraph[result.first.first - blockOffset].size()){
+            GraphVertex<size_t, DistType>& vertex = nnGraph[result.first.first-blockOffset];
             std::partial_sort(vertex.begin(), vertex.begin()+nnNumNeighbors, vertex.end(), NeighborDistanceComparison<size_t, DistType>);
             vertex.resize(nnNumNeighbors);
 
@@ -148,17 +149,17 @@ struct NearestNodesConsumer{
                 if(initJoinsQueued.insert({result.first.first, neighbor.first}).second){
                     //std::tuple<size_t, size_t, DistType>> hint = joinHints[{result.first.first, neighbor.first}];
                     initJoinsToDo.push_back(std::make_optional<StitchHint>(*(joinHints.find({result.first.first, neighbor.first}))));
-                    joinsPerBlock[result.first.first] += 1;
-                    joinsPerBlock[neighbor.first] += 1;
+                    joinsPerBlock[result.first.first - blockOffset] += 1;
+                    joinsPerBlock[neighbor.first - blockOffset] += 1;
                 }
             }
 
             ++blocksDone;
         }
 
-        nnGraph[result.first.second].push_back({result.first.first, std::get<2>(result.second)});
-        if (distancesPerBlock[result.first.second] == nnGraph[result.first.second].size()){
-            GraphVertex<size_t, DistType>& vertex = nnGraph[result.first.second];
+        nnGraph[result.first.second - blockOffset].push_back({result.first.first, std::get<2>(result.second)});
+        if (distancesPerBlock[result.first.second - blockOffset] == nnGraph[result.first.second - blockOffset].size()){
+            GraphVertex<size_t, DistType>& vertex = nnGraph[result.first.second - blockOffset];
             std::partial_sort(vertex.begin(), vertex.begin()+nnNumNeighbors, vertex.end(), NeighborDistanceComparison<size_t, DistType>);
             vertex.resize(nnNumNeighbors);
 
@@ -168,8 +169,8 @@ struct NearestNodesConsumer{
                     //initJoinsToDo.push_back(std::make_optional<StitchHint>(ComparisonKey<size_t>{result.first.second, neighbor.first},
                     //                        joinHints[{result.first.second, neighbor.first}]));
                     initJoinsToDo.push_back(std::make_optional<StitchHint>(*(joinHints.find({result.first.second, neighbor.first}))));
-                    joinsPerBlock[result.first.second] += 1;
-                    joinsPerBlock[neighbor.first] += 1;
+                    joinsPerBlock[result.first.second - blockOffset] += 1;
+                    joinsPerBlock[neighbor.first - blockOffset] += 1;
                 }
             }
 
@@ -200,6 +201,7 @@ struct NearestNodesConsumer{
     const size_t nnNumNeighbors;
     Graph<size_t, DistType> nnGraph;
     
+    const size_t blockOffset;
     size_t blocksDone;
 
     std::unordered_map<ComparisonKey<size_t>, std::tuple<size_t, size_t, DistType>> joinHints;

@@ -94,7 +94,7 @@ std::vector<BlockIndecies> VertexToIndex(const GraphVertex<BlockIndecies, DistTy
 using IndexBlock = std::vector<std::vector<BlockIndecies>>;
 
 template<typename DistType>
-std::vector<IndexBlock> IndexFinalization(std::span<BlockUpdateContext<DistType>> blocks){
+std::vector<IndexBlock> IndexFinalization(OffsetSpan<BlockUpdateContext<DistType>> blocks){
 
     std::vector<std::vector<std::vector<BlockIndecies>>> index(blocks.size());
     //index.reserve(blocks.size());
@@ -180,7 +180,7 @@ int main(int argc, char *argv[]){
     SplittingHeurisitcs splitParams= {16, 140, 60, 180};
     */
 
-    constexpr size_t numThreads = 4;
+    constexpr size_t numThreads = 12;
 
     //IndexParamters indexParams{12, 40, 35, 6};
     IndexParamters indexParams{12, 20, 15, 6};
@@ -197,8 +197,8 @@ int main(int argc, char *argv[]){
     size_t searchQueryDepth = 6;
     size_t maxNewSearches = 10;
 
-    SplittingHeurisitcs splitParams= {2500, 1500, 3500, 0.0f};
-    //SplittingHeurisitcs splitParams= {205, 123, 287, 0.0f};
+    //SplittingHeurisitcs splitParams= {2500, 1500, 3500, 0.0f};
+    SplittingHeurisitcs splitParams= {205, 123, 287, 0.0f};
 
     //SplittingHeurisitcs splitParams= {20, 12, 28, 0.0f};
 
@@ -308,8 +308,8 @@ int main(int argc, char *argv[]){
 
     HyperParameterValues parameters{splitParams, indexParams, searchParams};
 
+    //static const std::endian dataEndianness = std::endian::native;
     static const std::endian dataEndianness = std::endian::big;
-
     
     std::string trainDataFilePath("./TestData/MNIST-Fashion-Train.bin");
     DataSet<AlignedArray<float>> mnistFashionTrain(trainDataFilePath, 28*28, 60'000, &ExtractNumericArray<AlignedArray<float>,dataEndianness>);
@@ -366,8 +366,8 @@ int main(int argc, char *argv[]){
     ThreadPool<void> blockBuilder(numThreads);
 
     auto [indexMappings, dataBlocks] = (parallelIndexBuild) ? 
-                                        PartitionData<AlignedArray<float>>(rpTrees, mnistFashionTrain, blockBuilder):
-                                        PartitionData<AlignedArray<float>>(rpTrees, mnistFashionTrain);
+                                        PartitionData<AlignedArray<float>>(rpTrees, mnistFashionTrain, blockBuilder, 1):
+                                        PartitionData<AlignedArray<float>>(rpTrees, mnistFashionTrain, 1);
 
     
     MetricFunctor<float, EuclideanMetricPair> euclideanFunctor(dataBlocks);
@@ -385,23 +385,23 @@ int main(int argc, char *argv[]){
     
     
     
-    MetaGraph<float> metaGraph(dataBlocks, parameters.indexParams.COMNeighbors, EuclideanMetricPair(), EuclideanCOM<float, float>);
+    MetaGraph<float> metaGraph(dataBlocks, parameters.indexParams.COMNeighbors, EuclideanMetricPair(), EuclideanCOM<float, float>, dataBlocks[0].blockNumber);
     DataComDistance<float, float, EuclideanMetricPair> comFunctor(metaGraph, dataBlocks);
     
     //hacky but not a long term thing
     //std::vector<BlockUpdateContext<float>> blockContextVec;
     std::unique_ptr<BlockUpdateContext<float>[]> blockContextArr;
-    std::span<BlockUpdateContext<float>> blockUpdateContexts;
+    OffsetSpan<BlockUpdateContext<float>> blockUpdateContexts;
 
     if (parallelIndexBuild){
         ThreadPool<ThreadFunctors<float, float>> pool(numThreads, euclideanFunctor, comFunctor, splitParams.maxTreeSize, parameters.indexParams.blockGraphNeighbors);
         pool.StartThreads();
         blockContextArr = BuildGraph(std::move(sizes), metaGraph, parameters, pool);
-        blockUpdateContexts = {blockContextArr.get(), dataBlocks.size()};
+        blockUpdateContexts = {blockContextArr.get(), dataBlocks.size(), metaGraph.GetBlockOffset()};
         pool.StopThreads();
     } else {
         blockContextArr = BuildGraph<float, float, float>(dataBlocks, metaGraph, testDispatch, std::move(sizes), parameters, std::execution::seq);
-        blockUpdateContexts = {blockContextArr.get(), dataBlocks.size()};
+        blockUpdateContexts = {blockContextArr.get(), dataBlocks.size(), metaGraph.GetBlockOffset()};
     }
     //
     
@@ -444,7 +444,7 @@ int main(int argc, char *argv[]){
     SinglePointFunctor<float> searchFunctor(searchDist);
 
     
-    auto blocksToSearch = BlocksToSearch(metaGraph, additionalInitSearches);
+    //auto blocksToSearch = BlocksToSearch(metaGraph, additionalInitSearches);
     std::vector<std::vector<size_t>> results(mnistFashionTest.samples.size());
     IndexMaps<size_t> testMappings;
 
@@ -490,12 +490,12 @@ int main(int argc, char *argv[]){
 
         InitialSearchTask<float> searchGenerator = { blockUpdateContexts,
             std::span(std::as_const(index)),
-            std::move(blocksToSearch),
+            //std::move(blocksToSearch),
             maxNewSearches,
             AsyncQueue<std::pair<BlockIndecies, SearchSet>>()};
 
         searchPool.StartThreads();
-        SearchQueue searchHints = ParaFirstBlockSearch(searchGenerator, searchContexts, searchPool);
+        SearchQueue searchHints = ParaFirstBlockSearch(searchGenerator, searchContexts, searchPool, metaGraph.GetBlockOffset());
     
 
         
@@ -551,9 +551,12 @@ int main(int argc, char *argv[]){
         
         //auto blocksToSearch = BlocksToSearch(searchContexts, metaGraph, additionalInitSearches);
         
-        SearchQueue searchHints = FirstBlockSearch(searchContexts, blocksToSearch, searchFunctor, blockUpdateContexts, std::span(std::as_const(index)), maxNewSearches);
+        OffsetSpan<const IndexBlock> indexSpan(index.data(), index.size(), metaGraph.GetBlockOffset());
+
+        SearchQueue searchHints = FirstBlockSearch(searchContexts, searchFunctor, blockUpdateContexts, indexSpan, maxNewSearches);
+        //std::vector<IndexBlock> index = IndexFinalization(blockUpdateContexts)
         
-        SearchLoop(searchFunctor, searchHints, searchContexts, blockUpdateContexts, std::span(std::as_const(index)), maxNewSearches, mnistFashionTest.size());
+        SearchLoop(searchFunctor, searchHints, searchContexts, blockUpdateContexts, indexSpan, maxNewSearches, mnistFashionTest.size());
 
         std::chrono::time_point<std::chrono::steady_clock> runEnd2 = std::chrono::steady_clock::now();
         //std::cout << std::chrono::duration_cast<std::chrono::duration<float>>(runEnd2 - runStart2).count() << "s test set search " << std::endl;

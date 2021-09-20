@@ -467,10 +467,10 @@ using ParallelContextBlock = std::pair<size_t, std::vector<ParallelSearchContext
 
 template<typename DistType>
 SearchQueue FirstBlockSearch(std::vector<ContextBlock<DistType>>& searchContexts,
-                             const std::vector<std::vector<size_t>>& blocksToSearch,
+                             //const std::vector<std::vector<size_t>>& blocksToSearch,
                              SinglePointFunctor<DistType>& searchFunctor,
-                             std::span<BlockUpdateContext<DistType>> blockUpdateContexts,
-                             std::span<const IndexBlock> indexBlocks,
+                             OffsetSpan<BlockUpdateContext<DistType>> blockUpdateContexts,
+                             OffsetSpan<const IndexBlock> indexBlocks,
                              const size_t maxNewSearches){
 
     SearchQueue searchHints(indexBlocks.size());
@@ -487,11 +487,12 @@ SearchQueue FirstBlockSearch(std::vector<ContextBlock<DistType>>& searchContexts
             context.currentNeighbors = InitialSearch(searchFunctor, blockUpdateContexts[i].queryContext, context.dataIndex);
             context.comparisonResults = InitialComparisons(context, indexBlocks[i]);
             
+            /*
             for(auto& extraBlock: blocksToSearch[blockNumber]){
                 context.blocksJoined[extraBlock] = true;
                 context.AddSearchResult(InitialSearch(searchFunctor, blockUpdateContexts[extraBlock].queryContext, context.dataIndex));
             }
-
+            */
             context.ConsumeUpdates(indexBlocks);
             
             std::optional<SearchSet> searches = context.NextSearches(maxNewSearches);
@@ -512,9 +513,9 @@ SearchQueue FirstBlockSearch(std::vector<ContextBlock<DistType>>& searchContexts
 
 template<typename DistType>
 struct InitialSearchTask{
-    std::span<BlockUpdateContext<DistType>> blockUpdateContexts;
-    std::span<const IndexBlock> indexBlocks;
-    const std::vector<std::vector<size_t>> blocksToSearch;
+    OffsetSpan<BlockUpdateContext<DistType>> blockUpdateContexts;
+    OffsetSpan<const IndexBlock> indexBlocks;
+    //const std::vector<std::vector<size_t>> blocksToSearch;
     const size_t maxNewSearches;
 
     AsyncQueue<std::pair<BlockIndecies, SearchSet>> searchesToQueue;
@@ -523,18 +524,20 @@ struct InitialSearchTask{
         auto blockSearchGenerator = [&](const size_t i, ParallelContextBlock<DistType>& testBlock)->auto{
             auto blockSearchTask = [&, i](SinglePointFunctor<DistType>& searchFunctor) mutable -> void{
                 size_t contextBlockNum = testBlock.first;
-                for (size_t j = 0; auto& context: testBlock.second){
+                size_t j=0;
+                for (auto& context: testBlock.second){
 
                     std::vector<GraphVertex<BlockIndecies, DistType>> potentialNeighbors;
                     context.blocksJoined[contextBlockNum] = true;
                     context.currentNeighbors = InitialSearch(searchFunctor, this->blockUpdateContexts[contextBlockNum].queryContext, context.dataIndex);
                     context.comparisonResults = InitialComparisons(context, this->indexBlocks[contextBlockNum]);
                     
+                    /*
                     for(auto& blockNum: this->blocksToSearch[i]){
                         context.blocksJoined[blockNum] = true;
                         context.AddInitialResult(InitialSearch(searchFunctor, this->blockUpdateContexts[blockNum].queryContext, context.dataIndex));
                     }
-
+                    */
                     context.ConsumeUpdates(this->indexBlocks);
                     
                     std::optional<SearchSet> searches = context.NextSearches(this->maxNewSearches);
@@ -562,7 +565,8 @@ struct InitialSearchTask{
 template<typename DistType>
 SearchQueue ParaFirstBlockSearch(InitialSearchTask<DistType>& searchQueuer,
                              std::vector<ParallelContextBlock<DistType>>& searchContexts,         
-                             ThreadPool<SinglePointFunctor<DistType>>& pool){
+                             ThreadPool<SinglePointFunctor<DistType>>& pool,
+                             const size_t blockNumOffset){
 
     SearchQueue searchHints(searchQueuer.indexBlocks.size());
     searchQueuer(searchContexts, pool);
@@ -571,7 +575,7 @@ SearchQueue ParaFirstBlockSearch(InitialSearchTask<DistType>& searchQueuer,
 
     for(auto& [index, searches]: newSearchSets){
         for (auto& [blockNum, dataIndecies]: searches){
-            searchHints[blockNum].push_back({index, std::move(dataIndecies)});
+            searchHints[blockNum - blockNumOffset].push_back({index, std::move(dataIndecies)});
         }
     }
     pool.Latch();
@@ -592,14 +596,14 @@ template<typename DistType>
 void SearchLoop(SinglePointFunctor<DistType>& searchFunctor,
                 SearchQueue& searchHints,
                 std::vector<ContextBlock<DistType>>& searchContexts,
-                std::span<BlockUpdateContext<DistType>> blockUpdateContexts,
-                std::span<const IndexBlock> indexBlocks,
+                OffsetSpan<BlockUpdateContext<DistType>> blockUpdateContexts,
+                OffsetSpan<const IndexBlock> indexBlocks,
                 const size_t maxNewSearches,
                 const size_t searchesToDo){
     size_t doneSearches = 0;
     while(doneSearches<searchesToDo){
         doneSearches = 0;
-        for (size_t i = 0; auto& hintMap: searchHints){
+        for (size_t i = blockUpdateContexts.Offset(); auto& hintMap: searchHints){
             for (size_t j = 0; const auto& hint: hintMap){
                 searchFunctor.SetBlock(i);
                 SearchContext<DistType>& context = searchContexts[hint.first.blockNumber].second[hint.first.dataIndex];
@@ -640,8 +644,8 @@ template<typename DistType>
 void ParaSearchLoop(ThreadPool<SinglePointFunctor<DistType>>& pool,
                 SearchQueue& searchHints,
                 std::vector<ParallelContextBlock<DistType>>& searchContexts,
-                std::span<BlockUpdateContext<DistType>> blockUpdateContexts,
-                std::span<const IndexBlock> indexBlocks,
+                OffsetSpan<BlockUpdateContext<DistType>> blockUpdateContexts,
+                OffsetSpan<const IndexBlock> indexBlocks,
                 const size_t maxNewSearches,
                 const size_t searchesToDo){
 
@@ -653,6 +657,7 @@ void ParaSearchLoop(ThreadPool<SinglePointFunctor<DistType>>& pool,
     
     
     auto searchGenerator = [&](const size_t i, std::vector<std::pair<BlockIndecies, std::vector<size_t>>>&& searchSet)->auto{
+
         auto searchTask = [&, i, hintMap = std::move(searchSet)](SinglePointFunctor<DistType>& searchFunctor)->void{
             searchFunctor.SetBlock(i);
             for (size_t j = 0; const auto& hint: hintMap){
@@ -668,7 +673,7 @@ void ParaSearchLoop(ThreadPool<SinglePointFunctor<DistType>>& pool,
                 if(context.AddSearchResult(std::move(convertex))){
                     searchesToUpdate.Put(BlockIndecies(hint.first));
                 };
-                j++;
+                //j++;
             }
                
         };
@@ -693,7 +698,7 @@ void ParaSearchLoop(ThreadPool<SinglePointFunctor<DistType>>& pool,
 
     while(true){
 
-        for (size_t i = 0; auto& hintMap: searchHints){
+        for (size_t i = blockUpdateContexts.Offset(); auto& hintMap: searchHints){
             pool.DelegateTask(searchGenerator(i, std::move(hintMap)));
             
             hintMap = std::vector<std::pair<BlockIndecies, std::vector<size_t>>>();

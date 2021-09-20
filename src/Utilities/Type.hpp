@@ -324,7 +324,7 @@ template<typename ElementType>
 struct OffsetSpan{
     using value_type = ElementType;
     using iterator = typename std::span<ElementType>::iterator;
-    using const_iterator = typename std::span<ElementType>::const_iterator;
+    using const_iterator = const typename std::span<ElementType>::iterator;
 
     std::span<ElementType> arrView;
     size_t indexOffset;
@@ -339,6 +339,10 @@ struct OffsetSpan{
 
     size_t Offset(){
         return indexOffset;
+    }
+
+    size_t StopIndex(){
+        return indexOffset + arrView.size();
     }
 
     ElementType& operator[](size_t i){
@@ -373,7 +377,7 @@ struct OffsetSpan{
         return arrView.end();
     }
 
-    size_t size(){
+    size_t size() const{
         return arrView.size();
     }
 

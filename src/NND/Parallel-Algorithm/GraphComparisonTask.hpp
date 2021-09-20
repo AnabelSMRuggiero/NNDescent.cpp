@@ -27,9 +27,9 @@ struct GraphComparisonGenerator{
     using TaskResult = void;
     using BlockUpdates = std::vector<std::pair<size_t, JoinResults<size_t, DistType>>>;
 
-    GraphComparisonGenerator(std::span<BlockUpdateContext<DistType>> blocks,
+    GraphComparisonGenerator(OffsetSpan<BlockUpdateContext<DistType>> blocks,
                           std::vector<bool>& updatedBlocks,
-                          std::span<std::atomic<bool>> initializedBlocks):
+                          OffsetSpan<std::atomic<bool>> initializedBlocks):
                           blocks(blocks),
                           updatedBlocks(updatedBlocks),
                           initializedBlocks(initializedBlocks){};
@@ -55,7 +55,7 @@ struct GraphComparisonGenerator{
 
             //if(!readyBlocks[*blockNum].compare_exchange_strong(expectTrue, false)) continue;
             if(allUpdated || std::all_of(comparison->second.begin(), comparison->second.end(), [&](const std::pair<size_t, ComparisonVec<size_t>>& targetBlock)->bool{
-                return updatedBlocks[targetBlock.first];
+                return updatedBlocks[targetBlock.first - blocks.Offset()];
             })){
                 pool.DelegateTask(comparisonGenerator(comparison->first, std::move(comparison->second)));
                 comparison = std::nullopt;
@@ -77,11 +77,11 @@ struct GraphComparisonGenerator{
 
     private:
 
-    std::span<BlockUpdateContext<DistType>> blocks;
+    OffsetSpan<BlockUpdateContext<DistType>> blocks;
     //std::span<std::atomic<bool>> readyBlocks;
     //std::unique_ptr<InvertedComparisons<DistType>[]> comparisonArr;
     std::vector<bool>& updatedBlocks;
-    std::span<std::atomic<bool>> initializedBlocks;
+    OffsetSpan<std::atomic<bool>> initializedBlocks;
     bool allUpdated = false;
     //std::vector<std::optional<TaskArgs>>& comparisonsToDo;
     //std::vector<std::optional<size_t>>& resultsToReduce;

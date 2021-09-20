@@ -15,6 +15,8 @@ https://github.com/AnabelSMRuggiero/NNDescent.cpp
 #include <type_traits>
 #include <bit>
 
+#include "SpaceMetrics.hpp"
+
 #include "../Type.hpp"
 
 namespace nnd{

@@ -159,7 +159,7 @@ std::unique_ptr<BlockUpdateContext<DistType>[]> InitializeBlockContexts(std::vec
                                                                   const MetaGraph<COMExtent>& metaGraph,
                                                                   Graph<size_t, DistType>& queryHints,
                                                                   const int queryDepth,
-                                                                  const size_t blockNumStart = 0){
+                                                                  const size_t blockNumStart){
                                                                         
     std::unique_ptr<BlockUpdateContext<DistType>[]> blockUpdateContexts = std::make_unique<BlockUpdateContext<DistType>[]>(blockGraphs.size());
     //blockUpdateContexts.reserve(blockGraphs.size());
@@ -375,20 +375,21 @@ std::unique_ptr<BlockUpdateContext<DistType>[]> BuildGraph(const std::vector<Dat
 
     std::vector<Graph<size_t, float>> blockGraphs = InitializeBlockGraphs<float>(sizes.size(), sizes, hyperParams.indexParams.blockGraphNeighbors, dispatch);
 
-    OffsetSpan blockGraphView = {{blockGraphs.begin(), blockGraphs.size()}, dataBlocks[0].blockNumber};
+    OffsetSpan<Graph<size_t, float>> blockGraphView = {{blockGraphs.begin(), blockGraphs.size()}, dataBlocks[0].blockNumber};
 
     DataComDistance<DataType, COMExtent, EuclideanMetricPair> comFunctor(metaGraph, dataBlocks);
 
-    Graph<size_t, float> queryHints = GenerateQueryHints<float, float>(blockGraphs, metaGraph, hyperParams.indexParams.blockGraphNeighbors, comFunctor);
+    Graph<size_t, float> queryHints = GenerateQueryHints<float, float>(blockGraphView, metaGraph, hyperParams.indexParams.blockGraphNeighbors, comFunctor);
 
 
     std::unique_ptr<BlockUpdateContext<DistType>[]> blockUpdateContexts = InitializeBlockContexts<DistType, COMExtent>(blockGraphs, 
                                                                                          metaGraph,
                                                                                          queryHints,
-                                                                                         hyperParams.indexParams.queryDepth);
+                                                                                         hyperParams.indexParams.queryDepth,
+                                                                                         metaGraph.GetBlockOffset());
     
-    std::span<BlockUpdateContext<DistType>> blockSpan(blockUpdateContexts.get(), blockGraphs.size());
-    std::span<const BlockUpdateContext<DistType>> constBlockSpan(blockUpdateContexts.get(), blockGraphs.size());
+    OffsetSpan<BlockUpdateContext<DistType>> blockSpan(blockUpdateContexts.get(), blockGraphs.size(), dataBlocks[0].blockNumber);
+    OffsetSpan<const BlockUpdateContext<DistType>> constBlockSpan(blockUpdateContexts.get(), blockGraphs.size(), dataBlocks[0].blockNumber);
     CachingFunctor<float> cacher(dispatch, hyperParams.splitParams.maxTreeSize, hyperParams.indexParams.blockGraphNeighbors);
 
     auto [nearestNodeDistances, stitchHints] = NearestNodeDistances(constBlockSpan, metaGraph, hyperParams.indexParams.nearestNodeNeighbors, dispatch);

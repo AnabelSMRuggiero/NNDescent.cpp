@@ -386,7 +386,7 @@ struct Graph{
     }
 
     OffsetSpan<GraphVertex<IndexType, FloatType>> GetOffsetView(size_t indexOffset){
-        return OffsetSpan({{verticies.begin(), verticies.size()}, indexOffset});
+        return OffsetSpan<GraphVertex<IndexType,FloatType>>({{verticies.begin(), verticies.size()}, indexOffset});
     }
 
     Graph& operator=(Graph other){

@@ -67,7 +67,7 @@ RetType Dot(const VectorA& pointA, const VectorB& pointB){
 //Generic Vectorization Stuff
 //Hacky, but I need to SFINAE the reinterpret_cast on MSVC 
 template<typename TargetVectorType = float>
-__m256 NTLoadFloat(const float* ptr){
+inline __m256 NTLoadFloat(const float* ptr){
     
     if constexpr(std::is_union_v<__m256>){
         //Untested with MSVC

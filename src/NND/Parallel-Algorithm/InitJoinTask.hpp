@@ -28,7 +28,7 @@ struct InitJoinGenerator{
     using TaskResult = std::pair<ComparisonKey<size_t>, InitJoinResult>;
 
     
-    InitJoinGenerator(std::span<BlockUpdateContext<DistType>> blocks, std::span<std::atomic<bool>> readyBlocks):
+    InitJoinGenerator(OffsetSpan<BlockUpdateContext<DistType>> blocks, OffsetSpan<std::atomic<bool>> readyBlocks):
         blocks(blocks),
         readyBlocks(readyBlocks) {};
     
@@ -121,8 +121,8 @@ struct InitJoinGenerator{
 
     private:
 
-    std::span<BlockUpdateContext<DistType>> blocks;
-    std::span<std::atomic<bool>> readyBlocks;
+    OffsetSpan<BlockUpdateContext<DistType>> blocks;
+    OffsetSpan<std::atomic<bool>> readyBlocks;
     //std::span<size_t> joinsPerBlock;
 
     //size_t nullCounter;
@@ -141,7 +141,7 @@ struct InitJoinConsumer{
 
     InitJoinConsumer() = default;
 
-    InitJoinConsumer(std::span<BlockUpdates> updateStorage): 
+    InitJoinConsumer(OffsetSpan<BlockUpdates> updateStorage): 
                             graphUpdates(updateStorage),
                             //graphUpdates(std::make_unique<BlockUpdates[]>(numBlocks)),
                             //numBlocks(numBlocks),
@@ -156,11 +156,11 @@ struct InitJoinConsumer{
         graphUpdates[result.first.second].push_back({result.first.first, std::move(result.second.second)});
 
         if(joinsPerBlock){
-            if(graphUpdates[result.first.first].size() == joinsPerBlock[result.first.first]){
+            if(graphUpdates[result.first.first].size() == joinsPerBlock[result.first.first - graphUpdates.Offset()]){
                 resultsToReduce.push_back(std::make_optional<size_t>(result.first.first));
                 blocksDone++;
             }
-            if(graphUpdates[result.first.second].size() == joinsPerBlock[result.first.second]){
+            if(graphUpdates[result.first.second].size() == joinsPerBlock[result.first.second - graphUpdates.Offset()]){
                 resultsToReduce.push_back(std::make_optional<size_t>(result.first.second));
                 blocksDone++;
             }
@@ -175,8 +175,8 @@ struct InitJoinConsumer{
     void UpdateExpectedJoins(std::unique_ptr<size_t[]>&& expectedJoins){
         this->joinsPerBlock = std::move(expectedJoins);
 
-        for(size_t i = 0; i<graphUpdates.size(); i+=1){
-            if(graphUpdates[i].size() == joinsPerBlock[i]){
+        for(size_t i = graphUpdates.Offset(); i<graphUpdates.StopIndex(); i+=1){
+            if(graphUpdates[i].size() == joinsPerBlock[i - graphUpdates.Offset()]){
                 resultsToReduce.push_back(std::make_optional<size_t>(i));
                 blocksDone++;
             }
@@ -189,7 +189,7 @@ struct InitJoinConsumer{
     
 
     private:
-    std::span<BlockUpdates> graphUpdates;
+    OffsetSpan<BlockUpdates> graphUpdates;
     /*
     std::unique_ptr<BlockUpdates[]> graphUpdates;
     const size_t numBlocks;

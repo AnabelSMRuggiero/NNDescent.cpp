@@ -37,12 +37,12 @@ struct MetricFunctor{
     [[no_unique_address]] MetricPair metricPair;
     const DataBlock<DataType>* lhsBlock;
     const DataBlock<DataType>* rhsBlock;
-    const std::vector<DataBlock<DataType>>& blocks;
+    OffsetSpan<const DataBlock<DataType>> blocks;
     //size_t lhsBlockNum, rhsBlockNum;
     
-    MetricFunctor(const std::vector<DataBlock<DataType>>& blocks): metricPair(MetricPair()), blocks(blocks) {};
+    MetricFunctor(const std::vector<DataBlock<DataType>>& blocks): metricPair(MetricPair()), blocks(blocks.data(), blocks.size(), blocks[0].blockNumber) {};
 
-    MetricFunctor(MetricPair metricPair, const std::vector<DataBlock<DataType>>& blocks):metricPair(metricPair), blocks(blocks) {};
+    MetricFunctor(MetricPair metricPair, const std::vector<DataBlock<DataType>>& blocks):metricPair(metricPair), blocks(blocks.data(), blocks.size(), blocks[0].blockNumber) {};
 
     
 
@@ -153,16 +153,16 @@ struct DataComDistance{
     //Reference to Com?
     const MetaGraph<COMExtent>& centersOfMass;
     const DataBlock<DataType>* targetBlock;
-    const std::vector<DataBlock<DataType>>& blocks;
+    OffsetSpan<const DataBlock<DataType>> blocks;
     [[no_unique_address]] MetricPair functor;
 
-    DataComDistance(const MetaGraph<COMExtent>& centersOfMass, const std::vector<DataBlock<DataType>>& blocks): centersOfMass(centersOfMass), blocks(blocks), functor(){};
+    DataComDistance(const MetaGraph<COMExtent>& centersOfMass, const std::vector<DataBlock<DataType>>& blocks): centersOfMass(centersOfMass), blocks(blocks.data(), blocks.size(), blocks[0].blockNumber), functor(){};
 
     DataComDistance(const MetaGraph<COMExtent>& centersOfMass, const std::vector<DataBlock<DataType>>& blocks, MetricPair functor):
-                        centersOfMass(centersOfMass), blocks(blocks), functor(functor){};
+                        centersOfMass(centersOfMass), blocks(blocks.data(), blocks.size(), blocks[0].blockNumber), functor(functor){};
 
     float operator()(const size_t metagraphIndex, const size_t dataIndex) const{
-        return functor(centersOfMass.points[metagraphIndex], (*targetBlock)[dataIndex]);
+        return functor(centersOfMass.points[metagraphIndex - centersOfMass.GetBlockOffset()], (*targetBlock)[dataIndex]);
     };
     
     std::vector<float> operator()(const size_t metagraphIndex, const std::vector<size_t>& rhsIndecies) const{
@@ -184,15 +184,15 @@ struct SearchFunctor{
     using DistType = typename MetricPair::DistType;
     using ConstDataView = typename DataBlock<DataType>::ConstDataView;
     const DataBlock<DataType>* targetBlock;
-    const std::vector<DataBlock<DataType>>& blocks;
+    OffsetSpan<const DataBlock<DataType>> blocks;
     const DataSet& points;
     [[no_unique_address]] MetricPair functor;
 
     SearchFunctor(const std::vector<DataBlock<DataType>>& blocks, const DataSet& points):
-        blocks(blocks), points(points), functor(){};
+        blocks(blocks.data(), blocks.size(), blocks[0].blockNumber), points(points), functor(){};
 
     SearchFunctor(const std::vector<DataBlock<DataType>>& blocks, const DataSet& points, MetricPair functor):
-                        blocks(blocks), points(points), functor(functor){};
+                        blocks(blocks.data(), blocks.size(), blocks[0].blockNumber), points(points), functor(functor){};
 
     float operator()(const size_t searchIndex, const size_t targetIndex) const{
         return functor(points[searchIndex], (*targetBlock)[targetIndex]);
