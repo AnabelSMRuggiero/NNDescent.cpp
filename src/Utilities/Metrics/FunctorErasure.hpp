@@ -170,7 +170,7 @@ struct DataComDistance{
         for(const auto& index: rhsIndecies){
             rhsData.push_back((*targetBlock)[index]);
         }
-        return functor(centersOfMass.points[metagraphIndex], rhsData);
+        return functor(centersOfMass.points[metagraphIndex - centersOfMass.GetBlockOffset()], rhsData);
     };
 
     void SetBlock(size_t targetBlockNum){

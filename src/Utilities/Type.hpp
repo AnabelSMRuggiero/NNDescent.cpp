@@ -335,7 +335,9 @@ struct OffsetSpan{
         arrView(arr, arrSize), 
         indexOffset(indexOffset){}
 
-    OffsetSpan(std::span<ElementType> arrView, size_t indexOffset = 0): arrView(arrView), indexOffset(indexOffset) {}
+    OffsetSpan(std::span<ElementType> arrView, size_t indexOffset): arrView(arrView), indexOffset(indexOffset) {}
+
+    
 
     size_t Offset(){
         return indexOffset;

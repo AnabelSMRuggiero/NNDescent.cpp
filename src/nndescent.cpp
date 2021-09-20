@@ -210,8 +210,8 @@ int main(int argc, char *argv[]){
     // something about splitParams
     //COMNeighbors<NumBlocks
 
-    bool parallelIndexBuild = true;
-    bool parallelSearch = true;
+    bool parallelIndexBuild = false;
+    bool parallelSearch = false;
 
 
     std::vector<std::string> options;
@@ -366,8 +366,8 @@ int main(int argc, char *argv[]){
     ThreadPool<void> blockBuilder(numThreads);
 
     auto [indexMappings, dataBlocks] = (parallelIndexBuild) ? 
-                                        PartitionData<AlignedArray<float>>(rpTrees, mnistFashionTrain, blockBuilder, 1):
-                                        PartitionData<AlignedArray<float>>(rpTrees, mnistFashionTrain, 1);
+                                        PartitionData<AlignedArray<float>>(rpTrees, mnistFashionTrain, blockBuilder, 40392):
+                                        PartitionData<AlignedArray<float>>(rpTrees, mnistFashionTrain, 40392);
 
     
     MetricFunctor<float, EuclideanMetricPair> euclideanFunctor(dataBlocks);
@@ -412,6 +412,7 @@ int main(int argc, char *argv[]){
 
     std::vector<IndexBlock> index = IndexFinalization(blockUpdateContexts);
 
+    OffsetSpan<const IndexBlock> indexView{index.data(), index.size(), metaGraph.GetBlockOffset()};
     //std::chrono::time_point<std::chrono::steady_clock> finalizationEnd = std::chrono::steady_clock::now();
     //std::cout << std::chrono::duration_cast<std::chrono::duration<float>>(finalizationEnd - finalizationStart).count() << "s total for index finalization " << std::endl;
 
@@ -448,6 +449,8 @@ int main(int argc, char *argv[]){
     std::vector<std::vector<size_t>> results(mnistFashionTest.samples.size());
     IndexMaps<size_t> testMappings;
 
+    //OffsetSpan<std::vector<size_t>> resultsView(results.data(), results.size(), metaGraph.GetBlockOffset());
+
     if(parallelSearch){
         ThreadPool<SinglePointFunctor<float>> searchPool(numThreads, searchDist);
 
@@ -456,14 +459,14 @@ int main(int argc, char *argv[]){
 
         auto searcherConstructor = [&, &splitToBlockNum=indexMappings.splitToBlockNum](size_t splittingIndex, std::span<const size_t> indicies)->void{
             
-            ParallelContextBlock<float> retBlock{splitToBlockNum[splittingIndex] ,std::vector<ParallelSearchContext<float>>(indicies.size())};
+            ParallelContextBlock<float> retBlock{splitToBlockNum[splittingIndex], std::vector<ParallelSearchContext<float>>(indicies.size())};
             //std::vector<ParallelSearchContext<float>> retVec(indicies.size());
             //retVec.reserve(indicies.size());
             for(size_t i = 0; size_t index: indicies){
                 //const DataView searchPoint, const std::vector<DataBlock<DataEntry>>& blocks
                 ParallelSearchContext<float>* contextPtr = &retBlock.second[i];
                 contextPtr->~ParallelSearchContext<float>();
-                new (contextPtr) ParallelSearchContext<float>(numberSearchNeighbors, numberSearchBlocks, index);
+                new (contextPtr) ParallelSearchContext<float>(numberSearchNeighbors, numberSearchBlocks, index, metaGraph.GetBlockOffset());
 
                 //retVec.emplace_back(numberSearchNeighbors, numberSearchBlocks, index);
                 i++;
@@ -489,7 +492,7 @@ int main(int argc, char *argv[]){
 
 
         InitialSearchTask<float> searchGenerator = { blockUpdateContexts,
-            std::span(std::as_const(index)),
+            indexView,
             //std::move(blocksToSearch),
             maxNewSearches,
             AsyncQueue<std::pair<BlockIndecies, SearchSet>>()};
@@ -497,13 +500,15 @@ int main(int argc, char *argv[]){
         searchPool.StartThreads();
         SearchQueue searchHints = ParaFirstBlockSearch(searchGenerator, searchContexts, searchPool, metaGraph.GetBlockOffset());
     
-
+        QueueView hintView = {searchHints.data(), searchHints.size(), metaGraph.GetBlockOffset()};
         
-        ParaSearchLoop(searchPool, searchHints, searchContexts, blockUpdateContexts, std::span(std::as_const(index)), maxNewSearches, mnistFashionTest.size());
+        ParaSearchLoop(searchPool, hintView, searchContexts, blockUpdateContexts, indexView, maxNewSearches, mnistFashionTest.size());
         searchPool.StopThreads();
         std::chrono::time_point<std::chrono::steady_clock> runEnd2 = std::chrono::steady_clock::now();
         //std::cout << std::chrono::duration_cast<std::chrono::duration<float>>(runEnd2 - runStart2).count() << "s test set search " << std::endl;
         std::cout << std::chrono::duration_cast<std::chrono::duration<float>>(runEnd2 - runStart2).count() << std::endl;
+
+        OffsetSpan<std::vector<size_t>> indexMappingView(indexMappings.blockIndexToSource.data(), indexMappings.blockIndexToSource.size(), metaGraph.GetBlockOffset());
 
         for (size_t i = 0; auto& [blockNum, testBlock]: searchContexts){
             for (size_t j = 0; auto& context: testBlock){
@@ -512,7 +517,7 @@ int main(int argc, char *argv[]){
                 size_t testIndex = context.dataIndex;
                 //std::sort_heap(result.begin(), result.end(), NeighborDistanceComparison<BlockIndecies, float>);
                 for (const auto& neighbor: result){
-                    results[testIndex].push_back(indexMappings.blockIndexToSource[neighbor.first.blockNumber][neighbor.first.dataIndex]);
+                    results[testIndex].push_back(indexMappingView[neighbor.first.blockNumber][neighbor.first.dataIndex]);
                 }
                 j++;
             }
@@ -529,7 +534,7 @@ int main(int argc, char *argv[]){
             for(size_t index: indicies){
                 //const DataView searchPoint, const std::vector<DataBlock<DataEntry>>& blocks
                 
-                retBlock.second.push_back({numberSearchNeighbors, numberSearchBlocks, index});
+                retBlock.second.push_back({numberSearchNeighbors, numberSearchBlocks, index, metaGraph.GetBlockOffset()});
             }
             searchContexts.push_back(std::move(retBlock));
             testMapper(splittingIndex, indicies);
@@ -551,24 +556,28 @@ int main(int argc, char *argv[]){
         
         //auto blocksToSearch = BlocksToSearch(searchContexts, metaGraph, additionalInitSearches);
         
-        OffsetSpan<const IndexBlock> indexSpan(index.data(), index.size(), metaGraph.GetBlockOffset());
+        //OffsetSpan<const IndexBlock> indexSpan(index.data(), index.size(), metaGraph.GetBlockOffset());
 
-        SearchQueue searchHints = FirstBlockSearch(searchContexts, searchFunctor, blockUpdateContexts, indexSpan, maxNewSearches);
+        SearchQueue searchHints = FirstBlockSearch(searchContexts, searchFunctor, blockUpdateContexts, indexView, maxNewSearches, metaGraph.GetBlockOffset());
         //std::vector<IndexBlock> index = IndexFinalization(blockUpdateContexts)
-        
-        SearchLoop(searchFunctor, searchHints, searchContexts, blockUpdateContexts, indexSpan, maxNewSearches, mnistFashionTest.size());
+
+        QueueView hintView = {searchHints.data(), searchHints.size(), metaGraph.GetBlockOffset()};
+
+        SearchLoop(searchFunctor, hintView, searchContexts, blockUpdateContexts, indexView, maxNewSearches, mnistFashionTest.size());
 
         std::chrono::time_point<std::chrono::steady_clock> runEnd2 = std::chrono::steady_clock::now();
         //std::cout << std::chrono::duration_cast<std::chrono::duration<float>>(runEnd2 - runStart2).count() << "s test set search " << std::endl;
         std::cout << std::chrono::duration_cast<std::chrono::duration<float>>(runEnd2 - runStart2).count() << std::endl;
-    
+
+        OffsetSpan<std::vector<size_t>> indexMappingView(indexMappings.blockIndexToSource.data(), indexMappings.blockIndexToSource.size(), metaGraph.GetBlockOffset());
+
         for (size_t i = 0; auto& [ignore, testBlock]: searchContexts){
             for (size_t j = 0; auto& context: testBlock){
                 GraphVertex<BlockIndecies, float>& result = context.currentNeighbors;
                 size_t testIndex = context.dataIndex;
                 //std::sort_heap(result.begin(), result.end(), NeighborDistanceComparison<BlockIndecies, float>);
                 for (const auto& neighbor: result){
-                    results[testIndex].push_back(indexMappings.blockIndexToSource[neighbor.first.blockNumber][neighbor.first.dataIndex]);
+                    results[testIndex].push_back(indexMappingView[neighbor.first.blockNumber][neighbor.first.dataIndex]);
                 }
                 j++;
             }

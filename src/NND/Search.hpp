@@ -31,6 +31,7 @@ https://github.com/AnabelSMRuggiero/NNDescent.cpp
 namespace nnd{
 
 using SearchQueue = std::vector<std::vector<std::pair<BlockIndecies, std::vector<size_t>>>>;
+using QueueView = OffsetSpan<std::vector<std::pair<BlockIndecies, std::vector<size_t>>>>;
 using SearchSet = std::unordered_map<size_t, std::vector<size_t>>;
 
 template<typename IndexType, typename DistType>
@@ -93,8 +94,8 @@ struct SearchContext{
     bool done;
     //std::unordered_map<size_t, size_t> targetBlocks;
     
-    SearchContext(const size_t numNeighbors, const size_t numBlocks, const size_t dataIndex):
-        currentNeighbors(numNeighbors), blocksJoined(numBlocks), dataIndex(dataIndex), done(false){};
+    SearchContext(const size_t numNeighbors, const size_t numBlocks, const size_t dataIndex, const size_t blockOffset):
+        currentNeighbors(numNeighbors), blocksJoined(numBlocks, blockOffset), dataIndex(dataIndex), done(false){};
 
     void AddInitialResult(GraphVertex<BlockIndecies, DistType>&& result){
         searchResults.push_back(std::move(result));
@@ -105,7 +106,7 @@ struct SearchContext{
     }
 
     
-    void ConsumeUpdates(std::span<const IndexBlock> graphFragments){
+    void ConsumeUpdates(OffsetSpan<const IndexBlock> graphFragments){
         auto [added, removed] = AddNeighbors(currentNeighbors, searchResults);
         searchResults.clear();
         //searchUpdates += newNodes.size();
@@ -168,8 +169,8 @@ struct ParallelSearchContext{
 
     ParallelSearchContext() = default;
     
-    ParallelSearchContext(const size_t numNeighbors, const size_t numBlocks, const size_t dataIndex):
-        currentNeighbors(numNeighbors), blocksJoined(numBlocks), dataIndex(dataIndex), done(false){};
+    ParallelSearchContext(const size_t numNeighbors, const size_t numBlocks, const size_t dataIndex, const size_t blockOffset):
+        currentNeighbors(numNeighbors), blocksJoined(numBlocks, blockOffset), dataIndex(dataIndex), done(false){};
 
     ParallelSearchContext(ParallelSearchContext&&) = default;
 
@@ -187,7 +188,7 @@ struct ParallelSearchContext{
     }
 
     
-    void ConsumeUpdates(std::span<const IndexBlock> graphFragments){
+    void ConsumeUpdates(OffsetSpan<const IndexBlock> graphFragments){
         auto [added, removed] = AddNeighbors(currentNeighbors, searchResults);
         searchResults.clear();
         //searchUpdates += newNodes.size();
@@ -330,7 +331,7 @@ void AddComparisons(const Graph<BlockIndecies, DistType>& graphFragment,
 //std::span<BlockUpdateContext<float>> blockUpdateContexts
 
 template<typename DistType>
-void AddComparisons(std::span<const IndexBlock> graphFragments,
+void AddComparisons(OffsetSpan<const IndexBlock> graphFragments,
                     SearchContext<DistType>& context,
                     std::vector<BlockIndecies>& addedIndecies){
     for (const auto& index: addedIndecies){
@@ -347,7 +348,7 @@ void AddComparisons(std::span<const IndexBlock> graphFragments,
 }
 
 template<typename DistType>
-void AddComparisons(std::span<const IndexBlock> graphFragments,
+void AddComparisons(OffsetSpan<const IndexBlock> graphFragments,
                     ParallelSearchContext<DistType>& context,
                     std::vector<BlockIndecies>& addedIndecies){
     for (const auto& index: addedIndecies){
@@ -471,13 +472,14 @@ SearchQueue FirstBlockSearch(std::vector<ContextBlock<DistType>>& searchContexts
                              SinglePointFunctor<DistType>& searchFunctor,
                              OffsetSpan<BlockUpdateContext<DistType>> blockUpdateContexts,
                              OffsetSpan<const IndexBlock> indexBlocks,
-                             const size_t maxNewSearches){
+                             const size_t maxNewSearches,
+                             const size_t blockOffset){
 
     SearchQueue searchHints(indexBlocks.size());
     
     //size_t extraNeighborsAdded(0);
 
-    for (size_t i = 0; auto& [blockNumber, testBlock]: searchContexts){
+    for (size_t i = blockUpdateContexts.Offset(); auto& [blockNumber, testBlock]: searchContexts){
             
             
         for (size_t j = 0; auto& context: testBlock){
@@ -499,7 +501,7 @@ SearchQueue FirstBlockSearch(std::vector<ContextBlock<DistType>>& searchContexts
             
             if(searches){
                 for (auto& [targetBlock, dataIndecies]: *searches){
-                    searchHints[targetBlock].push_back({{i,j}, std::move(dataIndecies)});
+                    searchHints[targetBlock-blockUpdateContexts.Offset()].push_back({{i - blockUpdateContexts.Offset(), j}, std::move(dataIndecies)});
                 }
             }
             
@@ -584,7 +586,7 @@ SearchQueue ParaFirstBlockSearch(InitialSearchTask<DistType>& searchQueuer,
 
     for(auto& [index, searches]: newSearchSets){
         for (auto& [blockNum, dataIndecies]: searches){
-            searchHints[blockNum].push_back({index, std::move(dataIndecies)});
+            searchHints[blockNum - blockNumOffset].push_back({index, std::move(dataIndecies)});
         }
     }
 
@@ -594,7 +596,7 @@ SearchQueue ParaFirstBlockSearch(InitialSearchTask<DistType>& searchQueuer,
 
 template<typename DistType>
 void SearchLoop(SinglePointFunctor<DistType>& searchFunctor,
-                SearchQueue& searchHints,
+                QueueView searchHints,
                 std::vector<ContextBlock<DistType>>& searchContexts,
                 OffsetSpan<BlockUpdateContext<DistType>> blockUpdateContexts,
                 OffsetSpan<const IndexBlock> indexBlocks,
@@ -639,10 +641,11 @@ void SearchLoop(SinglePointFunctor<DistType>& searchFunctor,
     }
 }
 
+//using QueueView = 
 
 template<typename DistType>
 void ParaSearchLoop(ThreadPool<SinglePointFunctor<DistType>>& pool,
-                SearchQueue& searchHints,
+                QueueView searchHints,
                 std::vector<ParallelContextBlock<DistType>>& searchContexts,
                 OffsetSpan<BlockUpdateContext<DistType>> blockUpdateContexts,
                 OffsetSpan<const IndexBlock> indexBlocks,
