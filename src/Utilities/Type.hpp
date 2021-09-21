@@ -23,6 +23,8 @@ https://github.com/AnabelSMRuggiero/NNDescent.cpp
 #include <new>
 #include <type_traits>
 #include <cstdint>
+#include <memory_resource>
+#include <cassert>
 
 namespace nnd{
 
@@ -39,6 +41,96 @@ struct IntegralPairHasher{
 
 template<typename DistType>
 using DistanceCache = std::unordered_map<std::pair<size_t, size_t>, DistType, IntegralPairHasher<size_t>>;
+
+template<typename ValueType>//, typename Allocator = std::pmr::polymorphic_allocator<>>
+struct DynamicArray{
+    using value_type = ValueType;
+    using allocator_type = std::pmr::polymorphic_allocator<>;
+    using alloc_traits = std::allocator_traits<std::pmr::polymorphic_allocator<>>;
+
+    private:
+
+    
+    struct AllocatorDeleter{
+
+        allocator_type alloc;
+        const size_t capacity;
+        void operator()(ValueType* arrayToDelete) {
+            alloc.deallocate_object<ValueType>(arrayToDelete, capacity); 
+        };
+
+    };
+    
+    std::unique_ptr<ValueType[], AllocatorDeleter> data;
+    
+
+    public:
+
+    DynamicArray() = default;
+
+    DynamicArray(size_t size, std::pmr::memory_resource* resource = std::pmr::get_default_resource()): data(allocator_type(resource).allocate_object<ValueType>(size), AllocatorDeleter{resource, size}) {
+        std::uninitialized_value_construct(this->begin(), this->end());
+    };
+
+    template<typename ConvertableToElement>
+    DynamicArray(std::span<ConvertableToElement> view, std::pmr::memory_resource* resource = std::pmr::get_default_resource()): DynamicArray(view.size(), resource){
+        std::copy(view.begin(), view.end(), this->begin());
+    }
+
+    DynamicArray(const DynamicArray& other): data(allocator_type(resource).allocate_object<ValueType>(size), AllocatorDeleter{resource, size}) {
+        std::uninitialized_copy(other.begin(), other.end(), this->begin());
+    };
+
+    DynamicArray(DynamicArray&& rhs) = default;
+
+    ~DynamicArray(){
+        if(data){
+            for(auto& element: *this){
+                //~element();
+                alloc_traits::destroy(alloc, &element);
+                //element.~ValueType();
+            }
+            //alloc.deallocate_object<ValueType>(data, capacity);
+        }
+    }
+
+    DynamicArray& operator=(DynamicArray&& other) = default;
+
+    DynamicArray& operator=(const DynamicArray& other) = default;
+
+    size_t size() const { return data.get_deleter().capacity; }
+
+    ValueType* get() { return data.get(); }
+
+    const ValueType* get() const { return data.get(); }
+
+    ValueType* begin() { return data.get(); }
+
+    ValueType* end() { return data.get() + data.get_deleter().capacity; }
+
+    ValueType& operator[](size_t index) { return data[index]; }
+
+    const ValueType* begin() const { return data.get(); }
+
+    const ValueType* end() const { return data.get() + data.get_deleter().capacity; }
+
+    const ValueType& operator[](size_t index) const{ return data[index]; }
+
+    std::pmr::memory_resource* resource() { return data.get_deleter().alloc.resource(); }
+
+    std::pmr::polymorphic_allocator<>& GetAllocator() { return data.get_deleter().alloc;}
+
+    //AlignedPtr<ValueType, align> GetAlignedPtr(size_t entriesToJump);
+
+    //AlignedPtr<const ValueType, align> GetAlignedPtr(size_t entriesToJump) const;
+};
+
+template<typename ValueType>
+void swap(DynamicArray<ValueType> arrA, DynamicArray<ValueType> arrB){
+    assert(arrA.GetAllocator() == arrB.GetAllocator());
+    std::swap()
+
+}
 
 template<typename ValueType, size_t align>
 struct AlignedPtr;

@@ -210,8 +210,8 @@ int main(int argc, char *argv[]){
     // something about splitParams
     //COMNeighbors<NumBlocks
 
-    bool parallelIndexBuild = false;
-    bool parallelSearch = false;
+    bool parallelIndexBuild = true;
+    bool parallelSearch = true;
 
 
     std::vector<std::string> options;
@@ -308,9 +308,10 @@ int main(int argc, char *argv[]){
 
     HyperParameterValues parameters{splitParams, indexParams, searchParams};
 
-    //static const std::endian dataEndianness = std::endian::native;
-    static const std::endian dataEndianness = std::endian::big;
+    static const std::endian dataEndianness = std::endian::native;
+    //static const std::endian dataEndianness = std::endian::big;
     
+    /*
     std::string trainDataFilePath("./TestData/MNIST-Fashion-Train.bin");
     DataSet<AlignedArray<float>> mnistFashionTrain(trainDataFilePath, 28*28, 60'000, &ExtractNumericArray<AlignedArray<float>,dataEndianness>);
 
@@ -319,9 +320,9 @@ int main(int argc, char *argv[]){
     std::string testNeighborsFilePath("./TestData/MNIST-Fashion-Neighbors.bin");
     DataSet<AlignedArray<float>> mnistFashionTest(testDataFilePath, 28*28, 10'000, &ExtractNumericArray<AlignedArray<float>,dataEndianness>);
     DataSet<AlignedArray<uint32_t>> mnistFashionTestNeighbors(testNeighborsFilePath, 100, 10'000, &ExtractNumericArray<AlignedArray<uint32_t>,dataEndianness>);
-    
+    */
 
-    /*
+    
     std::string trainDataFilePath("./TestData/SIFT-Train.bin");
     DataSet<AlignedArray<float>> mnistFashionTrain(trainDataFilePath, 128, 1'000'000, &ExtractNumericArray<AlignedArray<float>,dataEndianness>);
 
@@ -330,7 +331,7 @@ int main(int argc, char *argv[]){
     std::string testNeighborsFilePath("./TestData/SIFT-Neighbors.bin");
     DataSet<AlignedArray<float>> mnistFashionTest(testDataFilePath, 128, 10'000, &ExtractNumericArray<AlignedArray<float>,dataEndianness>);
     DataSet<AlignedArray<uint32_t>> mnistFashionTestNeighbors(testNeighborsFilePath, 100, 10'000, &ExtractNumericArray<AlignedArray<uint32_t>,dataEndianness>);
-    */
+    
 
     /*
     std::string trainDataFilePath("./TestData/NYTimes-Angular-Train.bin");
@@ -366,8 +367,8 @@ int main(int argc, char *argv[]){
     ThreadPool<void> blockBuilder(numThreads);
 
     auto [indexMappings, dataBlocks] = (parallelIndexBuild) ? 
-                                        PartitionData<AlignedArray<float>>(rpTrees, mnistFashionTrain, blockBuilder, 40392):
-                                        PartitionData<AlignedArray<float>>(rpTrees, mnistFashionTrain, 40392);
+                                        PartitionData<AlignedArray<float>>(rpTrees, mnistFashionTrain, blockBuilder, 1'000'000):
+                                        PartitionData<AlignedArray<float>>(rpTrees, mnistFashionTrain, 1'000'000);
 
     
     MetricFunctor<float, EuclideanMetricPair> euclideanFunctor(dataBlocks);

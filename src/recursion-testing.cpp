@@ -64,9 +64,9 @@ int main(int argc, char *argv[]){
     auto [forest, splittingVectors] = BuildRPForest<EuclidianScheme<AlignedArray<float>, AlignedArray<float>>>(std::execution::seq, trainData, firstSplitParams);
 
     //
-    std::vector<std::unique_ptr<size_t[]>> subSections;
+    std::vector<DynamicArray<size_t>> subSections;
     auto indexArrayMaker = [&subSections](const size_t, std::span<const size_t> indecies){
-        std::unique_ptr<size_t[]>subSection = std::make_unique<size_t[]>(indecies.size());
+        DynamicArray<size_t> subSection(indecies.size());
         std::copy(indecies.begin(), indecies.end(), subSection.get());
         subSections.push_back(std::move(subSection));
     };
@@ -85,7 +85,7 @@ int main(int argc, char *argv[]){
     using BlockSet = std::vector<DataBlock<float>>;
     std::vector<BlockSet> blocksSets;
     auto blockContructor = [&blocksSets, &trainData, blockNum = 0ul](size_t, std::span<const size_t> dataPoints)mutable->auto{ 
-        blocksSets.back().emplace_back(trainData, dataPoints, blockNum++);
+        blocksSets.back().emplace_back(trainData, dataPoints, trainData.sampleLength, blockNum++);
     };
     for (auto& subForest: forests){
         blocksSets.emplace_back();
@@ -93,14 +93,14 @@ int main(int argc, char *argv[]){
     }
 
     std::unique_ptr<std::unique_ptr<BlockUpdateContext<float>[]>[]> graphs = std::make_unique<std::unique_ptr<BlockUpdateContext<float>[]>[]>(blocksSets.size());
-
+    size_t i = 0;
     for(auto& blockSet: blocksSets){
         std::vector<size_t> sizes;
         sizes.reserve(blockSet.size());
         for(const auto& block: blockSet){
             sizes.push_back(block.size());
         }
-        MetaGraph<float> metaGraph(blockSet, indexParams.COMNeighbors, EuclideanMetricPair(), EuclideanCOM<float, float>);
+        MetaGraph<float> metaGraph(blockSet, indexParams.COMNeighbors, EuclideanMetricPair(), EuclideanCOM<float, float>, blockSet[0].blockNumber);
         DataComDistance<float, float, EuclideanMetricPair> comFunctor(metaGraph, blockSet);
         
         std::unique_ptr<BlockUpdateContext<float>[]> blockContextArr;
@@ -115,6 +115,9 @@ int main(int argc, char *argv[]){
         //blockUpdateContexts = {blockContextArr.get(), blockSet.size()};
         pool.StopThreads();
 
+        graphs[i] = (std::move(blockContextArr));
+
+        i++;
     }
     //CrawlTerminalLeaves()
 

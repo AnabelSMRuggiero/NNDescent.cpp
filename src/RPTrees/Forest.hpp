@@ -136,13 +136,13 @@ struct RandomProjectionForest{
 
     friend struct TreeRef;
 
-    std::unique_ptr<size_t[]> indecies;
-    const size_t numIndecies;
+    DynamicArray<size_t> indecies;
+    //const size_t numIndecies;
     std::pmr::polymorphic_allocator<std::byte> alloc;
     TreeLeaf topNode;
 
     RandomProjectionForest(RandomProjectionForest&& other):indecies(std::move(other.indecies)),
-        numIndecies(other.numIndecies),
+        //indecies(std::move(other.indecies)),
         alloc(std::move(other.alloc)),
         topNode(std::move(other.topNode)),
         memManager(std::move(other.memManager)){
@@ -151,16 +151,20 @@ struct RandomProjectionForest{
             topNode.children.second->parent = &topNode;
         }
     
-
-    RandomProjectionForest(std::unique_ptr<size_t[]>&& indecies, const size_t numIndecies, std::pmr::memory_resource* upstream = std::pmr::get_default_resource()):
+    RandomProjectionForest(DynamicArray<size_t>&& indecies): 
         indecies(std::move(indecies)),
-        numIndecies(numIndecies),
+        alloc(indecies.resource()),
+        topNode(0, indecies.size(), 0, nullptr),
+        memManager(std::make_unique<AsyncQueue<TreeLeaf*>>()){};
+
+    RandomProjectionForest(const std::unique_ptr<size_t[]>& indecies, const size_t numIndecies, std::pmr::memory_resource* upstream = std::pmr::get_default_resource()):
+        indecies(std::span(indecies.get(), numIndecies), upstream),
         alloc(upstream),
         topNode(0, numIndecies, 0, nullptr),
         memManager(std::make_unique<AsyncQueue<TreeLeaf*>>()){};
 
-    std::span<size_t> GetView() const{
-        return std::span{indecies.get(), numIndecies};
+    std::span<size_t> GetView(){
+        return std::span{indecies.get(), indecies.size()};
     }
     
     ~RandomProjectionForest(){
@@ -272,6 +276,7 @@ struct ForestBuilder{
         getSplitComponents(scheme) {};
 
     // Training operator()
+    /*
     RandomProjectionForest operator()(std::unique_ptr<size_t[]>&& indecies, 
                                       const size_t numIndecies, 
                                       std::pmr::memory_resource* upstream = std::pmr::get_default_resource());
@@ -290,7 +295,19 @@ struct ForestBuilder{
                                       const size_t numIndecies,
                                       const std::unordered_set<size_t>& splitIndicies,
                                       ThreadPool<TreeRef>& threadPool, 
-                                      std::pmr::memory_resource* upstream = std::pmr::get_default_resource());                                      
+                                      std::pmr::memory_resource* upstream = std::pmr::get_default_resource());
+    */
+    RandomProjectionForest operator()(DynamicArray<size_t>&& indecies);
+
+    RandomProjectionForest operator()(DynamicArray<size_t>&& indecies, 
+                                      ThreadPool<TreeRef>& threadPool);
+    
+    RandomProjectionForest operator()(DynamicArray<size_t>&& indecies,
+                                      const std::unordered_set<size_t>& splitIndicies);
+
+    RandomProjectionForest operator()(DynamicArray<size_t>&& indecies,
+                                      const std::unordered_set<size_t>& splitIndicies,
+                                      ThreadPool<TreeRef>& threadPool);  
 
     private:
     /*
@@ -424,15 +441,15 @@ std::pair<size_t, size_t> UnequalIndecies(RNG& rng){
 }
 
 template<typename SplittingScheme>
-RandomProjectionForest ForestBuilder<SplittingScheme>::operator()(std::unique_ptr<size_t[]>&& indecies, const size_t numIndecies, std::pmr::memory_resource* upstream){
+RandomProjectionForest ForestBuilder<SplittingScheme>::operator()(DynamicArray<size_t>&& indecies){
 
     //splittingVectors.reserve((1<<numberOfSplits) - 1);
-    RandomProjectionForest forest(std::move(indecies), numIndecies, upstream);
+    RandomProjectionForest forest(std::move(indecies));
 
     std::span<size_t> samples = forest.GetView();
 
-    std::unique_ptr<size_t[]> workSpaceArr = std::make_unique<size_t[]>(numIndecies);
-    std::span<size_t> workSpace = {workSpaceArr.get(), numIndecies};
+    DynamicArray<size_t> workSpaceArr(forest.indecies.size(), forest.indecies.resource());
+    std::span<size_t> workSpace = {workSpaceArr.get(), workSpaceArr.size()};
 
     size_t sum(0);
     if constexpr(debugRPTrees) sum = std::accumulate(samples.begin(), samples.end(), 0);
@@ -515,10 +532,8 @@ RandomProjectionForest ForestBuilder<SplittingScheme>::operator()(std::unique_pt
 } //end operator()
 
 template<typename SplittingScheme>
-RandomProjectionForest ForestBuilder<SplittingScheme>::operator()(std::unique_ptr<size_t[]>&& indecies, 
-                                      const size_t numIndecies,
-                                      ThreadPool<TreeRef>& threadPool,
-                                      std::pmr::memory_resource* upstream){
+RandomProjectionForest ForestBuilder<SplittingScheme>::operator()(DynamicArray<size_t>&& indecies,
+                                      ThreadPool<TreeRef>& threadPool){
     
     RandomProjectionForest forest(std::move(indecies), numIndecies, upstream);
     threadPool.RebuildStates(std::reference_wrapper(forest));
@@ -705,16 +720,17 @@ RandomProjectionForest ForestBuilder<SplittingScheme>::operator()(std::unique_pt
 
 //Transforming Constructor
 template<typename SplittingScheme>
-RandomProjectionForest ForestBuilder<SplittingScheme>::operator()(std::unique_ptr<size_t[]>&& indecies, const size_t numIndecies, const std::unordered_set<size_t>& splitIndicies, std::pmr::memory_resource* upstream){
+RandomProjectionForest ForestBuilder<SplittingScheme>::operator()(DynamicArray<size_t>&& indecies, const std::unordered_set<size_t>& splitIndicies){
 
 
-    RandomProjectionForest forest(std::move(indecies), numIndecies, upstream);
+    RandomProjectionForest forest(std::move(indecies));
 
     std::span<size_t> samples = forest.GetView();
 
 
-    std::unique_ptr<size_t[]> workSpaceArr = std::make_unique<size_t[]>(numIndecies);
-    std::span<size_t> workSpace = {workSpaceArr.get(), numIndecies};
+    DynamicArray<size_t> workSpaceArr(forest.indecies.size(), forest.indecies.resource());
+    std::span<size_t> workSpace = {workSpaceArr.get(), workSpaceArr.size()};
+
     TreeRef builder(forest);
 
     std::vector<TreeLeaf*> splitQueue1 = {&forest.topNode};
@@ -795,11 +811,9 @@ RandomProjectionForest ForestBuilder<SplittingScheme>::operator()(std::unique_pt
 } //end operator()
 
 template<typename SplittingScheme>
-RandomProjectionForest ForestBuilder<SplittingScheme>::operator()(std::unique_ptr<size_t[]>&& indecies,
-                                                                  const size_t numIndecies,
+RandomProjectionForest ForestBuilder<SplittingScheme>::operator()(DynamicArray<size_t>&& indecies,
                                                                   const std::unordered_set<size_t>& splitIndicies,
-                                                                  ThreadPool<TreeRef>& threadPool, 
-                                                                  std::pmr::memory_resource* upstream){
+                                                                  ThreadPool<TreeRef>& threadPool){
 
 
     RandomProjectionForest forest(std::move(indecies), numIndecies, upstream);
@@ -1115,26 +1129,26 @@ std::pair<RandomProjectionForest, typename SplittingScheme::SplittingVectors> Bu
 
     RngFunctor rngFunctor(data.IndexStart(), data.size() - data.IndexStart());
 
-    std::unique_ptr<size_t[]> indecies = std::make_unique<size_t[]>(data.size());
+    DynamicArray<size_t> indecies(data.size(), upstream);
     std::iota(indecies.get(), indecies.get()+data.size(), data.IndexStart());
 
     SplittingScheme splittingScheme(data);
     ForestBuilder builder{std::move(rngFunctor), params, splittingScheme};
-    RandomProjectionForest rpTrees = builder(std::move(indecies), data.size(), upstream);
+    RandomProjectionForest rpTrees = builder(std::move(indecies));
 
     return {std::move(rpTrees), std::move(splittingScheme.splittingVectors)};
 }
 
 template<typename SplittingScheme, typename DataEntry>
     requires std::is_same_v<std::true_type, typename SplittingScheme::SerialScheme>
-std::pair<RandomProjectionForest, typename SplittingScheme::SplittingVectors> BuildRPForest(std::execution::sequenced_policy, const DataSet<DataEntry>& data,std::unique_ptr<size_t[]>&& indecies, const SplittingHeurisitcs params, std::pmr::memory_resource* upstream = std::pmr::get_default_resource()){
+std::pair<RandomProjectionForest, typename SplittingScheme::SplittingVectors> BuildRPForest(std::execution::sequenced_policy, const DataSet<DataEntry>& data, DynamicArray<size_t>&& indecies, const SplittingHeurisitcs params){
     
 
-    RngFunctor rngFunctor(data.IndexStart(), data.size() - data.IndexStart());
+    RngFunctor rngFunctor(0, indecies.size());
 
     SplittingScheme splittingScheme(data);
     ForestBuilder builder{std::move(rngFunctor), params, splittingScheme};
-    RandomProjectionForest rpTrees = builder(std::move(indecies), data.size(), upstream);
+    RandomProjectionForest rpTrees = builder(std::move(indecies));
 
     return {std::move(rpTrees), std::move(splittingScheme.splittingVectors)};
 }
@@ -1146,7 +1160,7 @@ std::pair<RandomProjectionForest, typename SplittingScheme::SplittingVectors> Bu
 
     RngFunctor rngFunctor(data.IndexStart(), data.size() - data.IndexStart());
 
-    std::unique_ptr<size_t[]> indecies = std::make_unique<size_t[]>(data.size());
+    DynamicArray<size_t> indecies(data.size(), upstream);
     std::iota(indecies.get(), indecies.get()+data.size(), data.IndexStart());
 
     SplittingScheme splittingScheme(data);
@@ -1173,7 +1187,8 @@ RandomProjectionForest RPTransformData(const DataSet<AlignedArray<float>>& testS
 
     transformingScheme.splittingVectors = std::move(splittingVectors);
 
-    std::unique_ptr<size_t[]> testIndecies = std::make_unique<size_t[]>(testSet.size());
+    //std::unique_ptr<size_t[]> testIndecies = std::make_unique<size_t[]>(testSet.size());
+    DynamicArray<size_t> testIndecies(testSet.size());
     std::iota(testIndecies.get(), testIndecies.get()+testSet.size(), 0);
 
     RngFunctor testFunctor(size_t(0), testSet.size() - 1);
@@ -1181,7 +1196,7 @@ RandomProjectionForest RPTransformData(const DataSet<AlignedArray<float>>& testS
     ForestBuilder testBuilder{std::move(testFunctor), SplittingHeurisitcs{}, transformingScheme};
 
 
-    return testBuilder(std::move(testIndecies), testSet.size(), splittingIndecies);
+    return testBuilder(std::move(testIndecies), splittingIndecies);
 
 }
 
@@ -1195,7 +1210,7 @@ RandomProjectionForest RPTransformData(std::execution::parallel_unsequenced_poli
 
     transformingScheme.splittingVectors = std::move(splittingVectors);
 
-    std::unique_ptr<size_t[]> testIndecies = std::make_unique<size_t[]>(testSet.size());
+    DynamicArray<size_t> testIndecies(testSet.size());
     std::iota(testIndecies.get(), testIndecies.get()+testSet.size(), 0);
 
     RngFunctor testFunctor(size_t(0), testSet.size() - 1);
@@ -1204,7 +1219,7 @@ RandomProjectionForest RPTransformData(std::execution::parallel_unsequenced_poli
 
     ThreadPool<TreeRef> pool(numThreads);
     pool.StartThreads();
-    RandomProjectionForest retForest = testBuilder(std::move(testIndecies), testSet.size(), splittingIndecies, pool);
+    RandomProjectionForest retForest = testBuilder(std::move(testIndecies), splittingIndecies, pool);
     pool.StopThreads();
 
     return retForest;
