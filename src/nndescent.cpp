@@ -91,7 +91,7 @@ std::vector<BlockIndecies> VertexToIndex(const GraphVertex<BlockIndecies, DistTy
     return result;
 }
 
-using IndexBlock = std::vector<std::vector<BlockIndecies>>;
+
 
 template<typename DistType>
 std::vector<IndexBlock> IndexFinalization(OffsetSpan<BlockUpdateContext<DistType>> blocks){
@@ -180,10 +180,10 @@ int main(int argc, char *argv[]){
     SplittingHeurisitcs splitParams= {16, 140, 60, 180};
     */
 
-    constexpr size_t numThreads = 12;
+    constexpr size_t numThreads = 4;
 
     //IndexParamters indexParams{12, 40, 35, 6};
-    IndexParamters indexParams{12, 20, 15, 6};
+    IndexParameters indexParams{12, 20, 15, 6};
 
     size_t numBlockGraphNeighbors = 12;
     //size_t numCOMNeighbors = 40;
@@ -308,10 +308,10 @@ int main(int argc, char *argv[]){
 
     HyperParameterValues parameters{splitParams, indexParams, searchParams};
 
-    static const std::endian dataEndianness = std::endian::native;
-    //static const std::endian dataEndianness = std::endian::big;
+    //static const std::endian dataEndianness = std::endian::native;
+    static const std::endian dataEndianness = std::endian::big;
     
-    /*
+    
     std::string trainDataFilePath("./TestData/MNIST-Fashion-Train.bin");
     DataSet<AlignedArray<float>> mnistFashionTrain(trainDataFilePath, 28*28, 60'000, &ExtractNumericArray<AlignedArray<float>,dataEndianness>);
 
@@ -320,9 +320,9 @@ int main(int argc, char *argv[]){
     std::string testNeighborsFilePath("./TestData/MNIST-Fashion-Neighbors.bin");
     DataSet<AlignedArray<float>> mnistFashionTest(testDataFilePath, 28*28, 10'000, &ExtractNumericArray<AlignedArray<float>,dataEndianness>);
     DataSet<AlignedArray<uint32_t>> mnistFashionTestNeighbors(testNeighborsFilePath, 100, 10'000, &ExtractNumericArray<AlignedArray<uint32_t>,dataEndianness>);
-    */
-
     
+
+    /*
     std::string trainDataFilePath("./TestData/SIFT-Train.bin");
     DataSet<AlignedArray<float>> mnistFashionTrain(trainDataFilePath, 128, 1'000'000, &ExtractNumericArray<AlignedArray<float>,dataEndianness>);
 
@@ -331,7 +331,7 @@ int main(int argc, char *argv[]){
     std::string testNeighborsFilePath("./TestData/SIFT-Neighbors.bin");
     DataSet<AlignedArray<float>> mnistFashionTest(testDataFilePath, 128, 10'000, &ExtractNumericArray<AlignedArray<float>,dataEndianness>);
     DataSet<AlignedArray<uint32_t>> mnistFashionTestNeighbors(testNeighborsFilePath, 100, 10'000, &ExtractNumericArray<AlignedArray<uint32_t>,dataEndianness>);
-    
+    */
 
     /*
     std::string trainDataFilePath("./TestData/NYTimes-Angular-Train.bin");
@@ -386,7 +386,7 @@ int main(int argc, char *argv[]){
     
     
     
-    MetaGraph<float> metaGraph(dataBlocks, parameters.indexParams.COMNeighbors, EuclideanMetricPair(), EuclideanCOM<float, float>, dataBlocks[0].blockNumber);
+    MetaGraph<float> metaGraph = BuildMetaGraphFragment<float>(dataBlocks, parameters.indexParams, 0, EuclideanMetricSet(), EuclideanCOM<float, float>);
     DataComDistance<float, float, EuclideanMetricPair> comFunctor(metaGraph, dataBlocks);
     
     //hacky but not a long term thing

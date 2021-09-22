@@ -269,6 +269,7 @@ struct BlockUpdateContext {
     QueryContext<DistType> queryContext;
     Graph<BlockIndecies, DistType> currentGraph;
     DirectedGraph<size_t> joinPropagation;
+    IndexBlock neighborsInFragment;
     //Graph<BlockIndecies, DistType> currentGraph;
 
     BlockUpdateContext() = default;

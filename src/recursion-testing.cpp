@@ -31,7 +31,31 @@ https://github.com/AnabelSMRuggiero/NNDescent.cpp
 
 using namespace nnd;
 
+void GraphwiseJoin(MetaGraph<float> metaGraphA, OffsetSpan<BlockUpdateContext<float>> graphA, MetaGraph<float> metaGraphB, OffsetSpan<BlockUpdateContext<float>> graphB, CachingFunctor<float>& cacher, EuclideanMetricSet metricSet){
+    using COMExtent = float;
+    auto nnFunctor = [&](const size_t lhsIndex, const size_t rhsIndex)->auto{
+        return metricSet.comToCom(metaGraphA.points[lhsIndex], metaGraphB.points[rhsIndex]);
+    };
+    std::tuple<size_t, size_t, COMExtent> nnDist = metaGraphA.queryContext.NearestNodes(metaGraphB.queryContext, nnFunctor);
 
+    for (auto& block: graphA){
+        block.blockJoinTracker = NodeTracker(graphB.size(), metaGraphB.GetBlockOffset());
+    }
+    for (auto& block: graphB){
+        block.blockJoinTracker = NodeTracker(graphA.size(), metaGraphA.GetBlockOffset());
+    }
+
+    std::vector<std::pair<size_t, size_t>> joinQueue{{std::get<0>(nnDist), std::get<1>(nnDist)}};
+    
+    for (size_t i = 0; i<metaGraphA.verticies[0].size(); i++){
+        joinQueue.push_back({metaGraphA.verticies[joinQueue.front().first][i].first,
+                             metaGraphB.verticies[joinQueue.front().second][i].first});
+    }
+
+    for (auto& [lhsIndex, rhsIndex]: joinQueue){
+        UpdateBlocks(graphA[lhsIndex], graphB[rhsIndex], cacher);
+    }
+}
 
 
 template<typename Sinkee>
@@ -45,7 +69,7 @@ int main(int argc, char *argv[]){
 
     SplittingHeurisitcs splitParams= {205, 123, 287, 0.0f};
 
-    IndexParamters indexParams{12, 40, 35, 6};
+    IndexParameters indexParams{12, 40, 35, 6};
 
     SearchParameters searchParams{10, 6, 5};
 
@@ -100,7 +124,7 @@ int main(int argc, char *argv[]){
         for(const auto& block: blockSet){
             sizes.push_back(block.size());
         }
-        MetaGraph<float> metaGraph(blockSet, indexParams.COMNeighbors, EuclideanMetricPair(), EuclideanCOM<float, float>, blockSet[0].blockNumber);
+        MetaGraph<float> metaGraph = BuildMetaGraphFragment<float>(blockSet, parameters.indexParams, i, EuclideanMetricPair(), EuclideanCOM<float, float>);
         DataComDistance<float, float, EuclideanMetricPair> comFunctor(metaGraph, blockSet);
         
         std::unique_ptr<BlockUpdateContext<float>[]> blockContextArr;

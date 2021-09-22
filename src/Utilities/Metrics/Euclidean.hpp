@@ -293,7 +293,6 @@ std::vector<float> EuclideanBatcher(const AlignedSpan<const float>& pointFrom, c
 
 }
 
-
 struct EuclideanMetricPair{
     using DistType = float;
     float operator()(const AlignedSpan<const float> lhsVector, const AlignedSpan<const float> rhsVector) const{
@@ -306,7 +305,19 @@ struct EuclideanMetricPair{
     };
 };
 
+struct EuclideanMetricSet{
+    using DataToData_t = EuclideanMetricPair;
+    using DataToCom_t = EuclideanMetricPair;
+    using ComToCom_t = EuclideanMetricPair;
 
+    [[no_unique_address]] EuclideanMetricPair dataToData{};
+    [[no_unique_address]] EuclideanMetricPair dataToCom{};
+    [[no_unique_address]] EuclideanMetricPair comToCom{};
+    //data to data
+    //data to COM
+    //COM to COM
+
+};
 
 }
 

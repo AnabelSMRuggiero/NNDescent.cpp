@@ -68,6 +68,45 @@ struct MetricFunctor{
     }
 };
 
+template<typename DataType, typename MetricPair>
+struct CrossFragmentFunctor{
+    using DistType = typename MetricPair::DistType;
+    using ConstDataView = typename DataBlock<DataType>::ConstDataView;
+
+    [[no_unique_address]] MetricPair metricPair;
+    const DataBlock<DataType>* lhsBlock;
+    const DataBlock<DataType>* rhsBlock;
+    OffsetSpan<const DataBlock<DataType>> lhsBlocks;
+    OffsetSpan<const DataBlock<DataType>> rhsBlocks;
+    //size_t lhsBlockNum, rhsBlockNum;
+    
+    MetricFunctor(const std::vector<DataBlock<DataType>>& lhsBlocks, const std::vector<DataBlock<DataType>>& rhsBlocks): metricPair(MetricPair()), lhsBlocks(blocks.data(), blocks.size(), blocks[0].blockNumber) {};
+
+    MetricFunctor(MetricPair metricPair, const std::vector<DataBlock<DataType>>& blocks):metricPair(metricPair), blocks(blocks.data(), blocks.size(), blocks[0].blockNumber) {};
+
+    
+
+
+    DistType operator()(size_t LHSIndex, size_t RHSIndex) const {
+        return metricPair((*lhsBlock)[LHSIndex], (*rhsBlock)[RHSIndex]);
+    };
+    
+    std::vector<DistType> operator()(const size_t lhsIndex, const std::vector<size_t>& rhsIndecies) const {
+        char stackBuffer[sizeof(ConstDataView)*20];
+        std::pmr::monotonic_buffer_resource stackResource(stackBuffer, sizeof(ConstDataView)*20);
+        std::pmr::vector<ConstDataView> rhsData(&stackResource);
+        rhsData.reserve(20);
+        for(const auto& index: rhsIndecies){
+            rhsData.push_back((*rhsBlock)[index]);
+        }
+        return metricPair((*lhsBlock)[lhsIndex], rhsData);
+    };
+
+    void SetBlocks(size_t lhsBlockNum, size_t rhsBlockNum){
+        this->lhsBlock = &(blocks[lhsBlockNum]);
+        this->rhsBlock = &(blocks[rhsBlockNum]);
+    }
+};
 
 template<typename DistType>
 struct DispatchFunctor{

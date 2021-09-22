@@ -20,7 +20,10 @@ https://github.com/AnabelSMRuggiero/NNDescent.cpp
 #include <algorithm>
 
 #include "../Utilities/Data.hpp"
+
+#include "Type.hpp"
 #include "GraphStructures.hpp"
+#include "SubGraphQuerying.hpp"
 
 namespace nnd{
 
@@ -101,10 +104,11 @@ void BruteForceGraph(OffsetSpan<GraphVertex<size_t, FloatType>> uninitGraph, siz
 template<typename COMExtent>
 struct MetaGraph{
     //std::vector<MetaPoint<COMExtent>> points;
-    std::vector<int> weights;
+    std::vector<size_t> weights;
     DataBlock<COMExtent> points;
     Graph<size_t, COMExtent> verticies;
-
+    QueryContext<COMExtent> queryContext;
+    /*
     template<typename DataType, typename Metric, typename COMFunctor>
     MetaGraph(const std::vector<DataBlock<DataType>>& dataBlocks, const size_t numNeighbors, Metric metricFunctor, COMFunctor COMCalculator, size_t blockNumOffset):
         weights(0), 
@@ -122,7 +126,7 @@ struct MetaGraph{
             std::sort(vertex.begin(), vertex.end(), NeighborDistanceComparison<size_t, COMExtent>);
         }
     }
-
+    */
     size_t GetBlockOffset() const{
         return points.blockNumber;
     }
@@ -136,6 +140,42 @@ struct MetaGraph{
     DataComDistance(const ComView& centerOfMass, const std::vector<DataBlock<DataEntry>>& blocks, MetricPair functor)
     */
 };
+
+template<typename COMExtent, typename DataType, typename MetricSet, typename COMFunctor>
+MetaGraph<COMExtent> BuildMetaGraphFragment(const std::vector<DataBlock<DataType>>& dataBlocks, const IndexParameters& params, const size_t fragmentNumber, MetricSet metricSet, COMFunctor COMCalculator){
+    std::vector<size_t> weights(0);
+    weights.reserve(dataBlocks.size());
+    DataBlock<COMExtent> points(dataBlocks.size(), dataBlocks[0].entryLength, dataBlocks[0].blockNumber);
+    Graph<size_t, COMExtent> verticies(dataBlocks.size(), params.COMNeighbors);
+    //SinglePointFunctor<COMExtent> functor(DataComDistance<DataEntry, COMExtent, MetricPair>(*this, dataBlocks, metricFunctor));
+    weights.reserve(dataBlocks.size());
+    for (size_t i = 0; const auto& dataBlock: dataBlocks){
+        weights.push_back(dataBlock.size());
+        COMCalculator(dataBlock, points[i]);
+        i++;
+    }
+
+    AlignedArray<COMExtent> centerOfMass(dataBlocks[0].entryLength);
+    COMCalculator(points, {centerOfMass.GetAlignedPtr(0), centerOfMass.size()});
+
+    BruteForceGraph<COMExtent>(verticies.GetOffsetView(dataBlocks[0].blockNumber), params.COMNeighbors, points, metricSet.dataToData);
+    for(auto& vertex: verticies){
+        std::sort(vertex.begin(), vertex.end(), NeighborDistanceComparison<size_t, COMExtent>);
+    }
+
+    auto neighborFunctor = [&](size_t, size_t pointIndex){
+        return metricSet.comToCom({centerOfMass.GetAlignedPtr(0), centerOfMass.size()}, points[pointIndex]);
+    };
+    GraphVertex<size_t, COMExtent> queryHint = QueryCOMNeighbors<COMExtent>(0, verticies, params.COMNeighbors, neighborFunctor);
+
+    QueryContext<COMExtent> queryContext(verticies,
+                                         std::move(queryHint),
+                                         params.queryDepth,
+                                         fragmentNumber,
+                                         points.size());
+
+    return MetaGraph<COMExtent>{weights, std::move(points), verticies, std::move(queryContext)};
+}
 
 
 /*

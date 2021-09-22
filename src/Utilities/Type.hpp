@@ -42,21 +42,30 @@ struct IntegralPairHasher{
 template<typename DistType>
 using DistanceCache = std::unordered_map<std::pair<size_t, size_t>, DistType, IntegralPairHasher<size_t>>;
 
+
+template<typename ValueType>
+struct DynamicArray;
+
+template<typename ValueType>
+void swap(DynamicArray<ValueType> arrA, DynamicArray<ValueType> arrB);
+
+
 template<typename ValueType>//, typename Allocator = std::pmr::polymorphic_allocator<>>
 struct DynamicArray{
     using value_type = ValueType;
     using allocator_type = std::pmr::polymorphic_allocator<>;
     using alloc_traits = std::allocator_traits<std::pmr::polymorphic_allocator<>>;
 
+    friend void swap<ValueType>(DynamicArray<ValueType> arrA, DynamicArray<ValueType> arrB);
     private:
 
     
     struct AllocatorDeleter{
 
-        allocator_type alloc;
-        const size_t capacity;
+        std::pmr::memory_resource* resourcePtr;
+        size_t capacity;
         void operator()(ValueType* arrayToDelete) {
-            alloc.deallocate_object<ValueType>(arrayToDelete, capacity); 
+            resourcePtr->deallocate(arrayToDelete, capacity*sizeof(ValueType));  //deallocate_object<ValueType>(arrayToDelete, capacity); 
         };
 
     };
@@ -77,7 +86,7 @@ struct DynamicArray{
         std::copy(view.begin(), view.end(), this->begin());
     }
 
-    DynamicArray(const DynamicArray& other): data(allocator_type(resource).allocate_object<ValueType>(size), AllocatorDeleter{resource, size}) {
+    DynamicArray(const DynamicArray& other): data(allocator_type(other.resource()).allocate_object<ValueType>(other.size()), AllocatorDeleter{other.resource(), other.size()}) {
         std::uninitialized_copy(other.begin(), other.end(), this->begin());
     };
 
@@ -87,8 +96,8 @@ struct DynamicArray{
         if(data){
             for(auto& element: *this){
                 //~element();
-                alloc_traits::destroy(alloc, &element);
-                //element.~ValueType();
+                //alloc_traits::destroy(resource(), &element);
+                element.~ValueType();
             }
             //alloc.deallocate_object<ValueType>(data, capacity);
         }
@@ -116,21 +125,32 @@ struct DynamicArray{
 
     const ValueType& operator[](size_t index) const{ return data[index]; }
 
-    std::pmr::memory_resource* resource() { return data.get_deleter().alloc.resource(); }
+    std::pmr::memory_resource* resource() const { return data.get_deleter().resourcePtr; }
 
-    std::pmr::polymorphic_allocator<>& GetAllocator() { return data.get_deleter().alloc;}
+    //std::pmr::polymorphic_allocator<>& GetAllocator() { return data.get_deleter().alloc;}
 
     //AlignedPtr<ValueType, align> GetAlignedPtr(size_t entriesToJump);
 
     //AlignedPtr<const ValueType, align> GetAlignedPtr(size_t entriesToJump) const;
 };
 
+/*
 template<typename ValueType>
-void swap(DynamicArray<ValueType> arrA, DynamicArray<ValueType> arrB){
-    assert(arrA.GetAllocator() == arrB.GetAllocator());
-    std::swap()
+void swap(typename DynamicArray<ValueType>::AllocatorDeleter delA, typename DynamicArray<ValueType>::AllocatorDeleter delB){
+    //assert(arrA.resourcePtr == arrB.resource());
+    std::swap(delA.resourcePtr, delB.resourcePtr);
+    std::swap(delA.capacity, delB.capacity);
 
 }
+
+template<typename ValueType>
+void swap(DynamicArray<ValueType> arrA, DynamicArray<ValueType> arrB){
+    //assert(arrA.resource() == arrB.resource());
+    arrA.data.swap(arrB.data);
+
+}
+*/
+
 
 template<typename ValueType, size_t align>
 struct AlignedPtr;
@@ -245,7 +265,7 @@ struct AlignedSpan{
     AlignedSpan(const AlignedArray<ConvertableToElement, alignment>& dataToView): data(dataToView.begin()), extent(dataToView.size()){};
 
     template<typename ConvertableToElement>
-    AlignedSpan(const AlignedSpan<ConvertableToElement, alignment>& spanToCopy): data(spanToCopy.data), extent(spanToCopy.extent){};
+    AlignedSpan(const AlignedSpan<ConvertableToElement, alignment>& spanToCopy): data(spanToCopy.begin()), extent(spanToCopy.size()){};
 
     template<typename ConvertableToElement>
     AlignedSpan(const AlignedPtr<ConvertableToElement, alignment> spanBegin, const size_t extent): data(spanBegin), extent(extent){};

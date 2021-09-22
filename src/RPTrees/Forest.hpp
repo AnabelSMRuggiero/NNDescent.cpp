@@ -167,6 +167,10 @@ struct RandomProjectionForest{
         return std::span{indecies.get(), indecies.size()};
     }
     
+    std::span<const size_t> GetView() const{
+        return std::span{indecies.get(), indecies.size()};
+    }
+
     ~RandomProjectionForest(){
         if(memManager){
             std::list<TreeLeaf*> mem = memManager->TryTakeAll();
@@ -527,6 +531,7 @@ RandomProjectionForest ForestBuilder<SplittingScheme>::operator()(DynamicArray<s
     } //end for
     if (samples.data() == workSpaceArr.get()){
         std::swap(forest.indecies, workSpaceArr);
+        //std::swap(forest.indecies, workSpaceArr);
     }
     return forest;
 } //end operator()
@@ -535,12 +540,12 @@ template<typename SplittingScheme>
 RandomProjectionForest ForestBuilder<SplittingScheme>::operator()(DynamicArray<size_t>&& indecies,
                                       ThreadPool<TreeRef>& threadPool){
     
-    RandomProjectionForest forest(std::move(indecies), numIndecies, upstream);
+    RandomProjectionForest forest(std::move(indecies));
     threadPool.RebuildStates(std::reference_wrapper(forest));
     std::span<size_t> samples = forest.GetView();
 
-    std::unique_ptr<size_t[]> workSpaceArr = std::make_unique<size_t[]>(samples.size());
-    std::span<size_t> workSpace = {workSpaceArr.get(), samples.size()};
+    DynamicArray<size_t> workSpaceArr(forest.indecies.size(), forest.indecies.resource());
+    std::span<size_t> workSpace = {workSpaceArr.get(), workSpaceArr.size()};
     
     size_t sum(0);
     if constexpr(debugRPTrees) sum = std::accumulate(samples.begin(), samples.end(), 0);
@@ -816,13 +821,13 @@ RandomProjectionForest ForestBuilder<SplittingScheme>::operator()(DynamicArray<s
                                                                   ThreadPool<TreeRef>& threadPool){
 
 
-    RandomProjectionForest forest(std::move(indecies), numIndecies, upstream);
+    RandomProjectionForest forest(std::move(indecies));
     threadPool.RebuildStates(std::reference_wrapper(forest));
     std::span<size_t> samples = forest.GetView();
 
 
-    std::unique_ptr<size_t[]> workSpaceArr = std::make_unique<size_t[]>(numIndecies);
-    std::span<size_t> workSpace = {workSpaceArr.get(), numIndecies};
+    DynamicArray<size_t> workSpaceArr(forest.indecies.size(), forest.indecies.resource());
+    std::span<size_t> workSpace = {workSpaceArr.get(), workSpaceArr.size()};
     TreeRef builder(forest);
 
     std::vector<TreeLeaf*> splitQueue1 = {&forest.topNode};
@@ -1167,10 +1172,8 @@ std::pair<RandomProjectionForest, typename SplittingScheme::SplittingVectors> Bu
     ForestBuilder builder{std::move(rngFunctor), params, splittingScheme};
     ThreadPool<TreeRef> pool(numThreads);
     pool.StartThreads();
-    RandomProjectionForest rpTrees = builder(std::move(indecies), 
-                                             data.size(),
-                                             pool,
-                                             upstream);
+    RandomProjectionForest rpTrees = builder(std::move(indecies),
+                                             pool);
 
     pool.StopThreads();
 
