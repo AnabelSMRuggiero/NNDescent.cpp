@@ -65,7 +65,7 @@ struct DynamicArray{
         std::pmr::memory_resource* resourcePtr;
         size_t capacity;
         void operator()(ValueType* arrayToDelete) {
-            resourcePtr->deallocate(arrayToDelete, capacity*sizeof(ValueType));  //deallocate_object<ValueType>(arrayToDelete, capacity); 
+            allocator_type(resourcePtr).deallocate_object<ValueType>(arrayToDelete, capacity);  //deallocate_object<ValueType>(arrayToDelete, capacity); 
         };
 
     };
@@ -304,6 +304,7 @@ template<typename DataTypeA, typename DataTypeB, typename RetType=std::vector<do
 using BatchMetric = RetType (*)(const std::vector<DataTypeA>&, const DataTypeB&);
 
 struct BlockIndecies{
+    size_t graphFragment;
     // The block a data point exists in
     size_t blockNumber;
     // The index within that block
@@ -312,7 +313,7 @@ struct BlockIndecies{
 };
 
 struct MetaGraphIndex{
-    uint32_t metaGraphIndex;
+    uint32_t graphFragment;
     uint16_t blockNumber;
     uint16_t dataIndex;
 };
@@ -431,7 +432,7 @@ struct SplittingHeurisitcs{
     uint32_t maxTreeSize = 130;
     float maxSplitFraction = 0.0f;
 };
-
+/*
 template<typename ElementType>
 struct OffsetSpan{
     using value_type = ElementType;
@@ -496,7 +497,7 @@ struct OffsetSpan{
     }
 
 };
-
+*/
 
 }
 

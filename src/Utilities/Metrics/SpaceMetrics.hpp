@@ -15,11 +15,12 @@ https://github.com/AnabelSMRuggiero/NNDescent.cpp
 #include <cmath>
 #include <execution>
 #include <numeric>
+#include <bit>
 //#include <functional>
 
 #include <immintrin.h>
 
-#include "Euclidean.hpp"
+//#include "Euclidean.hpp"
 
 namespace nnd{
 
@@ -65,16 +66,16 @@ RetType Dot(const VectorA& pointA, const VectorB& pointB){
 };
 
 //Generic Vectorization Stuff
-//Hacky, but I need to SFINAE the reinterpret_cast on MSVC 
-template<typename TargetVectorType = float>
+
+//template<typename TargetVectorType = float>
 inline __m256 NTLoadFloat(const float* ptr){
     
-    if constexpr(std::is_union_v<__m256>){
-        //Untested with MSVC
-        return std::bit_cast<__m256>(_mm256_stream_load_si256((const __m256i*)ptr));
-    } else {
+    //if constexpr(std::is_union_v<__m256>){
+
+    //    return std::bit_cast<__m256>(_mm256_stream_load_si256((const __m256i*)ptr));
+    //} else {
         return reinterpret_cast<__m256>(_mm256_stream_load_si256((const __m256i*)ptr));
-    }
+    //}
 
     
     //retVec.

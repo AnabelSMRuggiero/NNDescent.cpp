@@ -74,7 +74,7 @@ GraphVertex<size_t, COMExtent> QueryCOMNeighbors(const size_t pointIndex,
                                                      Functor& distanceFunctor){
 
     GraphVertex<size_t, COMExtent> COMneighbors(numCandidates);
-    
+    //auto problemView = subProb.GetOffsetView(indexOffset);
     //Just gonna dummy it and select the first few nodes. Since the splitting process is randomized, this is a totally random selection, right? /s
     NodeTracker nodesVisited(subProb.size());
     for (size_t i = 0; i < numCandidates; i+=1){

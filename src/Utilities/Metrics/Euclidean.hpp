@@ -305,6 +305,17 @@ struct EuclideanMetricPair{
     };
 };
 
+struct EuclideanComDistance{
+    using DistType = float;
+    float operator()(const AlignedSpan<const float> dataVector, const AlignedSpan<const float> comVector) const{
+        return EuclideanNorm<AlignedSpan<const float>, AlignedSpan<const float>, float>(comVector, dataVector);
+    };
+    
+    std::vector<float> operator()(const AlignedSpan<const float> comVector, const std::vector<AlignedSpan<const float>>& rhsVectors) const{
+        return EuclideanBatcher(comVector, rhsVectors);
+    };
+};
+
 struct EuclideanMetricSet{
     using DataToData_t = EuclideanMetricPair;
     using DataToCom_t = EuclideanMetricPair;

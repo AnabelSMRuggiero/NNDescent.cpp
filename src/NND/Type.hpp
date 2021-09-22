@@ -14,28 +14,27 @@ struct NodeTracker{
     using size_type = std::vector<bool>::size_type;
 
     std::vector<bool> flags;
-    size_t indexOffset=0;
 
     NodeTracker() = default;
 
-    NodeTracker(size_t graphSize, size_t indexOffset = 0): flags(graphSize, false), indexOffset(indexOffset){};
+    NodeTracker(size_t graphSize): flags(graphSize, false){};
 
     reference operator[](size_type i){
-        return flags[i-indexOffset];
+        return flags[i];
     }
 
     constexpr const_reference operator[](size_type i) const {
-        return flags[i-indexOffset];
+        return flags[i];
     }
 
     reference operator[](BlockIndecies i){
         //Assuming block index lines up here;
-        return flags[i.dataIndex - indexOffset];
+        return flags[i.dataIndex];
     }
 
     constexpr const_reference operator[](BlockIndecies i) const{
         //Assuming block index lines up here;
-        return flags[i.dataIndex - indexOffset];
+        return flags[i.dataIndex];
     }
 
 };

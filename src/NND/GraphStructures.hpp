@@ -385,10 +385,6 @@ struct Graph{
         }
     }
 
-    OffsetSpan<GraphVertex<IndexType, FloatType>> GetOffsetView(size_t indexOffset){
-        return OffsetSpan<GraphVertex<IndexType,FloatType>>({{verticies.begin(), verticies.size()}, indexOffset});
-    }
-
     Graph& operator=(Graph other){
         verticies = std::move(other.verticies);
         return *this;

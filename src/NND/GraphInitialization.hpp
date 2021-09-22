@@ -119,14 +119,13 @@ template<typename DistType>
 std::vector<Graph<size_t, DistType>> InitializeBlockGraphs(const size_t numBlocks,
                                                            const std::vector<size_t>& blockSizes,
                                                            const size_t numNeighbors,
-                                                           const size_t blockOffset,
                                                            DispatchFunctor<DistType> distanceFunctor){
     
     std::vector<Graph<size_t, DistType>> blockGraphs(0);
     blockGraphs.reserve(blockSizes.size());
-    for (size_t i =blockOffset; i<numBlocks+blockOffset; i+=1){
+    for (size_t i =0; i<numBlocks; i+=1){
         distanceFunctor.SetBlocks(i,i);
-        blockGraphs.push_back(BruteForceBlock<DistType>(numNeighbors, blockSizes[i-blockOffset], distanceFunctor));
+        blockGraphs.push_back(BruteForceBlock<DistType>(numNeighbors, blockSizes[i], distanceFunctor));
     }
 
     return blockGraphs;
@@ -135,13 +134,13 @@ std::vector<Graph<size_t, DistType>> InitializeBlockGraphs(const size_t numBlock
 
 
 template <typename DistType, typename COMExtent>
-Graph<size_t, DistType> GenerateQueryHints(const OffsetSpan<Graph<size_t, DistType>> blockGraphs,
+Graph<size_t, DistType> GenerateQueryHints(const std::span<Graph<size_t, DistType>> blockGraphs,
                                                   const MetaGraph<COMExtent>& metaGraph,
                                                   const size_t numNeighbors,
                                                   SinglePointFunctor<COMExtent> distanceFunctor){
     
     Graph<size_t, DistType> retGraph;
-    for(size_t i = metaGraph.GetBlockOffset(); i<metaGraph.size() + metaGraph.GetBlockOffset(); i+=1){
+    for(size_t i = 0; i<metaGraph.size(); i+=1){
         distanceFunctor.SetBlock(i);
         retGraph.push_back(QueryHintFromCOM<DistType, COMExtent>(i, 
                                                                  blockGraphs[i], 
@@ -158,8 +157,7 @@ template<typename DistType, typename COMExtent>
 std::unique_ptr<BlockUpdateContext<DistType>[]> InitializeBlockContexts(std::vector<Graph<size_t, DistType>>& blockGraphs,
                                                                   const MetaGraph<COMExtent>& metaGraph,
                                                                   Graph<size_t, DistType>& queryHints,
-                                                                  const int queryDepth,
-                                                                  const size_t blockNumStart){
+                                                                  const int queryDepth){
                                                                         
     std::unique_ptr<BlockUpdateContext<DistType>[]> blockUpdateContexts = std::make_unique<BlockUpdateContext<DistType>[]>(blockGraphs.size());
     //blockUpdateContexts.reserve(blockGraphs.size());
@@ -169,7 +167,7 @@ std::unique_ptr<BlockUpdateContext<DistType>[]> InitializeBlockContexts(std::vec
         QueryContext<DistType> queryContext(blockGraphs[i],
                                             std::move(queryHints[i]),
                                             queryDepth,
-                                            i + blockNumStart,
+                                            i,
                                             blockGraphs[i].size());
 
         
@@ -178,11 +176,10 @@ std::unique_ptr<BlockUpdateContext<DistType>[]> InitializeBlockContexts(std::vec
         blockLocation->~BlockUpdateContext<DistType>();
         new(blockLocation) BlockUpdateContext<DistType>(std::move(blockGraphs[i]),
                                                         std::move(queryContext),
-                                                        metaGraph.verticies.size(),
-                                                        metaGraph.GetBlockOffset());
+                                                        metaGraph.verticies.size());
 
         //blockUpdateContexts.back().currentGraph = ToBlockIndecies(blockGraphs[i], i);
-        blockUpdateContexts[i].blockJoinTracker[i + metaGraph.GetBlockOffset()] = true;
+        blockUpdateContexts[i].blockJoinTracker[i] = true;
     }
 
     return blockUpdateContexts;
@@ -192,7 +189,7 @@ template<typename DistType>
 using InitialJoinHints = std::unordered_map<ComparisonKey<size_t>, std::tuple<size_t, size_t, DistType>>;
 
 template<typename DistType>
-std::pair<Graph<size_t, DistType>, InitialJoinHints<DistType>> NearestNodeDistances(OffsetSpan<const BlockUpdateContext<DistType>> blockUpdateContexts,
+std::pair<Graph<size_t, DistType>, InitialJoinHints<DistType>> NearestNodeDistances(std::span<const BlockUpdateContext<DistType>> blockUpdateContexts,
                                                         const MetaGraph<DistType>& metaGraph,
                                                         const size_t maxNearestNodeNeighbors,
                                                         DispatchFunctor<DistType>& distanceFunctor){
@@ -200,9 +197,8 @@ std::pair<Graph<size_t, DistType>, InitialJoinHints<DistType>> NearestNodeDistan
     std::unordered_set<ComparisonKey<size_t>> nearestNodeDistQueue;
     //const size_t startIndex = blockUpdateContexts[0].queryContext.blockNumber;
 
-    size_t blockIdxOffset = blockUpdateContexts.Offset();
 
-    for (size_t i = blockIdxOffset; const auto& vertex: metaGraph.verticies){
+    for (size_t i = 0; const auto& vertex: metaGraph.verticies){
         for (const auto& neighbor: vertex){
             nearestNodeDistQueue.insert({i, neighbor.first});
         }
@@ -230,12 +226,12 @@ std::pair<Graph<size_t, DistType>, InitialJoinHints<DistType>> NearestNodeDistan
     }
 
     Graph<size_t, DistType> nearestNodeDistances(metaGraph.verticies.size(), maxNearestNodeNeighbors);
-    OffsetSpan distOffsetView = nearestNodeDistances.GetOffsetView(blockIdxOffset);
+    
     for(size_t i = 0; const auto& result: nnDistanceResults){
         
-        distOffsetView[distancesToCompute[i].first].push_back({distancesToCompute[i].second,
+        nearestNodeDistances[distancesToCompute[i].first].push_back({distancesToCompute[i].second,
                                                                      std::get<2>(result)});
-        distOffsetView[distancesToCompute[i].second].push_back({distancesToCompute[i].first,
+        nearestNodeDistances[distancesToCompute[i].second].push_back({distancesToCompute[i].first,
                                                                       std::get<2>(result)});
         //nearestNeighbors.push_back({pair.first, std::get<2>(pair.second)});
         i++;
@@ -254,15 +250,15 @@ std::pair<Graph<size_t, DistType>, InitialJoinHints<DistType>> NearestNodeDistan
 template<typename DistType>
 void StitchBlocks(const Graph<size_t, DistType>& nearestNodeDistances,
                   const InitialJoinHints<DistType>& stitchHints,
-                  OffsetSpan<BlockUpdateContext<DistType>> blockUpdateContexts,
+                  std::span<BlockUpdateContext<DistType>> blockUpdateContexts,
                   CachingFunctor<DistType>& cachingFunctor){
 
-    size_t blockIdxOffset = blockUpdateContexts.Offset();
+
 
     //OffsetSpan distView = nearestNodeDistances.GetOffsetView(blockIdxOffset);
 
     std::unordered_set<ComparisonKey<size_t>> initBlockJoinQueue;
-    for(size_t i = blockIdxOffset; const auto& vertex: nearestNodeDistances){
+    for(size_t i = 0; const auto& vertex: nearestNodeDistances){
         for(size_t j = 0; j<vertex.size(); j+=1){
             initBlockJoinQueue.insert({i, vertex[j].first});
         }
@@ -352,14 +348,14 @@ void StitchBlocks(const Graph<size_t, DistType>& nearestNodeDistances,
     //Initial filling of comparison targets.
     std::vector<ComparisonMap<size_t, size_t>> queueMaps;
     queueMaps.reserve(blockUpdateContexts.size());
-    for (size_t i = blockUpdateContexts.Offset(); i<blockUpdateContexts.StopIndex(); i+=1){
+    for (size_t i = 0; i<blockUpdateContexts.size(); i+=1){
         queueMaps.push_back(InitializeComparisonQueues<size_t, size_t, DistType>(blockUpdateContexts[i].currentGraph, i));
     }
     
     //std::vector<JoinMap<size_t, size_t>> joinHints;
 
-    for(size_t i = blockUpdateContexts.Offset(); i<blockUpdateContexts.StopIndex(); i+=1){
-        ComparisonMap<size_t, size_t>& comparisonMap = queueMaps[i - blockUpdateContexts.Offset()];
+    for(size_t i = 0; i<blockUpdateContexts.size(); i+=1){
+        ComparisonMap<size_t, size_t>& comparisonMap = queueMaps[i];
         
         blockUpdateContexts[i].joinsToDo = InitializeJoinMap<DistType>(blockUpdateContexts, comparisonMap, blockUpdateContexts[i].blockJoinTracker);
     }
@@ -374,9 +370,9 @@ std::unique_ptr<BlockUpdateContext<DistType>[]> BuildGraph(const std::vector<Dat
                                                                           std::execution::sequenced_policy){
 
 
-    std::vector<Graph<size_t, float>> blockGraphs = InitializeBlockGraphs<float>(sizes.size(), sizes, hyperParams.indexParams.blockGraphNeighbors, metaGraph.GetBlockOffset(), dispatch);
+    std::vector<Graph<size_t, float>> blockGraphs = InitializeBlockGraphs<float>(sizes.size(), sizes, hyperParams.indexParams.blockGraphNeighbors, dispatch);
 
-    OffsetSpan<Graph<size_t, float>> blockGraphView = {{blockGraphs.begin(), blockGraphs.size()}, dataBlocks[0].blockNumber};
+    std::span<Graph<size_t, float>> blockGraphView = {blockGraphs.begin(), blockGraphs.size()};
 
     DataComDistance<DataType, COMExtent, EuclideanMetricPair> comFunctor(metaGraph, dataBlocks);
 
@@ -386,11 +382,10 @@ std::unique_ptr<BlockUpdateContext<DistType>[]> BuildGraph(const std::vector<Dat
     std::unique_ptr<BlockUpdateContext<DistType>[]> blockUpdateContexts = InitializeBlockContexts<DistType, COMExtent>(blockGraphs, 
                                                                                          metaGraph,
                                                                                          queryHints,
-                                                                                         hyperParams.indexParams.queryDepth,
-                                                                                         metaGraph.GetBlockOffset());
+                                                                                         hyperParams.indexParams.queryDepth);
     
-    OffsetSpan<BlockUpdateContext<DistType>> blockSpan(blockUpdateContexts.get(), blockGraphs.size(), dataBlocks[0].blockNumber);
-    OffsetSpan<const BlockUpdateContext<DistType>> constBlockSpan(blockUpdateContexts.get(), blockGraphs.size(), dataBlocks[0].blockNumber);
+    std::span<BlockUpdateContext<DistType>> blockSpan(blockUpdateContexts.get(), blockGraphs.size());
+    std::span<const BlockUpdateContext<DistType>> constBlockSpan(blockUpdateContexts.get(), blockGraphs.size());
     CachingFunctor<float> cacher(dispatch, hyperParams.splitParams.maxTreeSize, hyperParams.indexParams.blockGraphNeighbors);
 
     auto [nearestNodeDistances, stitchHints] = NearestNodeDistances(constBlockSpan, metaGraph, hyperParams.indexParams.nearestNodeNeighbors, dispatch);
@@ -401,7 +396,7 @@ std::unique_ptr<BlockUpdateContext<DistType>[]> BuildGraph(const std::vector<Dat
     int graphUpdates(1);
     while(graphUpdates>0){
         graphUpdates = 0;
-        for(size_t i = blockSpan.Offset(); i<blockSpan.StopIndex(); i+=1){
+        for(size_t i = 0; i<blockSpan.size(); i+=1){
             for (auto& joinList: blockSpan[i].joinsToDo){
                 graphUpdates += UpdateBlocks(blockSpan[i], blockSpan[joinList.first], cacher);
                 blockSpan[joinList.first].joinsToDo.erase(i);

@@ -37,12 +37,12 @@ struct MetricFunctor{
     [[no_unique_address]] MetricPair metricPair;
     const DataBlock<DataType>* lhsBlock;
     const DataBlock<DataType>* rhsBlock;
-    OffsetSpan<const DataBlock<DataType>> blocks;
+    std::span<const DataBlock<DataType>> blocks;
     //size_t lhsBlockNum, rhsBlockNum;
     
-    MetricFunctor(const std::vector<DataBlock<DataType>>& blocks): metricPair(MetricPair()), blocks(blocks.data(), blocks.size(), blocks[0].blockNumber) {};
+    MetricFunctor(const std::vector<DataBlock<DataType>>& blocks): metricPair(MetricPair()), blocks(blocks.data(), blocks.size()) {};
 
-    MetricFunctor(MetricPair metricPair, const std::vector<DataBlock<DataType>>& blocks):metricPair(metricPair), blocks(blocks.data(), blocks.size(), blocks[0].blockNumber) {};
+    MetricFunctor(MetricPair metricPair, const std::vector<DataBlock<DataType>>& blocks):metricPair(metricPair), blocks(blocks.data(), blocks.size()) {};
 
     
 
@@ -76,13 +76,18 @@ struct CrossFragmentFunctor{
     [[no_unique_address]] MetricPair metricPair;
     const DataBlock<DataType>* lhsBlock;
     const DataBlock<DataType>* rhsBlock;
-    OffsetSpan<const DataBlock<DataType>> lhsBlocks;
-    OffsetSpan<const DataBlock<DataType>> rhsBlocks;
+    std::span<const DataBlock<DataType>> lhsBlocks;
+    std::span<const DataBlock<DataType>> rhsBlocks;
     //size_t lhsBlockNum, rhsBlockNum;
     
-    MetricFunctor(const std::vector<DataBlock<DataType>>& lhsBlocks, const std::vector<DataBlock<DataType>>& rhsBlocks): metricPair(MetricPair()), lhsBlocks(blocks.data(), blocks.size(), blocks[0].blockNumber) {};
+    CrossFragmentFunctor(const std::vector<DataBlock<DataType>>& lhsBlocks, const std::vector<DataBlock<DataType>>& rhsBlocks): metricPair(MetricPair()),
+        lhsBlocks(lhsBlocks.data(), lhsBlocks.size()),
+        rhsBlocks(rhsBlocks.data(), rhsBlocks.size()) {};
 
-    MetricFunctor(MetricPair metricPair, const std::vector<DataBlock<DataType>>& blocks):metricPair(metricPair), blocks(blocks.data(), blocks.size(), blocks[0].blockNumber) {};
+    CrossFragmentFunctor(MetricPair metricPair, const std::vector<DataBlock<DataType>>& lhsBlocks, const std::vector<DataBlock<DataType>>& rhsBlocks):
+        metricPair(metricPair), 
+        lhsBlocks(lhsBlocks.data(), lhsBlocks.size()),
+        rhsBlocks(rhsBlocks.data(), rhsBlocks.size()) {};
 
     
 
@@ -103,8 +108,8 @@ struct CrossFragmentFunctor{
     };
 
     void SetBlocks(size_t lhsBlockNum, size_t rhsBlockNum){
-        this->lhsBlock = &(blocks[lhsBlockNum]);
-        this->rhsBlock = &(blocks[rhsBlockNum]);
+        this->lhsBlock = &(lhsBlocks[lhsBlockNum]);
+        this->rhsBlock = &(rhsBlocks[rhsBlockNum]);
     }
 };
 
@@ -171,16 +176,7 @@ struct DispatchFunctor{
 };
 
 
-struct EuclideanComDistance{
-    using DistType = float;
-    float operator()(const AlignedSpan<const float> dataVector, const AlignedSpan<const float> comVector) const{
-        return EuclideanNorm<AlignedSpan<const float>, AlignedSpan<const float>, float>(comVector, dataVector);
-    };
-    
-    std::vector<float> operator()(const AlignedSpan<const float> comVector, const std::vector<AlignedSpan<const float>>& rhsVectors) const{
-        return EuclideanBatcher(comVector, rhsVectors);
-    };
-};
+
 
 template<typename COMExtent>
 struct MetaGraph;
@@ -192,16 +188,16 @@ struct DataComDistance{
     //Reference to Com?
     const MetaGraph<COMExtent>& centersOfMass;
     const DataBlock<DataType>* targetBlock;
-    OffsetSpan<const DataBlock<DataType>> blocks;
+    std::span<const DataBlock<DataType>> blocks;
     [[no_unique_address]] MetricPair functor;
 
-    DataComDistance(const MetaGraph<COMExtent>& centersOfMass, const std::vector<DataBlock<DataType>>& blocks): centersOfMass(centersOfMass), blocks(blocks.data(), blocks.size(), blocks[0].blockNumber), functor(){};
+    DataComDistance(const MetaGraph<COMExtent>& centersOfMass, const std::vector<DataBlock<DataType>>& blocks): centersOfMass(centersOfMass), blocks(blocks.data(), blocks.size()), functor(){};
 
     DataComDistance(const MetaGraph<COMExtent>& centersOfMass, const std::vector<DataBlock<DataType>>& blocks, MetricPair functor):
                         centersOfMass(centersOfMass), blocks(blocks.data(), blocks.size(), blocks[0].blockNumber), functor(functor){};
 
     float operator()(const size_t metagraphIndex, const size_t dataIndex) const{
-        return functor(centersOfMass.points[metagraphIndex - centersOfMass.GetBlockOffset()], (*targetBlock)[dataIndex]);
+        return functor(centersOfMass.points[metagraphIndex], (*targetBlock)[dataIndex]);
     };
     
     std::vector<float> operator()(const size_t metagraphIndex, const std::vector<size_t>& rhsIndecies) const{
@@ -209,7 +205,7 @@ struct DataComDistance{
         for(const auto& index: rhsIndecies){
             rhsData.push_back((*targetBlock)[index]);
         }
-        return functor(centersOfMass.points[metagraphIndex - centersOfMass.GetBlockOffset()], rhsData);
+        return functor(centersOfMass.points[metagraphIndex], rhsData);
     };
 
     void SetBlock(size_t targetBlockNum){
@@ -223,15 +219,15 @@ struct SearchFunctor{
     using DistType = typename MetricPair::DistType;
     using ConstDataView = typename DataBlock<DataType>::ConstDataView;
     const DataBlock<DataType>* targetBlock;
-    OffsetSpan<const DataBlock<DataType>> blocks;
+    std::span<const DataBlock<DataType>> blocks;
     const DataSet& points;
     [[no_unique_address]] MetricPair functor;
 
     SearchFunctor(const std::vector<DataBlock<DataType>>& blocks, const DataSet& points):
-        blocks(blocks.data(), blocks.size(), blocks[0].blockNumber), points(points), functor(){};
+        blocks(blocks.data(), blocks.size()), points(points), functor(){};
 
     SearchFunctor(const std::vector<DataBlock<DataType>>& blocks, const DataSet& points, MetricPair functor):
-                        blocks(blocks.data(), blocks.size(), blocks[0].blockNumber), points(points), functor(functor){};
+                        blocks(blocks.data(), blocks.size()), points(points), functor(functor){};
 
     float operator()(const size_t searchIndex, const size_t targetIndex) const{
         return functor(points[searchIndex], (*targetBlock)[targetIndex]);

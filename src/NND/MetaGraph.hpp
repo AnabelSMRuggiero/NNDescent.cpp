@@ -73,12 +73,12 @@ void EuclideanCOM(const DataBlock<DataType>& dataBlock, AlignedSpan<COMExtent> w
 }
 
 template<typename FloatType, typename Metric>
-void BruteForceGraph(OffsetSpan<GraphVertex<size_t, FloatType>> uninitGraph, size_t numNeighbors, const DataBlock<FloatType>& dataVector, Metric distanceFunctor){
+void BruteForceGraph(Graph<size_t, FloatType>& uninitGraph, size_t numNeighbors, const DataBlock<FloatType>& dataVector, Metric distanceFunctor){
     
     // I can make this branchless. Check to see if /O2 or /O3 can make this branchless (I really doubt it)
-    for (size_t i = uninitGraph.Offset(); i < uninitGraph.StopIndex(); i += 1){
-        for (size_t j = i+1; j < uninitGraph.StopIndex(); j += 1){
-            FloatType distance = distanceFunctor(dataVector[i-uninitGraph.Offset()], dataVector[j - uninitGraph.Offset()]);
+    for (size_t i = 0; i < uninitGraph.size(); i += 1){
+        for (size_t j = i+1; j < uninitGraph.size(); j += 1){
+            FloatType distance = distanceFunctor(dataVector[i], dataVector[j]);
             if (uninitGraph[i].size() < numNeighbors){
                 uninitGraph[i].push_back(std::pair<size_t, FloatType>(j, distance));
                 if (uninitGraph[i].size() == numNeighbors){
@@ -110,9 +110,9 @@ struct MetaGraph{
     QueryContext<COMExtent> queryContext;
     /*
     template<typename DataType, typename Metric, typename COMFunctor>
-    MetaGraph(const std::vector<DataBlock<DataType>>& dataBlocks, const size_t numNeighbors, Metric metricFunctor, COMFunctor COMCalculator, size_t blockNumOffset):
+    MetaGraph(const std::vector<DataBlock<DataType>>& dataBlocks, const size_t numNeighbors, Metric metricFunctor, COMFunctor COMCalculator):
         weights(0), 
-        points(dataBlocks.size(), dataBlocks[0].entryLength, blockNumOffset),
+        points(dataBlocks.size(), dataBlocks[0].entryLength),
         verticies(dataBlocks.size(), numNeighbors){
         //SinglePointFunctor<COMExtent> functor(DataComDistance<DataEntry, COMExtent, MetricPair>(*this, dataBlocks, metricFunctor));
         weights.reserve(dataBlocks.size());
@@ -121,15 +121,12 @@ struct MetaGraph{
             COMCalculator(dataBlock, points[i]);
             i++;
         }
-        BruteForceGraph<COMExtent, Metric>(verticies.GetOffsetView(GetBlockOffset()), numNeighbors, points, metricFunctor);
+        BruteForceGraph<COMExtent, Metric>(verticies, numNeighbors, points, metricFunctor);
         for(auto& vertex: verticies){
             std::sort(vertex.begin(), vertex.end(), NeighborDistanceComparison<size_t, COMExtent>);
         }
     }
     */
-    size_t GetBlockOffset() const{
-        return points.blockNumber;
-    }
 
     size_t size() const{
         return points.numEntries;
@@ -145,7 +142,7 @@ template<typename COMExtent, typename DataType, typename MetricSet, typename COM
 MetaGraph<COMExtent> BuildMetaGraphFragment(const std::vector<DataBlock<DataType>>& dataBlocks, const IndexParameters& params, const size_t fragmentNumber, MetricSet metricSet, COMFunctor COMCalculator){
     std::vector<size_t> weights(0);
     weights.reserve(dataBlocks.size());
-    DataBlock<COMExtent> points(dataBlocks.size(), dataBlocks[0].entryLength, dataBlocks[0].blockNumber);
+    DataBlock<COMExtent> points(dataBlocks.size(), dataBlocks[0].entryLength, fragmentNumber);
     Graph<size_t, COMExtent> verticies(dataBlocks.size(), params.COMNeighbors);
     //SinglePointFunctor<COMExtent> functor(DataComDistance<DataEntry, COMExtent, MetricPair>(*this, dataBlocks, metricFunctor));
     weights.reserve(dataBlocks.size());
@@ -158,7 +155,7 @@ MetaGraph<COMExtent> BuildMetaGraphFragment(const std::vector<DataBlock<DataType
     AlignedArray<COMExtent> centerOfMass(dataBlocks[0].entryLength);
     COMCalculator(points, {centerOfMass.GetAlignedPtr(0), centerOfMass.size()});
 
-    BruteForceGraph<COMExtent>(verticies.GetOffsetView(dataBlocks[0].blockNumber), params.COMNeighbors, points, metricSet.dataToData);
+    BruteForceGraph<COMExtent>(verticies, params.COMNeighbors, points, metricSet.dataToData);
     for(auto& vertex: verticies){
         std::sort(vertex.begin(), vertex.end(), NeighborDistanceComparison<size_t, COMExtent>);
     }

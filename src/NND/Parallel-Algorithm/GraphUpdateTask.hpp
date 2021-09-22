@@ -35,9 +35,9 @@ struct GraphUpdateGenerator{
     std::span<std::atomic<bool>> readyBlocks;
     std::span<BlockUpdates[]> graphUpdates;
     */
-    GraphUpdateGenerator(OffsetSpan<BlockUpdateContext<DistType>> blocks,
-                     OffsetSpan<std::atomic<bool>> readyBlocks,
-                     OffsetSpan<BlockUpdates> graphUpdates): 
+    GraphUpdateGenerator(std::span<BlockUpdateContext<DistType>> blocks,
+                     std::span<std::atomic<bool>> readyBlocks,
+                     std::span<BlockUpdates> graphUpdates): 
                         blocks(blocks),
                         readyBlocks(readyBlocks),
                         graphUpdates(graphUpdates){};
@@ -84,9 +84,9 @@ struct GraphUpdateGenerator{
 
 
     private:
-    OffsetSpan<BlockUpdateContext<DistType>> blocks;
-    OffsetSpan<std::atomic<bool>> readyBlocks;
-    OffsetSpan<BlockUpdates> graphUpdates;
+    std::span<BlockUpdateContext<DistType>> blocks;
+    std::span<std::atomic<bool>> readyBlocks;
+    std::span<BlockUpdates> graphUpdates;
 
 
     //std::vector<std::optional<size_t>>& resultsToReduce;
@@ -103,15 +103,14 @@ struct GraphUpdateConsumer{
     using NextTaskArgs = TaskResult;
     GraphUpdateConsumer() = default;
 
-    GraphUpdateConsumer(const size_t numBlocks, std::vector<bool>& updateFlags, const size_t indexOffset):
+    GraphUpdateConsumer(const size_t numBlocks, std::vector<bool>& updateFlags):
                             numBlocks(numBlocks),
                             blocksUpdated(updateFlags),
-                            indexOffset(indexOffset),
                             blocksDone(0){};
 
 
     bool operator()(TaskResult result){
-        blocksUpdated[result.first-indexOffset] = true;
+        blocksUpdated[result.first] = true;
         //InvertComparisonMap({comparisonArr.get(), numBlocks},
                             //result.first,
                             //std::move(result.second));
@@ -138,7 +137,6 @@ struct GraphUpdateConsumer{
     const size_t numBlocks;
 
     std::vector<bool>& blocksUpdated;
-    const size_t indexOffset;
 
     size_t blocksDone;
     std::vector<std::optional<TaskResult>> comparisonArr;

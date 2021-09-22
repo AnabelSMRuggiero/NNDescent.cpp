@@ -36,13 +36,12 @@ template<typename DistType, typename COMExtent>
 BlocksAndState<DistType> InitializeBlockContexts(const size_t numBlocks,
                                                           const std::vector<size_t>& blockSizes,
                                                           const HyperParameterValues& params,
-                                                          ThreadPool<ThreadFunctors<DistType, COMExtent>>& threadPool,
-                                                          const size_t startBlock){
+                                                          ThreadPool<ThreadFunctors<DistType, COMExtent>>& threadPool){
     
     std::unique_ptr<BlockUpdateContext<DistType>[]> blockArr = std::make_unique<BlockUpdateContext<DistType>[]>(blockSizes.size());
     std::unique_ptr<std::atomic<bool>[]> blockStates = std::make_unique<std::atomic<bool>[]>(blockSizes.size());
-    OffsetSpan<BlockUpdateContext<DistType>> blockView(blockArr.get(), blockSizes.size(), startBlock);
-    OffsetSpan<std::atomic<bool>> stateView(blockStates.get(), blockSizes.size(), startBlock);
+    std::span<BlockUpdateContext<DistType>> blockView(blockArr.get(), blockSizes.size());
+    std::span<std::atomic<bool>> stateView(blockStates.get(), blockSizes.size());
     //lambda that generates a function that executes the relevant work
     auto taskGenerator = [&](size_t blockNum, size_t blockSize)-> auto{
 
@@ -52,9 +51,9 @@ BlocksAndState<DistType> InitializeBlockContexts(const size_t numBlocks,
             Graph<size_t, DistType> blockGraph = BruteForceBlock(params.indexParams.blockGraphNeighbors, blockSize, functors.dispatchFunctor);
             
             GraphVertex<size_t, DistType> queryHint = QueryHintFromCOM(blockNum, blockGraph, params.indexParams.blockGraphNeighbors, functors.comDistFunctor);
-            QueryContext<DistType> queryContext(blockGraph, std::move(queryHint), params.indexParams.queryDepth, blockNum, blockSizes[blockNum - startBlock]);
+            QueryContext<DistType> queryContext(blockGraph, std::move(queryHint), params.indexParams.queryDepth, blockNum, blockSizes[blockNum ]);
             blockLocation->~BlockUpdateContext<DistType>();
-            new(blockLocation) BlockUpdateContext<DistType>(std::move(blockGraph), std::move(queryContext), numBlocks, startBlock);
+            new(blockLocation) BlockUpdateContext<DistType>(std::move(blockGraph), std::move(queryContext), numBlocks);
             
             *blockState = true;
             //blockLocation = std::make_from_tuple<BlockUpdateContext<DistType>>(std::forward_as_tuple(std::move(blockGraph), std::move(queryContext), numBlocks));
@@ -66,7 +65,7 @@ BlocksAndState<DistType> InitializeBlockContexts(const size_t numBlocks,
     
     //generate tasks, return ptrs
     for (size_t i = 0; i<numBlocks; i+=1){
-        threadPool.DelegateTask(taskGenerator(i+startBlock, blockSizes[i]));
+        threadPool.DelegateTask(taskGenerator(i, blockSizes[i]));
     }
 
     return {std::move(blockArr), std::move(blockStates)};
@@ -88,9 +87,9 @@ std::future<AsyncNNResults> NearestNodesToDo(const MetaGraph<COMExtent>& metaGra
 
         //size_t blockOffset = metaGraph.GetBlockOffset();
 
-        OffsetSpan<size_t> distancesView(distancesPerBlock.get(), metaGraph.size(), metaGraph.GetBlockOffset());
+        std::span<size_t> distancesView(distancesPerBlock.get(), metaGraph.size());
 
-        for (size_t i = distancesView.Offset(); const auto& vertex: metaGraph.verticies){
+        for (size_t i = 0; const auto& vertex: metaGraph.verticies){
             for (const auto& neighbor: vertex){
                 if(nearestNodeDistQueue.insert({i, neighbor.first}).second){
                     distancesView[i] += 1;
@@ -116,7 +115,7 @@ std::future<AsyncNNResults> NearestNodesToDo(const MetaGraph<COMExtent>& metaGra
 
 
 template<typename DistType, typename COMExtent>
-void ParallelBlockJoins(OffsetSpan<BlockUpdateContext<DistType>> blocks, OffsetSpan<std::atomic<bool>> blockStates, ThreadPool<ThreadFunctors<DistType, COMExtent>>& pool){
+void ParallelBlockJoins(std::span<BlockUpdateContext<DistType>> blocks, std::span<std::atomic<bool>> blockStates, ThreadPool<ThreadFunctors<DistType, COMExtent>>& pool){
     
     std::atomic<size_t> doneBlocks = 0;
     auto updateGenerator = [&](const size_t lhsNum, const size_t rhsNum)->auto{
@@ -147,14 +146,14 @@ void ParallelBlockJoins(OffsetSpan<BlockUpdateContext<DistType>> blocks, OffsetS
         return updateTask;
     };
     //For the case where we start with 0 joins to do
-    for (size_t i = blocks.Offset(); i<blocks.size() + blocks.Offset(); i +=1){
+    for (size_t i = 0; i<blocks.size(); i +=1){
         if(blocks[i].joinsToDo.size()==0) doneBlocks++;
     }
     
     mainLoop:
     while(doneBlocks<blocks.size()){
         //doneBlocks = 0;
-        for(size_t i = blocks.Offset(); i<blocks.size() + blocks.Offset(); i+=1){
+        for(size_t i = 0; i<blocks.size(); i+=1){
             bool expectTrue = true;
             bool queued = false;
             if(!blockStates[i].compare_exchange_strong(expectTrue, false)) continue;
@@ -185,7 +184,7 @@ void ParallelBlockJoins(OffsetSpan<BlockUpdateContext<DistType>> blocks, OffsetS
     }
     pool.Latch();
 
-    for (size_t i = blocks.Offset(); i<blocks.size()+blocks.Offset(); i +=1){
+    for (size_t i = 0; i<blocks.size(); i+=1){
         if(blocks[i].joinsToDo.size()!=0 || blocks[i].newJoins.size() !=0){
             doneBlocks--;
             if(blocks[i].joinsToDo.size()==0) blocks[i].SetNextJoins();
@@ -216,12 +215,12 @@ std::unique_ptr<BlockUpdateContext<DistType>[]> BuildGraph(std::vector<size_t>&&
 
     auto nnFuture = NearestNodesToDo(metaGraph, pool);
 
-    BlocksAndState<DistType> blocks = InitializeBlockContexts(blockSizes.size(), blockSizes, parameters, pool, metaGraph.GetBlockOffset());
+    BlocksAndState<DistType> blocks = InitializeBlockContexts(blockSizes.size(), blockSizes, parameters, pool);
 
     auto nnToDo = nnFuture.get();
 
-    OffsetSpan<BlockUpdateContext<DistType>> blockSpan(blocks.blocks.get(), blockSizes.size(), metaGraph.GetBlockOffset());
-    OffsetSpan<std::atomic<bool>> blockState(blocks.isReady.get(), blockSizes.size(), metaGraph.GetBlockOffset());
+    std::span<BlockUpdateContext<DistType>> blockSpan(blocks.blocks.get(), blockSizes.size());
+    std::span<std::atomic<bool>> blockState(blocks.isReady.get(), blockSizes.size());
 
     
 
@@ -231,7 +230,7 @@ std::unique_ptr<BlockUpdateContext<DistType>[]> BuildGraph(std::vector<size_t>&&
     using BlockUpdates = std::vector<std::pair<size_t, JoinResults<size_t, DistType>>>;
 
     std::unique_ptr<BlockUpdates[]> updateStorage = std::make_unique<BlockUpdates[]>(blockSpan.size());
-    OffsetSpan<BlockUpdates> updateSpan{updateStorage.get(), blockSpan.size(), blockSpan.Offset()};
+    std::span<BlockUpdates> updateSpan{updateStorage.get(), blockSpan.size()};
 
     std::vector<bool> blocksUpdated(blockSpan.size());
     
@@ -239,14 +238,14 @@ std::unique_ptr<BlockUpdateContext<DistType>[]> BuildGraph(std::vector<size_t>&&
 
     std::unique_ptr<std::atomic<bool>[]> blocksFinalized = std::make_unique<std::atomic<bool>[]>(blockSpan.size());
 
-    OffsetSpan<std::atomic<bool>> finalizedView(blocksFinalized.get(), blockSpan.size(), blockSpan.Offset());
+    std::span<std::atomic<bool>> finalizedView(blocksFinalized.get(), blockSpan.size());
 
     auto nnBuilder = GenerateTaskBuilder<NNTask<DistType, COMExtent>>(std::tuple{blockSpan, blockState},
-                                         std::tuple{std::move(nnToDo.second), blockSizes.size(), parameters.indexParams.nearestNodeNeighbors, blockSpan.Offset()});
+                                         std::tuple{std::move(nnToDo.second), blockSizes.size(), parameters.indexParams.nearestNodeNeighbors});
     auto initJoinBuilder = GenerateTaskBuilder<InitJoinTask<DistType, COMExtent>>(std::tuple{blockSpan, blockState},
                                                            std::tuple{updateSpan});
     auto updateBuilder = GenerateTaskBuilder<UpdateTask<DistType, COMExtent>>(std::tuple{blockSpan, blockState, updateSpan},
-                                                        std::tuple{blockSpan.size(), std::reference_wrapper(blocksUpdated), blockSpan.Offset()});
+                                                        std::tuple{blockSpan.size(), std::reference_wrapper(blocksUpdated)});
     auto comparisonBuilder = GenerateTaskBuilder<ComparisonTask<DistType, COMExtent>>(std::tuple{blockSpan, std::reference_wrapper(blocksUpdated), finalizedView});
 
     GraphInitTasks<DistType, COMExtent> tasks(std::move(nnBuilder), std::move(initJoinBuilder), std::move(updateBuilder), std::move(comparisonBuilder));
