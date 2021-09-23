@@ -214,6 +214,7 @@ std::pair<Graph<BlockNumber_t, DistType>, InitialJoinHints<DistType>> NearestNod
     
     std::vector<std::tuple<DataIndex_t, DataIndex_t, DistType>> nnDistanceResults(nearestNodeDistQueue.size());
     auto nnDistanceFunctor = [&](const ComparisonKey<BlockNumber_t> blockNumbers) -> std::tuple<DataIndex_t, DataIndex_t, DistType>{
+        distanceFunctor.SetBlocks(blockNumbers.first, blockNumbers.second);
         return blockUpdateContexts[blockNumbers.first].queryContext.NearestNodes(blockUpdateContexts[blockNumbers.second].queryContext,
                                                                                  distanceFunctor);
     };

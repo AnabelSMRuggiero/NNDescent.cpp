@@ -53,6 +53,7 @@ struct NearestNodesGenerator{
             auto task = [&, ptrs = blockPtrs](ThreadFunctors<DistType, COMExtent>& functors) mutable->void{
                 const QueryContext<DataIndex_t, DistType>& lhsQueryContext = ptrs.first->queryContext;
                 const QueryContext<DataIndex_t, DistType>& rhsQueryContext = ptrs.second->queryContext;
+                functors.dispatchFunctor.SetBlocks(lhsQueryContext.blockNumber, rhsQueryContext.blockNumber);
                 std::tuple<DataIndex_t, DataIndex_t, DistType> nnDistResult = lhsQueryContext.NearestNodes(rhsQueryContext,
                                                                                                 functors.dispatchFunctor);
                 /*

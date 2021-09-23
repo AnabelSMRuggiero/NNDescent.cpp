@@ -20,6 +20,7 @@ https://github.com/AnabelSMRuggiero/NNDescent.cpp
 
 #include "Utilities/Type.hpp"
 #include "Utilities/Data.hpp"
+#include "Utilities/Metrics/Euclidean.hpp"
 
 #include "Parallelization/ThreadPool.hpp"
 
@@ -31,21 +32,21 @@ https://github.com/AnabelSMRuggiero/NNDescent.cpp
 
 using namespace nnd;
 
-void GraphwiseJoin(MetaGraph<float> metaGraphA, OffsetSpan<BlockUpdateContext<float>> graphA, MetaGraph<float> metaGraphB, OffsetSpan<BlockUpdateContext<float>> graphB, CachingFunctor<float>& cacher, EuclideanMetricSet metricSet){
+void GraphwiseJoin(MetaGraph<float> metaGraphA, std::span<BlockUpdateContext<float>> graphA, MetaGraph<float> metaGraphB, std::span<BlockUpdateContext<float>> graphB, CachingFunctor<float>& cacher, EuclideanMetricSet metricSet){
     using COMExtent = float;
     auto nnFunctor = [&](const size_t lhsIndex, const size_t rhsIndex)->auto{
         return metricSet.comToCom(metaGraphA.points[lhsIndex], metaGraphB.points[rhsIndex]);
     };
-    std::tuple<size_t, size_t, COMExtent> nnDist = metaGraphA.queryContext.NearestNodes(metaGraphB.queryContext, nnFunctor);
+    std::tuple<BlockNumber_t, BlockNumber_t, COMExtent> nnDist = metaGraphA.queryContext.NearestNodes(metaGraphB.queryContext, nnFunctor);
 
     for (auto& block: graphA){
-        block.blockJoinTracker = NodeTracker(graphB.size(), metaGraphB.GetBlockOffset());
+        block.blockJoinTracker = NodeTracker(graphB.size());
     }
     for (auto& block: graphB){
-        block.blockJoinTracker = NodeTracker(graphA.size(), metaGraphA.GetBlockOffset());
+        block.blockJoinTracker = NodeTracker(graphA.size());
     }
 
-    std::vector<std::pair<size_t, size_t>> joinQueue{{std::get<0>(nnDist), std::get<1>(nnDist)}};
+    std::vector<std::pair<BlockNumber_t, BlockNumber_t>> joinQueue{{std::get<0>(nnDist), std::get<1>(nnDist)}};
     
     for (size_t i = 0; i<metaGraphA.verticies[0].size(); i++){
         joinQueue.push_back({metaGraphA.verticies[joinQueue.front().first][i].first,
@@ -108,23 +109,22 @@ int main(int argc, char *argv[]){
     }
     using BlockSet = std::vector<DataBlock<float>>;
     std::vector<BlockSet> blocksSets;
-    auto blockContructor = [&blocksSets, &trainData, blockNum = 0ul](size_t, std::span<const size_t> dataPoints)mutable->auto{ 
-        blocksSets.back().emplace_back(trainData, dataPoints, trainData.sampleLength, blockNum++);
-    };
+    
     for (auto& subForest: forests){
+
+        auto blockContructor = [&blocksSets, &trainData, blockNum = 0ul](size_t, std::span<const size_t> dataPoints)mutable->auto{ 
+        blocksSets.back().emplace_back(trainData, dataPoints, trainData.sampleLength, blockNum++);
+        };
         blocksSets.emplace_back();
         CrawlTerminalLeaves(subForest, blockContructor);
+        //blockContructor.blockNum = 0;
     }
 
     std::unique_ptr<std::unique_ptr<BlockUpdateContext<float>[]>[]> graphs = std::make_unique<std::unique_ptr<BlockUpdateContext<float>[]>[]>(blocksSets.size());
     size_t i = 0;
     for(auto& blockSet: blocksSets){
-        std::vector<size_t> sizes;
-        sizes.reserve(blockSet.size());
-        for(const auto& block: blockSet){
-            sizes.push_back(block.size());
-        }
-        MetaGraph<float> metaGraph = BuildMetaGraphFragment<float>(blockSet, parameters.indexParams, i, EuclideanMetricPair(), EuclideanCOM<float, float>);
+        
+        MetaGraph<float> metaGraph = BuildMetaGraphFragment<float>(blockSet, parameters.indexParams, i, EuclideanMetricSet(), EuclideanCOM<float, float>);
         DataComDistance<float, float, EuclideanMetricPair> comFunctor(metaGraph, blockSet);
         
         std::unique_ptr<BlockUpdateContext<float>[]> blockContextArr;
@@ -135,7 +135,7 @@ int main(int argc, char *argv[]){
         
         ThreadPool<ThreadFunctors<float, float>> pool(12, euclideanFunctor, comFunctor, splitParams.maxTreeSize, indexParams.blockGraphNeighbors);
         pool.StartThreads();
-        blockContextArr = BuildGraph(std::move(sizes), metaGraph, parameters, pool);
+        blockContextArr = BuildGraph(metaGraph, parameters, pool);
         //blockUpdateContexts = {blockContextArr.get(), blockSet.size()};
         pool.StopThreads();
 

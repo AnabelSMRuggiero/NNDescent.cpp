@@ -392,7 +392,7 @@ struct QueryContext{
     template<typename QueryFunctor>
     std::tuple<DataIndex_t, DataIndex_t, DistType> NearestNodes(const QueryContext& rhs, QueryFunctor& distanceFunctor) const{
 
-        distanceFunctor.SetBlocks(this->blockNumber, rhs.blockNumber);
+        //distanceFunctor.SetBlocks(this->blockNumber, rhs.blockNumber);
 
         std::pair<DataIndex_t, DataIndex_t> bestPair;
         DistType bestDistance(std::numeric_limits<DistType>::max());
