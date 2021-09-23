@@ -24,14 +24,14 @@ https://github.com/AnabelSMRuggiero/NNDescent.cpp
 
 namespace nnd{
 
-template<typename DataIndexType>
-using ComparisonVec = std::vector<std::pair<DataIndexType, DataIndexType>>;
+//template<typename DataIndexType>
+using ComparisonVec = std::vector<std::pair<DataIndex_t, DataIndex_t>>;
 
-template<typename BlockNumberType, typename DataIndexType>
-using ComparisonMap = std::unordered_map<BlockNumberType, ComparisonVec<DataIndexType>>;
+//template<typename BlockNumberType, typename DataIndexType>
+using ComparisonMap = std::unordered_map<BlockNumber_t, ComparisonVec>;
 
-template<typename DataIndexType>
-using JoinHint = std::pair<DataIndexType, std::vector<DataIndexType>>;
+//template<typename DataIndexType>
+using JoinHint = std::pair<DataIndex_t, std::vector<DataIndex_t>>;
 
 /*
 template<typename DataIndexType>
@@ -41,17 +41,17 @@ struct JoinHint{
 };
 */
 
-template<typename DataIndexType>
-using JoinHints = std::unordered_map<DataIndexType, std::vector<DataIndexType>>;
+//template<typename DataIndexType>
+using JoinHints = std::unordered_map<DataIndex_t, std::vector<DataIndex_t>>;
 
-template<typename BlockNumberType, typename DataIndexType>                                   // Consider using a fixed size array
-using JoinMap = std::unordered_map<BlockNumberType, std::unordered_map<DataIndexType, std::vector<DataIndexType>>>;
+//template<typename BlockNumberType, typename DataIndexType>                                   // Consider using a fixed size array
+using JoinMap = std::unordered_map<BlockNumber_t, std::unordered_map<DataIndex_t, std::vector<DataIndex_t>>>;
 // I could also do a struct where the actual data is vectors, and I use unordered_maps to remap indicies
 
-template<typename BlockNumberType, typename DataIndexType, typename DistType>
-ComparisonMap<BlockNumberType, DataIndexType> InitializeComparisonQueues(const Graph<BlockIndecies, DistType>& currentBlock, BlockNumberType blockNum){
+template<typename DistType>
+ComparisonMap InitializeComparisonQueues(const Graph<BlockIndecies, DistType>& currentBlock, BlockNumber_t blockNum){
 
-    ComparisonMap<BlockNumberType, DataIndexType> retMap;
+    ComparisonMap retMap;
     for (size_t j = 0; j<currentBlock.size(); j+=1){
         for (const auto& neighbor: currentBlock[j]){
             if (neighbor.first.blockNumber != blockNum) retMap[neighbor.first.blockNumber].push_back({j, neighbor.first.dataIndex});
@@ -63,20 +63,20 @@ ComparisonMap<BlockNumberType, DataIndexType> InitializeComparisonQueues(const G
 
 
 
-template<typename DataIndexType, typename DistType>
-using JoinResults = std::vector<std::pair<DataIndexType, GraphVertex<DataIndexType, DistType>>>;
+template<typename DistType>
+using JoinResults = std::vector<std::pair<DataIndex_t, GraphVertex<DataIndex_t, DistType>>>;
 
 //template<typename BlockNumberType, typename DataIndexType, typename DataEntry, typename DistType>
 template<typename DistType, typename QueryFunctor>
-JoinResults<size_t, DistType> BlockwiseJoin(const JoinHints<size_t>& startJoins,
+JoinResults<DistType> BlockwiseJoin(const JoinHints& startJoins,
                    const Graph<BlockIndecies, DistType>& currentGraphState,
-                   const DirectedGraph<size_t>& searchSubgraph,
-                   const QueryContext<DistType>& targetBlock,
+                   const DirectedGraph<DataIndex_t>& searchSubgraph,
+                   const QueryContext<DataIndex_t, DistType>& targetBlock,
                    QueryFunctor& queryFunctor){
     
-    std::vector<std::pair<size_t, GraphVertex<size_t, DistType>>> joinHints;
+    std::vector<std::pair<DataIndex_t, GraphVertex<DataIndex_t, DistType>>> joinHints;
     for (const auto& hint: startJoins){
-        GraphVertex<size_t, DistType> queryHint;
+        GraphVertex<DataIndex_t, DistType> queryHint;
         for (const auto index: hint.second){
             queryHint.push_back({index, std::numeric_limits<DistType>::max()});
         }
@@ -84,9 +84,11 @@ JoinResults<size_t, DistType> BlockwiseJoin(const JoinHints<size_t>& startJoins,
     }
     NodeTracker nodesJoined(searchSubgraph.size());
     
-    std::vector<std::pair<size_t, GraphVertex<size_t, DistType>>> retResults;
+    JoinResults<DistType> retResults;
+    //std::vector<std::pair<Data_t, GraphVertex<size_t, DistType>>> retResults;
     while(joinHints.size()){
-        std::vector<std::pair<size_t, GraphVertex<size_t, DistType>>> joinResults;
+        JoinResults<DistType> joinResults;
+        //std::vector<std::pair<size_t, GraphVertex<size_t, DistType>>> joinResults;
         for (auto& joinHint: joinHints){
             //GraphVertex<size_t, DistType> joinResult = targetBlock || QueryPoint{joinHint.second, blockData[joinHint.first]};
             //const QueryPoint<size_t, DataEntry, DistType> query(joinHint.second, blockData[joinHint.first], joinHint.first);
@@ -127,10 +129,10 @@ JoinResults<size_t, DistType> BlockwiseJoin(const JoinHints<size_t>& startJoins,
 }
 
 template<typename DistType, typename DistanceFunctor>
-void ReverseBlockJoin(const JoinHints<size_t>& startJoins,
+void ReverseBlockJoin(const JoinHints& startJoins,
                    const Graph<BlockIndecies, DistType>& currentGraphState,
-                   const DirectedGraph<size_t>& searchSubgraph,
-                   const QueryContext<DistType>& targetBlock,
+                   const DirectedGraph<DataIndex_t>& searchSubgraph,
+                   const QueryContext<DataIndex_t, DistType>& targetBlock,
                    CachingFunctor<DistType>& cache,
                    DistanceFunctor& queryFunctor){
     
@@ -140,7 +142,7 @@ void ReverseBlockJoin(const JoinHints<size_t>& startJoins,
     std::vector<size_t> successfulJoins;
     for (const auto& hint: startJoins){
 
-        GraphVertex<size_t, DistType>& vertex = cache.reverseGraph[hint.first];
+        GraphVertex<DataIndex_t, DistType>& vertex = cache.reverseGraph[hint.first];
 
         
         for (const auto index: hint.second){
@@ -221,10 +223,10 @@ void ReverseBlockJoin(const JoinHints<size_t>& startJoins,
 }
 
 template<typename DistType>
-void NewJoinQueues(const std::vector<std::pair<size_t, GraphVertex<size_t, DistType>>>& joinResults,
+void NewJoinQueues(const std::vector<std::pair<DataIndex_t, GraphVertex<DataIndex_t, DistType>>>& joinResults,
                    const NodeTracker& blocksJoined,
                    const Graph<BlockIndecies, DistType>& targetGraphState,
-                   JoinMap<size_t, size_t>& mapToUpdate){
+                   JoinMap& mapToUpdate){
     
     for (const auto& result: joinResults){
         for (const auto index: result.second){
@@ -240,10 +242,10 @@ void NewJoinQueues(const std::vector<std::pair<size_t, GraphVertex<size_t, DistT
 }
 
 template<typename DistType>
-void NewJoinQueues(const Graph<size_t, DistType>& joinResults,
+void NewJoinQueues(const Graph<DataIndex_t, DistType>& joinResults,
                    const NodeTracker& blocksJoined,
                    const Graph<BlockIndecies, DistType>& targetGraphState,
-                   JoinMap<size_t, size_t>& mapToUpdate){
+                   JoinMap& mapToUpdate){
     
     for (size_t i = 0; const auto& result: joinResults){
         for (const auto index: result){
@@ -264,21 +266,21 @@ struct BlockUpdateContext {
     
 
     NodeTracker blockJoinTracker;
-    JoinMap<size_t, size_t> joinsToDo;
-    JoinMap<size_t, size_t> newJoins;
-    QueryContext<DistType> queryContext;
+    JoinMap joinsToDo;
+    JoinMap newJoins;
+    QueryContext<DataIndex_t, DistType> queryContext;
     Graph<BlockIndecies, DistType> currentGraph;
-    DirectedGraph<size_t> joinPropagation;
+    DirectedGraph<DataIndex_t> joinPropagation;
     IndexBlock neighborsInFragment;
     //Graph<BlockIndecies, DistType> currentGraph;
 
     BlockUpdateContext() = default;
 
-    BlockUpdateContext(Graph<size_t, DistType>&& blockGraph, QueryContext<DistType>&& queryContext, const size_t numberOfBlocksToJoin):
+    BlockUpdateContext(Graph<DataIndex_t, DistType>&& blockGraph, QueryContext<DataIndex_t, DistType>&& queryContext, const size_t numberOfBlocksToJoin):
         blockJoinTracker(numberOfBlocksToJoin),
         queryContext(std::move(queryContext)),
-        currentGraph(ToBlockIndecies(blockGraph, queryContext.blockNumber)),
-        joinPropagation(std::forward<Graph<size_t, DistType>>(blockGraph)){
+        currentGraph(ToBlockIndecies(blockGraph, queryContext.graphFragment, queryContext.blockNumber)),
+        joinPropagation(std::forward<Graph<DataIndex_t, DistType>>(blockGraph)){
             blockJoinTracker[queryContext.blockNumber] = true;
     };
 
@@ -289,15 +291,15 @@ struct BlockUpdateContext {
             return this->blockJoinTracker[key];
         };
         std::erase_if(joinsToDo, removeExtraneous);
-        newJoins = JoinMap<size_t, size_t>();
+        newJoins = JoinMap();
     }
 };
 
 template<typename DistType, typename BlockContainer>
-JoinMap<size_t, size_t> InitializeJoinMap(const BlockContainer& blockUpdateContexts,
-                                          const ComparisonMap<size_t, size_t>& comparisonMap,
+JoinMap InitializeJoinMap(const BlockContainer& blockUpdateContexts,
+                                          const ComparisonMap& comparisonMap,
                                           const NodeTracker& nodesJoined){
-    JoinMap<size_t, size_t> joinMap;
+    JoinMap joinMap;
     for (auto& [targetBlock, queue]: comparisonMap){
         //std::unordered_map<size_t, std::pair<size_t, std::vector<size_t>>> joinHints;
         for (const auto& [sourceIndex, targetIndex]: queue){
@@ -332,7 +334,7 @@ int UpdateBlocks(BlockUpdateContext<DistType>& blockLHS,
         //auto cachedDistanceFunctor = blockRHS.queryContext.defaultQueryFunctor.CachedFunctor(distanceCache);
         
 
-        JoinResults<size_t, DistType> blockLHSUpdates = BlockwiseJoin(blockLHS.joinsToDo[blockRHS.queryContext.blockNumber],
+        JoinResults<DistType> blockLHSUpdates = BlockwiseJoin(blockLHS.joinsToDo[blockRHS.queryContext.blockNumber],
                                                                             blockLHS.currentGraph,
                                                                             blockLHS.joinPropagation,
                                                                             blockRHS.queryContext,
@@ -383,11 +385,11 @@ int UpdateBlocks(BlockUpdateContext<DistType>& blockLHS,
         NewJoinQueues<float>(cachingFunctor.reverseGraph, blockRHS.blockJoinTracker, blockLHS.currentGraph, blockRHS.newJoins);
 
         for (size_t i = 0; auto& result: cachingFunctor.reverseGraph){
-            graphUpdates += ConsumeVertex(blockRHS.currentGraph[i], result, blockLHS.queryContext.blockNumber);
+            graphUpdates += ConsumeVertex(blockRHS.currentGraph[i], result, blockLHS.queryContext.graphFragment, blockLHS.queryContext.blockNumber);
             i++;
         }
         for (auto& result: blockLHSUpdates){
-            graphUpdates += ConsumeVertex(blockLHS.currentGraph[result.first], result.second, blockRHS.queryContext.blockNumber);
+            graphUpdates += ConsumeVertex(blockLHS.currentGraph[result.first], result.second, blockRHS.queryContext.graphFragment, blockRHS.queryContext.blockNumber);
         }
         
         return graphUpdates;

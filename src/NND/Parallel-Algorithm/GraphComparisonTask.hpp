@@ -23,9 +23,9 @@ namespace nnd {
 template<typename DistType, typename COMExtent>
 struct GraphComparisonGenerator{
 
-    using TaskArgs = std::pair<size_t, ComparisonMap<size_t, size_t>>;
+    using TaskArgs = std::pair<BlockNumber_t, ComparisonMap>;
     using TaskResult = void;
-    using BlockUpdates = std::vector<std::pair<size_t, JoinResults<size_t, DistType>>>;
+    //using BlockUpdates = std::vector<std::pair<size_t, JoinResults<DistType>>>;
 
     GraphComparisonGenerator(std::span<BlockUpdateContext<DistType>> blocks,
                           std::vector<bool>& updatedBlocks,
@@ -36,7 +36,7 @@ struct GraphComparisonGenerator{
 
 
     bool operator()(ThreadPool<ThreadFunctors<DistType, COMExtent>>& pool, std::vector<std::optional<TaskArgs>>& comparisonsToDo){
-        auto comparisonGenerator = [&](const size_t blockToUpdate, ComparisonMap<size_t, size_t>&& comparisonsToDo){
+        auto comparisonGenerator = [&](const BlockNumber_t blockToUpdate, ComparisonMap&& comparisonsToDo){
 
             auto comparisonTask = [&, blockPtr = &(blocks[blockToUpdate]), comparisons = std::move(comparisonsToDo), blocks = this->blocks, initializedBlocks = this->initializedBlocks](ThreadFunctors<DistType, COMExtent>& threadFunctors) mutable{
                 blockPtr->joinsToDo = InitializeJoinMap<DistType>(blocks, comparisons, blockPtr->blockJoinTracker);
@@ -54,7 +54,7 @@ struct GraphComparisonGenerator{
             //bool expectTrue = true;
 
             //if(!readyBlocks[*blockNum].compare_exchange_strong(expectTrue, false)) continue;
-            if(allUpdated || std::all_of(comparison->second.begin(), comparison->second.end(), [&](const std::pair<size_t, ComparisonVec<size_t>>& targetBlock)->bool{
+            if(allUpdated || std::all_of(comparison->second.begin(), comparison->second.end(), [&](const std::pair<size_t, ComparisonVec>& targetBlock)->bool{
                 return updatedBlocks[targetBlock.first];
             })){
                 pool.DelegateTask(comparisonGenerator(comparison->first, std::move(comparison->second)));

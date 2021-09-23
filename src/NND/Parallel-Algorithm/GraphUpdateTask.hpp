@@ -26,9 +26,9 @@ namespace nnd {
 template<typename DistType, typename COMExtent>
 struct GraphUpdateGenerator{
 
-    using BlockUpdates = std::vector<std::pair<size_t, JoinResults<size_t, DistType>>>;
+    using BlockUpdates = std::vector<std::pair<BlockNumber_t, JoinResults<DistType>>>;
 
-    using TaskResult = std::pair<size_t, ComparisonMap<size_t, size_t>>;
+    using TaskResult = std::pair<BlockNumber_t, ComparisonMap>;
     using TaskArgs = size_t;
     /*
     std::span<BlockUpdateContext<DistType>> blocks;
@@ -48,12 +48,12 @@ struct GraphUpdateGenerator{
             auto updateTask = [&, blockPtr = &(blocks[blockToUpdate]), updates = std::move(graphUpdates[blockToUpdate]), readyBlocks = this->readyBlocks](ThreadFunctors<DistType, COMExtent>& threadFunctors) mutable{
                 for (auto& joinUpdates: updates){
                     for(auto& vertex: joinUpdates.second){
-                        ConsumeVertex(blockPtr->currentGraph[vertex.first], vertex.second, joinUpdates.first);
+                        ConsumeVertex(blockPtr->currentGraph[vertex.first], vertex.second, blockPtr->queryContext.graphFragment, joinUpdates.first);
                     }
                 }
-                if constexpr (debugNND) VerifySubGraphState(blockPtr->currentGraph, blockPtr->queryContext.blockNumber);
+                if constexpr (debugNND) VerifySubGraphState(blockPtr->currentGraph, blockPtr->queryContext.graphFragment, blockPtr->queryContext.blockNumber);
                 resultsQueue.Put({blockPtr->queryContext.blockNumber,
-                                  InitializeComparisonQueues<size_t, size_t, DistType>(blockPtr->currentGraph, blockPtr->queryContext.blockNumber)});
+                                  InitializeComparisonQueues<DistType>(blockPtr->currentGraph, blockPtr->queryContext.blockNumber)});
                 readyBlocks[blockPtr->queryContext.blockNumber] = true;
             };
             return updateTask;
@@ -99,7 +99,7 @@ template<typename DistType>
 struct GraphUpdateConsumer{
 
     //using BlockUpdates = std::vector<std::pair<size_t, JoinResults<size_t, DistType>>>;
-    using TaskResult = std::pair<size_t, ComparisonMap<size_t, size_t>>;
+    using TaskResult = std::pair<BlockNumber_t, ComparisonMap>;
     using NextTaskArgs = TaskResult;
     GraphUpdateConsumer() = default;
 

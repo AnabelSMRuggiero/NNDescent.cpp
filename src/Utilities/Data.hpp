@@ -127,9 +127,7 @@ struct BlockIndecies{
 
 
 
-inline bool operator==(const BlockIndecies lhs, const BlockIndecies& rhs){
-    return (lhs.blockNumber == rhs.blockNumber) && (lhs.dataIndex == rhs.dataIndex);
-}
+
 
 template<typename DataEntry, size_t alignment>
 size_t EntryPadding(const size_t entryLength){
@@ -201,23 +199,23 @@ struct DataBlock{
         return DataView(ptr, entryLength);
         //return blockData[i];
     }
-
+    /*
     DataView operator[](BlockIndecies i){
         //static_assert(i.blockNumber == blockNumber);
         return operator[](i.dataIndex);
     }
-
+    */
     ConstDataView operator[](size_t i) const{
         AlignedPtr<const value_type, alignment> ptr = blockData.GetAlignedPtr(lengthWithPadding);
         ptr += i;
         return ConstDataView(ptr, entryLength);
     }
-
+    /*
     ConstDataView operator[](BlockIndecies i) const{
         //static_assert(i.blockNumber == blockNumber);
         return operator[](i.dataIndex);
     }
-
+    */
     size_t size() const{
         return numEntries;
     }
@@ -255,14 +253,7 @@ void SerializeDataSet(const DataSet<DataEntry>& dataSet, const std::string fileP
 
 }
 
-template<>
-struct std::hash<nnd::BlockIndecies>{
 
-    size_t operator()(const nnd::BlockIndecies& index) const noexcept{
-        return std::hash<size_t>()(index.blockNumber ^ std::hash<size_t>()(index.dataIndex));
-    };
-
-};
 
 
 

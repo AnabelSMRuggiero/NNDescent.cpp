@@ -67,18 +67,18 @@ std::tuple<size_t, size_t, FloatType> BruteNearestNodes(const Graph<IndexType, F
     return {bestPair.first, bestPair.second, bestDistance};
 }
 
-template<std::floating_point COMExtent, typename DistType, typename Functor>
-GraphVertex<size_t, COMExtent> QueryCOMNeighbors(const size_t pointIndex,
-                                                     const Graph<size_t, DistType>& subProb, 
+template<std::floating_point COMExtent, typename DistType, typename IndexType, typename Functor>
+GraphVertex<IndexType, COMExtent> QueryCOMNeighbors(const size_t pointIndex,
+                                                     const Graph<IndexType, DistType>& subProb, 
                                                      const size_t numCandidates,
                                                      Functor& distanceFunctor){
 
-    GraphVertex<size_t, COMExtent> COMneighbors(numCandidates);
+    GraphVertex<IndexType, COMExtent> COMneighbors(numCandidates);
     //auto problemView = subProb.GetOffsetView(indexOffset);
     //Just gonna dummy it and select the first few nodes. Since the splitting process is randomized, this is a totally random selection, right? /s
     NodeTracker nodesVisited(subProb.size());
     for (size_t i = 0; i < numCandidates; i+=1){
-        COMneighbors.push_back(std::pair<size_t, COMExtent>(i,
+        COMneighbors.push_back(std::pair<IndexType, COMExtent>(i,
                                 distanceFunctor(pointIndex, i)));
         nodesVisited[i] = true;
     }
@@ -86,7 +86,7 @@ GraphVertex<size_t, COMExtent> QueryCOMNeighbors(const size_t pointIndex,
     //std::make_heap(COMneighbors.begin(), COMneighbors.neighbors.end(), NeighborDistanceComparison<size_t, COMExtent>);
 
     bool breakVar = false;
-    GraphVertex<size_t, COMExtent> newState(COMneighbors);
+    GraphVertex<IndexType, COMExtent> newState(COMneighbors);
     while (!breakVar){
         breakVar = true;   
         for (const auto& curCandidate: COMneighbors){
@@ -108,26 +108,28 @@ GraphVertex<size_t, COMExtent> QueryCOMNeighbors(const size_t pointIndex,
     return COMneighbors;
 }
 
+/*
 template<typename DistType>
 struct QueryPoint{
     const GraphVertex<size_t, DistType>& queryHint;
     const size_t dataIndex;
     QueryPoint(const GraphVertex<size_t, DistType>& hint, const size_t index): queryHint(hint), dataIndex(index){}
 };
+*/
 
-template<typename DistType, typename COMExtent>
-GraphVertex<size_t, DistType> QueryHintFromCOM(const size_t metaPointIndex,
-                                                const Graph<size_t, DistType> subProb,
+template<typename DistType, typename COMExtent, typename IndexType>
+GraphVertex<IndexType, DistType> QueryHintFromCOM(const size_t metaPointIndex,
+                                                const Graph<IndexType, DistType>& subProb,
                                                 const size_t numCandidates,
                                                 SinglePointFunctor<COMExtent>& distanceFunctor){
-    GraphVertex<size_t, COMExtent> comNeighbors = QueryCOMNeighbors<COMExtent>(metaPointIndex, subProb, numCandidates, distanceFunctor);
+    GraphVertex<IndexType, COMExtent> comNeighbors = QueryCOMNeighbors<COMExtent>(metaPointIndex, subProb, numCandidates, distanceFunctor);
     if constexpr (std::is_same<DistType, COMExtent>()){
         for (auto& neighbor: comNeighbors){
             neighbor.second = std::numeric_limits<DistType>::max();
         }
         return comNeighbors;
     } else{
-        GraphVertex<size_t, DistType> retHint;
+        GraphVertex<IndexType, DistType> retHint;
         for (auto& hint: comNeighbors){
             //This should be an emplace_back
             retHint.push_back({hint.first, std::numeric_limits<DistType>::max()});
@@ -200,30 +202,32 @@ namespace internal{
     static const size_t maxBatch = 7;
 }
 
-template<typename DistType>
+template<typename IndexType, typename DistType>
 struct QueryContext{
-    const UndirectedGraph<size_t> subGraph;
-    const GraphVertex<size_t, DistType> queryHint;
+    const UndirectedGraph<IndexType> subGraph;
+    const GraphVertex<IndexType, DistType> queryHint;
     size_t querySize;
     size_t querySearchDepth;
     //DefaultQueryFunctor<DistType, DistanceFunctor> defaultQueryFunctor;
-    const size_t blockNumber{size_t(-1)};
+    const GraphFragment_t graphFragment{GraphFragment_t(-1)};
+    const BlockNumber_t blockNumber{BlockNumber_t(-1)};
+    
     const size_t blockSize{size_t(-1)};
     //std::unordered_map<BlockNumberType, Graph<IndexType, DistType>> neighborCandidates;
     //SpaceMetric<DataView, DataView, DistType> distanceFunctor;
 
     QueryContext() = default;
 
-    QueryContext(const Graph<size_t, DistType>& subGraph,
-                 const GraphVertex<size_t, DistType>&& queryHint,
-                 //DefaultQueryFunctor<DistType, DistanceFunctor> defaultQueryFunctor,
+    QueryContext(const Graph<IndexType, DistType>& subGraph,
+                 const GraphVertex<IndexType, DistType>&& queryHint,
                  const int querySearchDepth,
+                 const size_t graphFragment,
                  const size_t blockNumber,
                  const size_t blockSize):
                     subGraph(subGraph),
                     queryHint(std::move(queryHint)),
                     querySearchDepth(querySearchDepth),
-                    //defaultQueryFunctor(defaultQueryFunctor),
+                    graphFragment(graphFragment),
                     blockNumber(blockNumber),
                     blockSize(blockSize){
             querySize = queryHint.size();
@@ -240,7 +244,7 @@ struct QueryContext{
     
     //Figure this out later
     template<typename QueryFunctor>
-    GraphVertex<size_t, DistType> Query(GraphVertex<size_t, DistType>& initVertex,
+    GraphVertex<IndexType, DistType> Query(GraphVertex<IndexType, DistType>& initVertex,
                                                   const size_t queryIndex, //Can realistically be any parameter passed through to the Functor
                                                   QueryFunctor& queryFunctor,
                                                   std::optional<NodeTracker> previousVisits = std::nullopt) const {
@@ -282,7 +286,7 @@ struct QueryContext{
                     //numCompared += 1;
                     continue;
                 }
-                const std::vector<size_t>& currentNeighbor = subGraph[neighbor.first];
+                const std::vector<IndexType>& currentNeighbor = subGraph[neighbor.first];
                 for (const auto& joinTarget: currentNeighbor){
                     if (nodesVisited[joinTarget] == true) continue;
                     nodesVisited[joinTarget] = true;
@@ -302,7 +306,7 @@ struct QueryContext{
             computeBatch:
             std::vector<DistType> distances = queryFunctor(queryIndex, joinQueue);
             for (size_t i = 0; i<distances.size(); i+=1){
-                breakVar = initVertex.PushNeighbor({joinQueue[i], distances[i]}) || breakVar;
+                breakVar = initVertex.PushNeighbor({static_cast<IndexType>(joinQueue[i]), distances[i]}) || breakVar;
             }
             joinQueue.resize(0);
             breakVar = breakVar || numCompared != querySearchDepth;
@@ -311,7 +315,7 @@ struct QueryContext{
     }
 
     template<typename QueryFunctor>
-    void ForwardQueryInit(GraphVertex<size_t, DistType>& initVertex,
+    void ForwardQueryInit(GraphVertex<IndexType, DistType>& initVertex,
                             const size_t queryIndex, //Can realistically be any parameter passed through to the Functor
                             QueryFunctor& queryFunctor,
                             NodeTracker& nodesJoined) const{
@@ -335,7 +339,7 @@ struct QueryContext{
                     while(nodesJoined[indexOffset]){
                         indexOffset += 1;
                     }
-                    initVertex.push_back({indexOffset, std::numeric_limits<DistType>::max()});
+                    initVertex.push_back({static_cast<IndexType>(indexOffset), std::numeric_limits<DistType>::max()});
                     nodesJoined[indexOffset] = true;
                     
                 }
@@ -360,7 +364,7 @@ struct QueryContext{
     }
 
     template<typename QueryFunctor>
-    void ReverseQueryInit(GraphVertex<size_t, DistType>& initVertex,
+    void ReverseQueryInit(GraphVertex<IndexType, DistType>& initVertex,
                             const size_t queryIndex, //Can realistically be any parameter passed through to the Functor
                             QueryFunctor& queryFunctor,
                             NodeTracker& previousVisits) const{
@@ -380,17 +384,17 @@ struct QueryContext{
 
         std::vector<DistType> initDistances = queryFunctor(queryIndex, initComputations);
         for (size_t i = 0; i<initDistances.size(); i+=1){
-            initVertex.push_back({initComputations[i], initDistances[i]});
+            initVertex.push_back({static_cast<IndexType>(initComputations[i]), initDistances[i]});
         }
         initVertex.JoinPrep();
     }
 
     template<typename QueryFunctor>
-    std::tuple<size_t, size_t, DistType> NearestNodes(const QueryContext& rhs, QueryFunctor& distanceFunctor) const{
+    std::tuple<DataIndex_t, DataIndex_t, DistType> NearestNodes(const QueryContext& rhs, QueryFunctor& distanceFunctor) const{
 
         distanceFunctor.SetBlocks(this->blockNumber, rhs.blockNumber);
 
-        std::pair<size_t, size_t> bestPair;
+        std::pair<DataIndex_t, DataIndex_t> bestPair;
         DistType bestDistance(std::numeric_limits<DistType>::max());
         //NodeTracker nodesVisitedA(subGraphA.dataBlock.size());
         //NodeTracker nodesVisitedB(subGraphB.dataBlock.size());
@@ -402,7 +406,7 @@ struct QueryContext{
                 DistType distance = distanceFunctor(starterA.first, starterB.first);
                 if (distance < bestDistance){
                     bestDistance = distance;
-                    bestPair = std::pair<size_t, size_t>(starterA.first, starterB.first);
+                    bestPair = std::pair<DataIndex_t, DataIndex_t>(starterA.first, starterB.first);
                 }
             }
         }
@@ -410,7 +414,7 @@ struct QueryContext{
         bool breakVar = false;
         while (!breakVar){
             breakVar = true;
-            std::pair<size_t, size_t> tmpPair = bestPair;
+            std::pair<DataIndex_t, DataIndex_t> tmpPair = bestPair;
             for (const auto& neighborA: this->subGraph[bestPair.first]){
                 //if (!nodesVisitedA[neighborA.first]){
                 DistType distance = distanceFunctor(neighborA, tmpPair.second);

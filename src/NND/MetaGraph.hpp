@@ -51,7 +51,6 @@ AlignedArray<COMExtent> CalculateCOM(const DataBlock<DataType>& dataBlock){
         }
     }
 
-    //divide the COM by the weight to put it in the center of the cluster
     for(auto& extent: retPoint) extent /= dataBlock.size();
 
     return retPoint;
@@ -66,16 +65,14 @@ void EuclideanCOM(const DataBlock<DataType>& dataBlock, AlignedSpan<COMExtent> w
         }
     }
 
-    //divide the COM by the weight to put it in the center of the cluster
     for(auto& extent: writeLocation) extent /= dataBlock.size();
 
     //return retPoint;
 }
 
 template<typename FloatType, typename Metric>
-void BruteForceGraph(Graph<size_t, FloatType>& uninitGraph, size_t numNeighbors, const DataBlock<FloatType>& dataVector, Metric distanceFunctor){
-    
-    // I can make this branchless. Check to see if /O2 or /O3 can make this branchless (I really doubt it)
+void BruteForceGraph(Graph<BlockNumber_t, FloatType>& uninitGraph, size_t numNeighbors, const DataBlock<FloatType>& dataVector, Metric distanceFunctor){
+
     for (size_t i = 0; i < uninitGraph.size(); i += 1){
         for (size_t j = i+1; j < uninitGraph.size(); j += 1){
             FloatType distance = distanceFunctor(dataVector[i], dataVector[j]);
@@ -106,8 +103,8 @@ struct MetaGraph{
     //std::vector<MetaPoint<COMExtent>> points;
     std::vector<size_t> weights;
     DataBlock<COMExtent> points;
-    Graph<size_t, COMExtent> verticies;
-    QueryContext<COMExtent> queryContext;
+    Graph<BlockNumber_t, COMExtent> verticies;
+    QueryContext<BlockNumber_t, COMExtent> queryContext;
     /*
     template<typename DataType, typename Metric, typename COMFunctor>
     MetaGraph(const std::vector<DataBlock<DataType>>& dataBlocks, const size_t numNeighbors, Metric metricFunctor, COMFunctor COMCalculator):
@@ -131,6 +128,10 @@ struct MetaGraph{
     size_t size() const{
         return points.numEntries;
     }
+
+    size_t FragmentNumber() const{
+        return points.blockNumber;
+    }
     /*
     DataComDistance(const ComView& centerOfMass, const std::vector<DataBlock<DataEntry>>& blocks): centerOfMass(centerOfMass), blocks(blocks), functor(){};
 
@@ -143,7 +144,7 @@ MetaGraph<COMExtent> BuildMetaGraphFragment(const std::vector<DataBlock<DataType
     std::vector<size_t> weights(0);
     weights.reserve(dataBlocks.size());
     DataBlock<COMExtent> points(dataBlocks.size(), dataBlocks[0].entryLength, fragmentNumber);
-    Graph<size_t, COMExtent> verticies(dataBlocks.size(), params.COMNeighbors);
+    Graph<BlockNumber_t, COMExtent> verticies(dataBlocks.size(), params.COMNeighbors);
     //SinglePointFunctor<COMExtent> functor(DataComDistance<DataEntry, COMExtent, MetricPair>(*this, dataBlocks, metricFunctor));
     weights.reserve(dataBlocks.size());
     for (size_t i = 0; const auto& dataBlock: dataBlocks){
@@ -163,12 +164,13 @@ MetaGraph<COMExtent> BuildMetaGraphFragment(const std::vector<DataBlock<DataType
     auto neighborFunctor = [&](size_t, size_t pointIndex){
         return metricSet.comToCom({centerOfMass.GetAlignedPtr(0), centerOfMass.size()}, points[pointIndex]);
     };
-    GraphVertex<size_t, COMExtent> queryHint = QueryCOMNeighbors<COMExtent>(0, verticies, params.COMNeighbors, neighborFunctor);
+    GraphVertex<BlockNumber_t, COMExtent> queryHint = QueryCOMNeighbors<COMExtent, DataType, BlockNumber_t>(0, verticies, params.COMNeighbors, neighborFunctor);
 
-    QueryContext<COMExtent> queryContext(verticies,
+    QueryContext<BlockNumber_t,COMExtent> queryContext(verticies,
                                          std::move(queryHint),
                                          params.queryDepth,
                                          fragmentNumber,
+                                         BlockNumber_t{std::numeric_limits<BlockNumber_t>::max()},
                                          points.size());
 
     return MetaGraph<COMExtent>{weights, std::move(points), verticies, std::move(queryContext)};
@@ -237,6 +239,7 @@ struct DataMapper{
 
     const DataSet<DataEntry>& dataSource;
     size_t blockCounter;
+    size_t graphFragment;
     std::vector<DataStructure> dataBlocks;
     std::unordered_map<size_t, size_t> splitToBlockNum;
     std::vector<std::vector<size_t>> blockIndexToSource;
@@ -244,9 +247,10 @@ struct DataMapper{
     std::vector<size_t> sourceToSplitIndex;
     BoundConstructor construct;
 
-    DataMapper(const DataSet<DataEntry>& source, BoundConstructor constructor, const size_t startIndex = 0):
+    DataMapper(const DataSet<DataEntry>& source, BoundConstructor constructor, const size_t fragmentNumber = 0, const size_t startIndex = 0):
         dataSource(source),
         blockCounter(startIndex),
+        graphFragment(fragmentNumber),
         sourceToBlockIndex(dataSource.numberOfSamples),
         sourceToSplitIndex(dataSource.numberOfSamples),
         construct(constructor) {};
@@ -259,7 +263,7 @@ struct DataMapper{
         blockIndexToSource.push_back(std::move(indeciesInBlock));
         for (size_t i = 0; i<indicies.size(); i += 1){
             size_t index = indicies[i];
-            sourceToBlockIndex[index] = BlockIndecies{blockCounter, i};
+            sourceToBlockIndex[index] = BlockIndecies{graphFragment, blockCounter, i};
             sourceToSplitIndex[index] = splittingIndex;
         }
         dataBlocks.push_back(construct(dataSource, indicies, blockCounter++));
@@ -271,15 +275,17 @@ struct DataMapper<DataEntry, void, void>{
 
     const DataSet<DataEntry>& dataSource;
     size_t blockCounter;
+    size_t graphFragment;
     std::unordered_map<size_t, size_t> splitToBlockNum;
     std::vector<std::vector<size_t>> blockIndexToSource;
     std::vector<BlockIndecies> sourceToBlockIndex;
     std::vector<size_t> sourceToSplitIndex;
     
 
-    DataMapper(const DataSet<DataEntry>& source, const size_t startIndex = 0):
+    DataMapper(const DataSet<DataEntry>& source, const size_t fragmentNumber = 0, const size_t startIndex = 0):
         dataSource(source),
         blockCounter(startIndex),
+        graphFragment(fragmentNumber),
         sourceToBlockIndex(dataSource.numberOfSamples),
         sourceToSplitIndex(dataSource.numberOfSamples) {};
 
@@ -291,7 +297,7 @@ struct DataMapper<DataEntry, void, void>{
         blockIndexToSource.push_back(std::move(indeciesInBlock));
         for (size_t i = 0; i<indicies.size(); i += 1){
             size_t index = indicies[i];
-            sourceToBlockIndex[index] = BlockIndecies{blockCounter, i};
+            sourceToBlockIndex[index] = BlockIndecies{graphFragment, blockCounter, i};
             sourceToSplitIndex[index] = splittingIndex;
             //blockIndexToSource[BlockIndecies{blockCounter, i}] = index;
             

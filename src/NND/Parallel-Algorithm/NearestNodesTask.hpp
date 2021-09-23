@@ -26,11 +26,11 @@ namespace nnd {
 template<typename DistType, typename COMExtent>
 struct NearestNodesGenerator{
 
-    using TaskResult = std::pair<ComparisonKey<size_t>, std::tuple<size_t, size_t, DistType>>;
+    using TaskResult = std::pair<ComparisonKey<BlockNumber_t>, std::tuple<DataIndex_t, DataIndex_t, DistType>>;
 
     using BlockPtrPair = std::pair<BlockUpdateContext<DistType>*, BlockUpdateContext<DistType>*>;
     
-    using TaskArgs = ComparisonKey<size_t>;
+    using TaskArgs = ComparisonKey<BlockNumber_t>;
     
     NearestNodesGenerator(std::span<BlockUpdateContext<DistType>> blockSpan,
                           std::span<std::atomic<bool>> blockStates)://,
@@ -46,14 +46,14 @@ struct NearestNodesGenerator{
     size_t nullCounter;
     */
     bool operator()(ThreadPool<ThreadFunctors<DistType, COMExtent>>& pool,
-                    AsyncQueue<std::pair<ComparisonKey<size_t>, std::tuple<size_t, size_t, DistType>>>& resultsQueue,
-                    std::vector<std::optional<ComparisonKey<size_t>>>& distancesToCompute){
+                    AsyncQueue<std::pair<ComparisonKey<BlockNumber_t>, std::tuple<DataIndex_t, DataIndex_t, DistType>>>& resultsQueue,
+                    std::vector<std::optional<ComparisonKey<BlockNumber_t>>>& distancesToCompute){
         auto nnDistanceTaskGenerator = [&](BlockPtrPair blockPtrs)->auto{
 
             auto task = [&, ptrs = blockPtrs](ThreadFunctors<DistType, COMExtent>& functors) mutable->void{
-                const QueryContext<DistType>& lhsQueryContext = ptrs.first->queryContext;
-                const QueryContext<DistType>& rhsQueryContext = ptrs.second->queryContext;
-                std::tuple<size_t, size_t, DistType> nnDistResult = lhsQueryContext.NearestNodes(rhsQueryContext,
+                const QueryContext<DataIndex_t, DistType>& lhsQueryContext = ptrs.first->queryContext;
+                const QueryContext<DataIndex_t, DistType>& rhsQueryContext = ptrs.second->queryContext;
+                std::tuple<DataIndex_t, DataIndex_t, DistType> nnDistResult = lhsQueryContext.NearestNodes(rhsQueryContext,
                                                                                                 functors.dispatchFunctor);
                 /*
                 nnDistanceResults[resultIndex].second = {{blockNumbers.first, std::get<0>(nnDistResult)},
@@ -123,8 +123,8 @@ struct InitJoinConsumer;
 template<typename DistType>
 struct NearestNodesConsumer{
 
-    using TaskResult =std::pair<ComparisonKey<size_t>, std::tuple<size_t, size_t, DistType>>;
-    using StitchHint = std::pair<ComparisonKey<size_t>, std::tuple<size_t, size_t, DistType>>;
+    using TaskResult = std::pair<ComparisonKey<BlockNumber_t>, std::tuple<DataIndex_t, DataIndex_t, DistType>>;
+    using StitchHint = std::pair<ComparisonKey<BlockNumber_t>, std::tuple<DataIndex_t, DataIndex_t, DistType>>;
 
     NearestNodesConsumer() = default;
 
@@ -135,13 +135,13 @@ struct NearestNodesConsumer{
                             blocksDone(0),
                             joinsPerBlock(std::make_unique<size_t[]>(numBlocks)) {};
 
-    bool operator()(std::pair<ComparisonKey<size_t>, std::tuple<size_t, size_t, DistType>> result){
+    bool operator()(std::pair<ComparisonKey<BlockNumber_t>, std::tuple<DataIndex_t, DataIndex_t, DistType>> result){
         joinHints[result.first] = result.second;
 
         nnGraph[result.first.first].push_back({result.first.second, std::get<2>(result.second)});
         if (distancesPerBlock[result.first.first] == nnGraph[result.first.first].size()){
-            GraphVertex<size_t, DistType>& vertex = nnGraph[result.first.first];
-            std::partial_sort(vertex.begin(), vertex.begin()+nnNumNeighbors, vertex.end(), NeighborDistanceComparison<size_t, DistType>);
+            GraphVertex<BlockNumber_t, DistType>& vertex = nnGraph[result.first.first];
+            std::partial_sort(vertex.begin(), vertex.begin()+nnNumNeighbors, vertex.end(), NeighborDistanceComparison<BlockNumber_t, DistType>);
             vertex.resize(nnNumNeighbors);
 
             for(const auto& neighbor: vertex){
@@ -158,7 +158,7 @@ struct NearestNodesConsumer{
 
         nnGraph[result.first.second].push_back({result.first.first, std::get<2>(result.second)});
         if (distancesPerBlock[result.first.second] == nnGraph[result.first.second].size()){
-            GraphVertex<size_t, DistType>& vertex = nnGraph[result.first.second];
+            GraphVertex<BlockNumber_t, DistType>& vertex = nnGraph[result.first.second];
             std::partial_sort(vertex.begin(), vertex.begin()+nnNumNeighbors, vertex.end(), NeighborDistanceComparison<size_t, DistType>);
             vertex.resize(nnNumNeighbors);
 
@@ -198,12 +198,12 @@ struct NearestNodesConsumer{
     
     std::unique_ptr<size_t[]> distancesPerBlock;
     const size_t nnNumNeighbors;
-    Graph<size_t, DistType> nnGraph;
+    Graph<BlockNumber_t, DistType> nnGraph;
     
     size_t blocksDone;
 
-    std::unordered_map<ComparisonKey<size_t>, std::tuple<size_t, size_t, DistType>> joinHints;
-    std::unordered_set<ComparisonKey<size_t>> initJoinsQueued;
+    std::unordered_map<ComparisonKey<BlockNumber_t>, std::tuple<DataIndex_t, DataIndex_t, DistType>> joinHints;
+    std::unordered_set<ComparisonKey<BlockNumber_t>> initJoinsQueued;
     
     std::vector<std::optional<StitchHint>> initJoinsToDo;
 

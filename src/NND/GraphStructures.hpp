@@ -242,13 +242,13 @@ unsigned int ConsumeVertex(GraphVertex<BlockIndecies, DistType>& consumer, Graph
 }
 
 template<TriviallyCopyable OtherIndex, typename OtherDist, typename ConsumerDist>
-unsigned int ConsumeVertex(GraphVertex<BlockIndecies, ConsumerDist>& consumer, GraphVertex<OtherIndex, OtherDist>& consumee, size_t consumeeBlockNum){
+unsigned int ConsumeVertex(GraphVertex<BlockIndecies, ConsumerDist>& consumer, GraphVertex<OtherIndex, OtherDist>& consumee, size_t consumeeFragment, size_t consumeeBlock){
     //std::sort(consumee.begin(), consumee.end(), NeighborDistanceComparison<OtherIndex, OtherDist>);
     consumee.UnPrep();
     unsigned int neighborsAdded(0);
     for (auto& pair: consumee){
         if (pair.second >= consumer.PushThreshold()) return neighborsAdded;
-        consumer.PushNeighbor({{consumeeBlockNum, pair.first}, static_cast<ConsumerDist>(pair.second)});
+        consumer.PushNeighbor({{consumeeFragment, consumeeBlock, pair.first}, static_cast<ConsumerDist>(pair.second)});
         neighborsAdded++;
     }
     return neighborsAdded;
@@ -445,13 +445,13 @@ struct Graph{
     }
 };
 
-template<typename BlockNumberType, typename DataIndexType, typename DistType>
-Graph<BlockIndecies, DistType> ToBlockIndecies(const Graph<DataIndexType, DistType>& blockGraph, const BlockNumberType blockNum){
+template<IsNot<BlockIndecies> DataIndexType, typename DistType>
+Graph<BlockIndecies, DistType> ToBlockIndecies(const Graph<DataIndexType, DistType>& blockGraph, const size_t fragmentNum, const size_t blockNum){
     Graph<BlockIndecies, DistType> newGraph(blockGraph.size(), blockGraph[0].size());
     for (size_t j = 0; const auto& vertex: blockGraph){
         newGraph[j].resize(blockGraph[j].size());
         for(size_t k = 0; const auto& neighbor: vertex){
-            newGraph[j][k] = {{blockNum, neighbor.first}, neighbor.second};
+            newGraph[j][k] = {{fragmentNum, blockNum, neighbor.first}, neighbor.second};
             k++;
         }   
         j++;
@@ -459,11 +459,11 @@ Graph<BlockIndecies, DistType> ToBlockIndecies(const Graph<DataIndexType, DistTy
     return newGraph;
 }
 
-template<typename DistType>
-GraphVertex<BlockIndecies, DistType> ToBlockIndecies(const GraphVertex<size_t, DistType>& vertexToConvert, const size_t blockNum){
+template<IsNot<BlockIndecies> DataIndexType, typename DistType>
+GraphVertex<BlockIndecies, DistType> ToBlockIndecies(const GraphVertex<DataIndexType, DistType>& vertexToConvert, const size_t fragmentNum, const size_t blockNum){
     GraphVertex<BlockIndecies, DistType> newVertex(vertexToConvert.size());
     for(const auto& neighbor: vertexToConvert){
-        newVertex.push_back({{blockNum, neighbor.first}, neighbor.second});
+        newVertex.push_back({{fragmentNum, blockNum, neighbor.first}, neighbor.second});
     }   
     return newVertex;
 }
@@ -574,7 +574,7 @@ struct UndirectedGraph{
             vertex.neighbors.reserve(vertex.size()*2);
             for (const auto& neighbor: vertex){
                 if(std::find_if(directedGraph[neighbor.first].begin(), directedGraph[neighbor.first].end(), NeighborSearchFunctor<IndexType, DistType>(i)) == directedGraph[neighbor.first].end()) 
-                    directedGraph[neighbor.first].push_back({i, neighbor.second});
+                    directedGraph[neighbor.first].push_back({static_cast<IndexType>(i), neighbor.second});
             }
             i++;
         }
@@ -661,27 +661,27 @@ struct UndirectedGraph{
 
 template<typename DistType>
 //numNeighbors, blockSize, distanceFunctor
-Graph<size_t, DistType> BruteForceBlock(const size_t numNeighbors, const size_t blockSize, DispatchFunctor<DistType>& distanceFunctor){
-    Graph<size_t, DistType> retGraph(blockSize, numNeighbors);
+Graph<DataIndex_t, DistType> BruteForceBlock(const size_t numNeighbors, const size_t blockSize, DispatchFunctor<DistType>& distanceFunctor){
+    Graph<DataIndex_t, DistType> retGraph(blockSize, numNeighbors);
     // I can make this branchless. Check to see if /O2 or /O3 can make this branchless (I really doubt it)
     for (size_t i = 0; i < blockSize; i += 1){
         for (size_t j = i+1; j < blockSize; j += 1){
             DistType distance = distanceFunctor(i, j);
             if (retGraph[i].size() < numNeighbors){
-                retGraph[i].push_back(std::pair<size_t, DistType>(static_cast<size_t>(j), distance));
+                retGraph[i].push_back(std::pair<DataIndex_t, DistType>(static_cast<size_t>(j), distance));
                 if (retGraph[i].size() == numNeighbors){
                     retGraph[i].JoinPrep();
                 }
             } else if (distance < retGraph[i].PushThreshold()){
-                retGraph[i].PushNeighbor(std::pair<size_t, DistType>(static_cast<size_t>(j), distance));
+                retGraph[i].PushNeighbor(std::pair<DataIndex_t, DistType>(static_cast<size_t>(j), distance));
             }
             if (retGraph[j].size() < numNeighbors){
-                retGraph[j].push_back(std::pair<size_t, DistType>(static_cast<size_t>(i), distance));
+                retGraph[j].push_back(std::pair<DataIndex_t, DistType>(static_cast<size_t>(i), distance));
                 if (retGraph[j].size() == numNeighbors){
                     retGraph[j].JoinPrep();
                 }
             } else if (distance < retGraph[j].PushThreshold()){
-                retGraph[j].PushNeighbor(std::pair<size_t, DistType>(static_cast<size_t>(i), distance));
+                retGraph[j].PushNeighbor(std::pair<DataIndex_t, DistType>(static_cast<size_t>(i), distance));
             }
         }
     }
@@ -694,7 +694,7 @@ struct CachingFunctor{
 
     DispatchFunctor<DistType> metricFunctor;
     //DistanceCache<DistType> cache;
-    Graph<size_t, DistType> reverseGraph;
+    Graph<DataIndex_t, DistType> reverseGraph;
     std::vector<NodeTracker> nodesJoined;
     //std::vector<DistType> minDists;
     size_t numNeighbors;
@@ -720,14 +720,14 @@ struct CachingFunctor{
         int diff = numNeighbors - reverseGraph[targetIndex].size();
         switch(diff){
             case 0:
-                reverseGraph[targetIndex].PushNeighbor({queryIndex, distance});
+                reverseGraph[targetIndex].PushNeighbor({static_cast<DataIndex_t>(queryIndex), distance});
                 break;
             case 1:
-                reverseGraph[targetIndex].push_back({queryIndex, distance});
+                reverseGraph[targetIndex].push_back({static_cast<DataIndex_t>(queryIndex), distance});
                 reverseGraph[targetIndex].JoinPrep();
                 break;
             default:
-                reverseGraph[targetIndex].push_back({queryIndex, distance});
+                reverseGraph[targetIndex].push_back({static_cast<DataIndex_t>(queryIndex), distance});
                 break;
         }
         /*
@@ -746,8 +746,8 @@ struct CachingFunctor{
     };
 
     std::vector<DistType> operator()(const size_t queryIndex, const std::vector<size_t>& targetIndecies){
-        for(const size_t& index: targetIndecies) cachedGraphSize = std::max(index, cachedGraphSize);
-        for(const size_t& index: targetIndecies) nodesJoined[index][queryIndex] = true;
+        for(const auto& index: targetIndecies) cachedGraphSize = std::max(index, cachedGraphSize);
+        for(const auto& index: targetIndecies) nodesJoined[index][queryIndex] = true;
         std::vector<DistType> distances = this->metricFunctor(queryIndex, targetIndecies);
 
         
@@ -757,14 +757,14 @@ struct CachingFunctor{
             int diff = numNeighbors - reverseGraph[targetIndecies[i]].size();
             switch(diff){
                 case 0:
-                    reverseGraph[targetIndecies[i]].PushNeighbor({queryIndex, distances[i]});
+                    reverseGraph[targetIndecies[i]].PushNeighbor({static_cast<DataIndex_t>(queryIndex), distances[i]});
                     break;
                 case 1:
-                    reverseGraph[targetIndecies[i]].push_back({queryIndex, distances[i]});
+                    reverseGraph[targetIndecies[i]].push_back({static_cast<DataIndex_t>(queryIndex), distances[i]});
                     reverseGraph[targetIndecies[i]].JoinPrep();
                     break;
                 default:
-                    reverseGraph[targetIndecies[i]].push_back({queryIndex, distances[i]});
+                    reverseGraph[targetIndecies[i]].push_back({static_cast<DataIndex_t>(queryIndex), distances[i]});
             }
             //nodesJoined[targetIndecies[i]][queryIndex] = true;
         }
@@ -861,11 +861,11 @@ void VerifyGraphState(const Graph<size_t, FloatType>& currentGraph){
 }
 
 template<typename FloatType>
-void VerifySubGraphState(const Graph<BlockIndecies, FloatType>& currentGraph, size_t blockNum){
+void VerifySubGraphState(const Graph<BlockIndecies, FloatType>& currentGraph, size_t fragmentNum, size_t blockNum){
     for (size_t i = 0; i<currentGraph.size(); i+=1){
         const GraphVertex<BlockIndecies, FloatType>& vertex = currentGraph[i];
         for (const auto& neighbor : vertex.neighbors){
-            if (neighbor.first == BlockIndecies{blockNum, i}) throw("Vertex is own neighbor");
+            if (neighbor.first == BlockIndecies{fragmentNum, blockNum, i}) throw("Vertex is own neighbor");
             for (const auto& neighbor1 : vertex.neighbors){
                 if (&neighbor == &neighbor1) continue;
                 if (neighbor.first == neighbor1.first) throw("Duplicate neighbor in heap");

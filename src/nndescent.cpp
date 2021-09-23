@@ -199,8 +199,8 @@ int main(int argc, char *argv[]){
     size_t searchQueryDepth = 6;
     size_t maxNewSearches = 10;
 
-    //SplittingHeurisitcs splitParams= {2500, 1500, 3500, 0.0f};
-    SplittingHeurisitcs splitParams= {205, 123, 287, 0.0f};
+    SplittingHeurisitcs splitParams= {2500, 1500, 3500, 0.0f};
+    //SplittingHeurisitcs splitParams= {205, 123, 287, 0.0f};
 
     //SplittingHeurisitcs splitParams= {20, 12, 28, 0.0f};
 
@@ -211,6 +211,10 @@ int main(int argc, char *argv[]){
     //searchDepths <= numBlockGraphsNeighbors
     // something about splitParams
     //COMNeighbors<NumBlocks
+
+    // data types affect split params now
+    // max block size must be < <DataIndex_t>::max()
+    // max fragment size must be <  dataSet size (min num fragments * min block size)
 
     bool parallelIndexBuild = true;
     bool parallelSearch = true;
@@ -313,7 +317,7 @@ int main(int argc, char *argv[]){
     static const std::endian dataEndianness = std::endian::native;
     //static const std::endian dataEndianness = std::endian::big;
     
-    
+    /*
     std::string trainDataFilePath("./TestData/MNIST-Fashion-Train.bin");
     DataSet<AlignedArray<float>> mnistFashionTrain(trainDataFilePath, 28*28, 60'000, &ExtractNumericArray<AlignedArray<float>,dataEndianness>);
 
@@ -322,9 +326,9 @@ int main(int argc, char *argv[]){
     std::string testNeighborsFilePath("./TestData/MNIST-Fashion-Neighbors.bin");
     DataSet<AlignedArray<float>> mnistFashionTest(testDataFilePath, 28*28, 10'000, &ExtractNumericArray<AlignedArray<float>,dataEndianness>);
     DataSet<AlignedArray<uint32_t>> mnistFashionTestNeighbors(testNeighborsFilePath, 100, 10'000, &ExtractNumericArray<AlignedArray<uint32_t>,dataEndianness>);
-    
+    */
 
-    /*    
+        
     std::string trainDataFilePath("./TestData/SIFT-Train.bin");
     DataSet<AlignedArray<float>> mnistFashionTrain(trainDataFilePath, 128, 1'000'000, &ExtractNumericArray<AlignedArray<float>,dataEndianness>);
 
@@ -333,7 +337,7 @@ int main(int argc, char *argv[]){
     std::string testNeighborsFilePath("./TestData/SIFT-Neighbors.bin");
     DataSet<AlignedArray<float>> mnistFashionTest(testDataFilePath, 128, 10'000, &ExtractNumericArray<AlignedArray<float>,dataEndianness>);
     DataSet<AlignedArray<uint32_t>> mnistFashionTestNeighbors(testNeighborsFilePath, 100, 10'000, &ExtractNumericArray<AlignedArray<uint32_t>,dataEndianness>);
-    */
+    
 
     /*
     std::string trainDataFilePath("./TestData/NYTimes-Angular-Train.bin");
@@ -376,12 +380,13 @@ int main(int argc, char *argv[]){
     MetricFunctor<float, EuclideanMetricPair> euclideanFunctor(dataBlocks);
     DispatchFunctor<float> testDispatch(euclideanFunctor);
 
+    /*
     std::vector<size_t> sizes;
     sizes.reserve(dataBlocks.size());
     for(const auto& block: dataBlocks){
         sizes.push_back(block.size());
     }
-
+    */
     
     //MetricFunctor<AlignedArray<float>, EuclideanMetricPair> euclideanFunctor(dataBlocks);
     
@@ -399,11 +404,13 @@ int main(int argc, char *argv[]){
     if (parallelIndexBuild){
         ThreadPool<ThreadFunctors<float, float>> pool(numThreads, euclideanFunctor, comFunctor, splitParams.maxTreeSize, parameters.indexParams.blockGraphNeighbors);
         pool.StartThreads();
-        blockContextArr = BuildGraph(std::move(sizes), metaGraph, parameters, pool);
+        //blockContextArr = BuildGraph(std::move(sizes), metaGraph, parameters, pool);
+        blockContextArr = BuildGraph(metaGraph, parameters, pool);
         blockUpdateContexts = {blockContextArr.get(), dataBlocks.size()};
         pool.StopThreads();
     } else {
-        blockContextArr = BuildGraph<float, float, float>(dataBlocks, metaGraph, testDispatch, std::move(sizes), parameters, std::execution::seq);
+        //blockContextArr = BuildGraph<float, float, float>(dataBlocks, metaGraph, testDispatch, std::move(sizes), parameters, std::execution::seq);
+        blockContextArr = BuildGraph<float, float, float>(dataBlocks, metaGraph, testDispatch, parameters, std::execution::seq);
         blockUpdateContexts = {blockContextArr.get(), dataBlocks.size()};
     }
     //

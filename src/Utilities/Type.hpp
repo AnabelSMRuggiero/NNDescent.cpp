@@ -303,20 +303,8 @@ using SpaceMetric = RetType (*)(const DataTypeA&, const DataTypeB&);
 template<typename DataTypeA, typename DataTypeB, typename RetType=std::vector<double>>
 using BatchMetric = RetType (*)(const std::vector<DataTypeA>&, const DataTypeB&);
 
-struct BlockIndecies{
-    size_t graphFragment;
-    // The block a data point exists in
-    size_t blockNumber;
-    // The index within that block
-    size_t dataIndex;
 
-};
 
-struct MetaGraphIndex{
-    uint32_t graphFragment;
-    uint16_t blockNumber;
-    uint16_t dataIndex;
-};
 
 template<std::ranges::range TopRange, std::ranges::range BotRange>
 struct ZipSentinel{
