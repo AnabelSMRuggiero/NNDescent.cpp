@@ -30,17 +30,17 @@ https://github.com/AnabelSMRuggiero/NNDescent.cpp
 
 namespace nnd{
 
-template<typename DataEntry>
-std::pair<IndexMaps<size_t>, std::vector<DataBlock<typename DataEntry::value_type>>> PartitionData(const RandomProjectionForest& treeToMap, const DataSet<DataEntry>& sourceData, const size_t startIndex=0){
+template<typename DataType>
+std::pair<IndexMaps<size_t>, std::vector<DataBlock<DataType>>> PartitionData(const RandomProjectionForest& treeToMap, const DataSet<DataType>& sourceData, const size_t startIndex=0){
     //There might be a more elegant way to do this with templates. I tried.
 
-    using DataType = typename DataEntry::value_type;
+    //using DataType = typename DataEntry::value_type;
 
-    auto boundContructor = [entryLength = sourceData.sampleLength](const DataSet<DataEntry>& dataSource, std::span<const size_t> dataPoints, size_t blockNumber){ 
+    auto boundContructor = [entryLength = sourceData.SampleLength()](const DataSet<DataType>& dataSource, std::span<const size_t> dataPoints, size_t blockNumber){ 
         return DataBlock<DataType>(dataSource, dataPoints, entryLength, blockNumber);
     };
     
-    DataMapper<DataEntry, DataBlock<DataType>, decltype(boundContructor)> dataMapper(sourceData, boundContructor, startIndex);
+    DataMapper<DataType, DataBlock<DataType>, decltype(boundContructor)> dataMapper(sourceData, boundContructor, startIndex);
     CrawlTerminalLeaves(treeToMap, dataMapper);
     
     std::vector<DataBlock<DataType>> retBlocks = std::move(dataMapper.dataBlocks);
@@ -56,8 +56,8 @@ std::pair<IndexMaps<size_t>, std::vector<DataBlock<typename DataEntry::value_typ
     return {retMaps, std::move(retBlocks)};
 }
 
-template<typename DataEntry, typename Pool>
-std::pair<IndexMaps<size_t>, std::vector<DataBlock<typename DataEntry::value_type>>> PartitionData(const RandomProjectionForest& treeToMap, const DataSet<DataEntry>& sourceData, Pool& threadPool,  const size_t startIndex=0){
+template<typename DataType, typename Pool>
+std::pair<IndexMaps<size_t>, std::vector<DataBlock<DataType>>> PartitionData(const RandomProjectionForest& treeToMap, const DataSet<DataType>& sourceData, Pool& threadPool,  const size_t startIndex=0){
     //There might be a more elegant way to do this with templates. I tried.
 
     /*
@@ -66,11 +66,11 @@ std::pair<IndexMaps<size_t>, std::vector<DataBlock<typename DataEntry::value_typ
     };
     */
     
-    using DataType = typename DataEntry::value_type;
+    //using DataType = typename DataEntry::value_type;
 
     threadPool.StartThreads();
 
-    DataMapper<DataEntry, void, void> dataMapper(sourceData, startIndex);
+    DataMapper<DataType, void, void> dataMapper(sourceData, startIndex);
     
     auto mapTask = [&]()mutable{
         CrawlTerminalLeaves(treeToMap, dataMapper);    
@@ -84,7 +84,7 @@ std::pair<IndexMaps<size_t>, std::vector<DataBlock<typename DataEntry::value_typ
         blockPromise.push_back(std::make_unique<std::promise<DataBlock<DataType>>>());
 
         auto blockBuilder = [&, &promise = *(blockPromise.back()), indecies, i](){
-            promise.set_value(DataBlock<DataType>(sourceData, indecies, sourceData.sampleLength, i));
+            promise.set_value(DataBlock<DataType>(sourceData, indecies, sourceData.SampleLength(), i));
         };
 
         threadPool.DelegateTask(blockBuilder);

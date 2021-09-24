@@ -42,21 +42,26 @@ struct IntegralPairHasher{
 template<typename DistType>
 using DistanceCache = std::unordered_map<std::pair<size_t, size_t>, DistType, IntegralPairHasher<size_t>>;
 
+template<typename ValueType, size_t align>
+struct AlignedPtr;
 
-template<typename ValueType>
-struct DynamicArray;
+//template<typename ValueType, size_t alignment = alignof(ValueType)>
+//struct DynamicArray;
 
-template<typename ValueType>
-void swap(DynamicArray<ValueType> arrA, DynamicArray<ValueType> arrB);
+//template<typename ValueType, size_t alignment>
+//void swap(DynamicArray<ValueType, alignment> arrA, DynamicArray<ValueType, alignment> arrB);
 
+constexpr struct UninitTag {} uninitTag;
 
-template<typename ValueType>//, typename Allocator = std::pmr::polymorphic_allocator<>>
+template<typename ValueType, size_t align = alignof(ValueType)>//, typename Allocator = std::pmr::polymorphic_allocator<>>
 struct DynamicArray{
     using value_type = ValueType;
     using allocator_type = std::pmr::polymorphic_allocator<>;
     using alloc_traits = std::allocator_traits<std::pmr::polymorphic_allocator<>>;
 
-    friend void swap<ValueType>(DynamicArray<ValueType> arrA, DynamicArray<ValueType> arrB);
+    static const size_t alignment = align;
+
+    //friend void swap<ValueType>(DynamicArray<ValueType> arrA, DynamicArray<ValueType> arrB);
     private:
 
     
@@ -65,7 +70,7 @@ struct DynamicArray{
         std::pmr::memory_resource* resourcePtr;
         size_t capacity;
         void operator()(ValueType* arrayToDelete) {
-            allocator_type(resourcePtr).deallocate_object<ValueType>(arrayToDelete, capacity);  //deallocate_object<ValueType>(arrayToDelete, capacity); 
+            resourcePtr->deallocate(arrayToDelete, capacity, alignment);  //deallocate_object<ValueType>(arrayToDelete, capacity); 
         };
 
     };
@@ -77,8 +82,12 @@ struct DynamicArray{
 
     DynamicArray() = default;
 
-    DynamicArray(size_t size, std::pmr::memory_resource* resource = std::pmr::get_default_resource()): data(allocator_type(resource).allocate_object<ValueType>(size), AllocatorDeleter{resource, size}) {
+    DynamicArray(const size_t size, std::pmr::memory_resource* resource = std::pmr::get_default_resource()): data(static_cast<ValueType*>(resource->allocate(size*sizeof(ValueType), alignment)), AllocatorDeleter{resource, size}) {
         std::uninitialized_value_construct(this->begin(), this->end());
+    };
+
+    DynamicArray(UninitTag, const size_t size, std::pmr::memory_resource* resource = std::pmr::get_default_resource()): data(static_cast<ValueType*>(resource->allocate(size*sizeof(ValueType), alignment)), AllocatorDeleter{resource, size}) {
+        //std::uninitialized_value_construct(this->begin(), this->end());
     };
 
     template<typename ConvertableToElement>
@@ -86,7 +95,7 @@ struct DynamicArray{
         std::copy(view.begin(), view.end(), this->begin());
     }
 
-    DynamicArray(const DynamicArray& other): data(allocator_type(other.resource()).allocate_object<ValueType>(other.size()), AllocatorDeleter{other.resource(), other.size()}) {
+    DynamicArray(const DynamicArray& other): data(static_cast<ValueType*>(other.resource()->allocate(other.size()*sizeof(ValueType), alignment)), AllocatorDeleter{other.resource(), other.size()}) {
         std::uninitialized_copy(other.begin(), other.end(), this->begin());
     };
 
@@ -127,11 +136,15 @@ struct DynamicArray{
 
     std::pmr::memory_resource* resource() const { return data.get_deleter().resourcePtr; }
 
+    void reset(){
+        data.reset();
+    }
+
     //std::pmr::polymorphic_allocator<>& GetAllocator() { return data.get_deleter().alloc;}
 
-    //AlignedPtr<ValueType, align> GetAlignedPtr(size_t entriesToJump);
+    AlignedPtr<ValueType, align> GetAlignedPtr(size_t entriesToJump);
 
-    //AlignedPtr<const ValueType, align> GetAlignedPtr(size_t entriesToJump) const;
+    AlignedPtr<const ValueType, align> GetAlignedPtr(size_t entriesToJump) const;
 };
 
 /*
@@ -152,9 +165,11 @@ void swap(DynamicArray<ValueType> arrA, DynamicArray<ValueType> arrB){
 */
 
 
-template<typename ValueType, size_t align>
-struct AlignedPtr;
-
+//template<typename ValueType, size_t align>
+//struct AlignedPtr;
+template<typename ValueType>
+using AlignedArray = DynamicArray<ValueType, 32>;
+/*
 template<typename ValueType, size_t align=32>
 struct AlignedArray{
     using value_type = ValueType;
@@ -215,12 +230,12 @@ struct AlignedArray{
 
     AlignedPtr<const ValueType, align> GetAlignedPtr(size_t entriesToJump) const;
 };
-
+*/
 template<typename ValueType, size_t align>
 struct AlignedPtr{
     
     //template<typename ArrayType>
-    friend AlignedArray<std::remove_cv_t<ValueType>, align>;
+    friend DynamicArray<std::remove_cv_t<ValueType>, align>;
 
 
     AlignedPtr& operator+=(const std::ptrdiff_t amount){
@@ -241,12 +256,12 @@ struct AlignedPtr{
 };
 
 template<typename ValueType, size_t align>
-AlignedPtr<ValueType, align> AlignedArray<ValueType, align>::GetAlignedPtr(size_t entriesToJump){
+AlignedPtr<ValueType, align> DynamicArray<ValueType, align>::GetAlignedPtr(size_t entriesToJump){
     return AlignedPtr<ValueType, align>(begin(), entriesToJump);
 }
 
 template<typename ValueType, size_t align>
-AlignedPtr<const ValueType, align> AlignedArray<ValueType, align>::GetAlignedPtr(size_t entriesToJump) const{
+AlignedPtr<const ValueType, align> DynamicArray<ValueType, align>::GetAlignedPtr(size_t entriesToJump) const{
     return AlignedPtr<const ValueType, align>(begin(), entriesToJump);
 }
 
@@ -262,7 +277,7 @@ struct AlignedSpan{
     public:
 
     template<typename ConvertableToElement>
-    AlignedSpan(const AlignedArray<ConvertableToElement, alignment>& dataToView): data(dataToView.begin()), extent(dataToView.size()){};
+    AlignedSpan(const DynamicArray<ConvertableToElement, alignment>& dataToView): data(dataToView.begin()), extent(dataToView.size()){};
 
     template<typename ConvertableToElement>
     AlignedSpan(const AlignedSpan<ConvertableToElement, alignment>& spanToCopy): data(spanToCopy.begin()), extent(spanToCopy.size()){};
@@ -285,13 +300,13 @@ template<std::ranges::contiguous_range Container>
 struct DefaultDataView{ using ViewType = std::span<const typename Container::value_type>; };
 
 template<typename ElementType, size_t align>
-struct DefaultDataView<AlignedArray<ElementType, align>>{ using ViewType = AlignedSpan<const ElementType, align>; };
+struct DefaultDataView<DynamicArray<ElementType, align>>{ using ViewType = AlignedSpan<const ElementType, align>; };
 
 template<typename Type>
 struct IsAlignedArray : std::false_type {};
 
-template<typename ElementType, size_t align>
-struct IsAlignedArray<AlignedArray<ElementType, align>> : std::true_type {};
+template<typename ElementType>//, size_t align>
+struct IsAlignedArray<DynamicArray<ElementType, 32>> : std::true_type {};
 
 template<typename Type>
 static constexpr bool isAlignedArray_v = IsAlignedArray<Type>::value;
@@ -486,7 +501,8 @@ struct OffsetSpan{
 
 };
 */
-
+template<typename DataType>
+concept TriviallyCopyable = std::is_trivially_copyable<DataType>::value == true;
 }
 
 

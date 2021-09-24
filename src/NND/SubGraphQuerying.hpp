@@ -199,27 +199,27 @@ struct DefaultQueryFunctor{
 };
 
 namespace internal{
-    static const size_t maxBatch = 7;
+    static constexpr size_t maxBatch = 7;
 }
 
 template<typename IndexType, typename DistType>
 struct QueryContext{
-    const UndirectedGraph<IndexType> subGraph;
-    const GraphVertex<IndexType, DistType> queryHint;
+    UndirectedGraph<IndexType> subGraph;
+    GraphVertex<IndexType, DistType> queryHint;
     size_t querySize;
     size_t querySearchDepth;
     //DefaultQueryFunctor<DistType, DistanceFunctor> defaultQueryFunctor;
-    const GraphFragment_t graphFragment{GraphFragment_t(-1)};
-    const BlockNumber_t blockNumber{BlockNumber_t(-1)};
+    GraphFragment_t graphFragment{GraphFragment_t(-1)};
+    BlockNumber_t blockNumber{BlockNumber_t(-1)};
     
-    const size_t blockSize{size_t(-1)};
+    size_t blockSize{size_t(-1)};
     //std::unordered_map<BlockNumberType, Graph<IndexType, DistType>> neighborCandidates;
     //SpaceMetric<DataView, DataView, DistType> distanceFunctor;
 
     QueryContext() = default;
 
     QueryContext(const Graph<IndexType, DistType>& subGraph,
-                 const GraphVertex<IndexType, DistType>&& queryHint,
+                 GraphVertex<IndexType, DistType>&& queryHint,
                  const int querySearchDepth,
                  const size_t graphFragment,
                  const size_t blockNumber,
@@ -230,10 +230,13 @@ struct QueryContext{
                     graphFragment(graphFragment),
                     blockNumber(blockNumber),
                     blockSize(blockSize){
-            querySize = queryHint.size();
+            querySize = this->queryHint.size();
             //defaultQueryFunctor = DefaultQueryFunctor<IndexType, DataEntry, DistType>(distanceFunctor, dataBlock);
     };
     
+    QueryContext(QueryContext&&) = default;
+
+
     /*
     template<typename QueryType>
     GraphVertex<size_t, DistType> operator||(QueryPoint<DistType>& queryPoint) const {
@@ -268,7 +271,15 @@ struct QueryContext{
         }
         //GraphVertex<size_t, DistType> compareTargets;
         //compareTargets.resize(querySearchDepth);
-
+        
+        //constexpr size_t bufferSize = sizeof(size_t)*(internal::maxBatch+2)  + sizeof(std::pmr::vector<size_t>);
+        //char stackBuffer[bufferSize];
+        //std::pmr::monotonic_buffer_resource stackResource(stackBuffer, bufferSize);
+        
+        
+        
+        //std::pmr::vector<size_t>& joinQueue= *(new (stackResource.allocate(sizeof(std::pmr::vector<size_t>))) std::pmr::vector<size_t>(&stackResource));
+        
         std::vector<size_t> joinQueue;
         const size_t maxBatch = internal::maxBatch;
         joinQueue.reserve(maxBatch);
@@ -390,11 +401,11 @@ struct QueryContext{
     }
 
     template<typename QueryFunctor>
-    std::tuple<DataIndex_t, DataIndex_t, DistType> NearestNodes(const QueryContext& rhs, QueryFunctor& distanceFunctor) const{
+    std::tuple<IndexType, IndexType, DistType> NearestNodes(const QueryContext& rhs, QueryFunctor& distanceFunctor) const{
 
         //distanceFunctor.SetBlocks(this->blockNumber, rhs.blockNumber);
 
-        std::pair<DataIndex_t, DataIndex_t> bestPair;
+        std::pair<IndexType, IndexType> bestPair;
         DistType bestDistance(std::numeric_limits<DistType>::max());
         //NodeTracker nodesVisitedA(subGraphA.dataBlock.size());
         //NodeTracker nodesVisitedB(subGraphB.dataBlock.size());
@@ -406,7 +417,7 @@ struct QueryContext{
                 DistType distance = distanceFunctor(starterA.first, starterB.first);
                 if (distance < bestDistance){
                     bestDistance = distance;
-                    bestPair = std::pair<DataIndex_t, DataIndex_t>(starterA.first, starterB.first);
+                    bestPair = std::pair<IndexType, IndexType>(starterA.first, starterB.first);
                 }
             }
         }
@@ -414,7 +425,7 @@ struct QueryContext{
         bool breakVar = false;
         while (!breakVar){
             breakVar = true;
-            std::pair<DataIndex_t, DataIndex_t> tmpPair = bestPair;
+            std::pair<IndexType, IndexType> tmpPair = bestPair;
             for (const auto& neighborA: this->subGraph[bestPair.first]){
                 //if (!nodesVisitedA[neighborA.first]){
                 DistType distance = distanceFunctor(neighborA, tmpPair.second);

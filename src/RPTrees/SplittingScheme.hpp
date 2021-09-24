@@ -47,7 +47,7 @@ struct TransformTag {};
 static const TransformTag transformTag;
 
 //The serial case
-template<typename DataEntry, typename SplittingVector>
+template<typename DataType, typename SplittingVector>
 struct EuclidianScheme{
     using OffSetType = typename SplittingVector::value_type;
     using SplittingView = typename DefaultDataView<SplittingVector>::ViewType;
@@ -58,18 +58,20 @@ struct EuclidianScheme{
     using ParallelScheme = std::false_type;
     using SerialScheme = std::true_type;
     
-    const DataSet<DataEntry>& dataSource;
+    using DataView = typename DataSet<DataType>::ConstDataView;
+
+    const DataSet<DataType>& dataSource;
     std::unordered_map<size_t, std::pair<SplittingVector, OffSetType>> splittingVectors;
     //DistType projectionOffset;
 
-    EuclidianScheme(const DataSet<DataEntry>& data) : dataSource(data), splittingVectors(){};
+    EuclidianScheme(const DataSet<DataType>& data) : dataSource(data), splittingVectors(){};
 
     auto operator()(size_t splitIndex, std::pair<size_t, size_t> splittingPoints){
         
         
         // For right now at least, in the serial case I want to be able to get a new splitting vector
         //if (splittingVectors.find(splitIndex) == splittingVectors.end()){
-        SplittingVector splittingVector = EuclidianSplittingPlaneNormal<DataEntry, OffSetType>(dataSource[splittingPoints.first], dataSource[splittingPoints.second]);
+        SplittingVector splittingVector = EuclidianSplittingPlaneNormal<DataView, OffSetType>(dataSource[splittingPoints.first], dataSource[splittingPoints.second]);
 
 
         OffSetType projectionOffset = 0;
@@ -130,7 +132,7 @@ struct EuclidianScheme{
     
 };
 
-template<typename DataEntry, typename SplittingVector>
+template<typename DataType, typename SplittingVector>
 struct ParallelEuclidianScheme{
     using OffSetType = typename SplittingVector::value_type;
     using SplittingView = typename DefaultDataView<SplittingVector>::ViewType;
@@ -141,21 +143,22 @@ struct ParallelEuclidianScheme{
 
     using ParallelScheme = std::true_type;
     using SerialScheme = std::false_type;
+    using DataView = typename DataSet<DataType>::DataView;
     
-    const DataSet<DataEntry>& dataSource;
+    const DataSet<DataType>& dataSource;
     std::unordered_map<size_t, std::pair<SplittingVector, OffSetType>> splittingVectors;
 
     AsyncQueue<std::tuple<size_t, SplittingVector, OffSetType>> generatedVectors;
     //DistType projectionOffset;
 
-    ParallelEuclidianScheme(const DataSet<DataEntry>& data) : dataSource(data), splittingVectors(){};
+    ParallelEuclidianScheme(const DataSet<DataType>& data) : dataSource(data), splittingVectors(){};
 
     auto operator()(size_t splitIndex, std::pair<size_t, size_t> splittingPoints){
         
         
         // For right now at least, in the serial case I want to be able to get a new splitting vector
         //if (splittingVectors.find(splitIndex) == splittingVectors.end()){
-        SplittingVector splittingVector = EuclidianSplittingPlaneNormal<DataEntry, OffSetType>(dataSource[splittingPoints.first], dataSource[splittingPoints.second]);
+        SplittingVector splittingVector = EuclidianSplittingPlaneNormal<DataView, OffSetType>(dataSource[splittingPoints.first], dataSource[splittingPoints.second]);
 
 
         OffSetType projectionOffset = 0;
@@ -255,7 +258,7 @@ AlignedArray<DistType> AngularSplittingPlane(const DataEntry& pointA, const Data
     return splittingLine;
 }
 
-template<typename DataEntry, typename SplittingVector>
+template<typename DataType, typename SplittingVector>
 struct AngularScheme{
     using OffSetType = typename SplittingVector::value_type;
     using SplittingView = typename DefaultDataView<SplittingVector>::ViewType;
@@ -263,17 +266,18 @@ struct AngularScheme{
 
     using ParallelScheme = std::false_type;
     using SerialScheme = std::true_type;
-    
-    const DataSet<DataEntry>& dataSource;
+    using DataView = typename DataSet<DataType>::DataView;
+
+    const DataSet<DataType>& dataSource;
     std::unordered_map<size_t, SplittingVector> splittingVectors;
     //DistType projectionOffset;
 
-    AngularScheme(const DataSet<DataEntry>& data) : dataSource(data), splittingVectors(){};
+    AngularScheme(const DataSet<DataType>& data) : dataSource(data), splittingVectors(){};
 
     auto operator()(size_t splitIndex, std::pair<size_t, size_t> splittingPoints){
         
 
-        SplittingVector splittingVector = AngularSplittingPlane<DataEntry, OffSetType>(dataSource[splittingPoints.first], dataSource[splittingPoints.second]);
+        SplittingVector splittingVector = AngularSplittingPlane<DataView, OffSetType>(dataSource[splittingPoints.first], dataSource[splittingPoints.second]);
 
 
 

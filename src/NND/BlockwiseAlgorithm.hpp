@@ -98,18 +98,9 @@ JoinResults<DistType> BlockwiseJoin(const JoinHints& startJoins,
         joinHints.clear();
         //std::vector<std::pair<size_t, GraphVertex<size_t, DistType>>> newJoins;
         for(auto& result: joinResults){
-            //std::heap_sort(result.second.begin(), result.second.end(), NeighborDistanceComparison<size_t, DistType>);
-            //bool newNeighbor = false;
+            
             EraseRemove(result.second, currentGraphState[result.first].PushThreshold());
-            /*
-            GraphVertex<size_t, DistType> updatedResult;
-            for (const auto& neighborCandidate: result.second){
-                if (neighborCandidate.second < currentGraphState[result.first].PushThreshold()){
-                    newNeighbor = true;
-                    updatedResult.push_back(neighborCandidate);
-                }
-            }
-            */
+            
             if (result.second.size()>0){   
                 
                 for(const auto& leafNeighbor: searchSubgraph[result.first]){
@@ -222,9 +213,10 @@ void ReverseBlockJoin(const JoinHints& startJoins,
     return;
 }
 
-template<typename DistType>
+template<typename DistType, bool checkGraphFragment>
 void NewJoinQueues(const std::vector<std::pair<DataIndex_t, GraphVertex<DataIndex_t, DistType>>>& joinResults,
                    const NodeTracker& blocksJoined,
+                   const GraphFragment_t targetFragment,
                    const Graph<BlockIndecies, DistType>& targetGraphState,
                    JoinMap& mapToUpdate){
     
@@ -232,7 +224,12 @@ void NewJoinQueues(const std::vector<std::pair<DataIndex_t, GraphVertex<DataInde
         for (const auto index: result.second){
             for (const auto& targetVertexNeighbor: targetGraphState[index.first]){
                 size_t targetBlock = targetVertexNeighbor.first.blockNumber;
-                if (blocksJoined[targetBlock]) continue;
+                if constexpr(checkGraphFragment){
+                    GraphFragment_t neighborFragment = targetVertexNeighbor.first.graphFragment;
+                    if (blocksJoined[targetBlock] || neighborFragment != targetFragment) continue;
+                } else{
+                    if (blocksJoined[targetBlock]) continue;
+                }
                 auto findItr = std::find(mapToUpdate[targetBlock][result.first].begin(), mapToUpdate[targetBlock][result.first].end(), targetVertexNeighbor.first.dataIndex);
                 if (findItr == mapToUpdate[targetBlock][result.first].end()) mapToUpdate[targetBlock][result.first].push_back(targetVertexNeighbor.first.dataIndex);
             } 
@@ -241,17 +238,23 @@ void NewJoinQueues(const std::vector<std::pair<DataIndex_t, GraphVertex<DataInde
     }
 }
 
-template<typename DistType>
+template<typename DistType, bool checkGraphFragment>
 void NewJoinQueues(const Graph<DataIndex_t, DistType>& joinResults,
                    const NodeTracker& blocksJoined,
+                   const GraphFragment_t targetFragment,
                    const Graph<BlockIndecies, DistType>& targetGraphState,
                    JoinMap& mapToUpdate){
     
     for (size_t i = 0; const auto& result: joinResults){
         for (const auto index: result){
             for (const auto& targetVertexNeighbor: targetGraphState[index.first]){
-                size_t targetBlock = targetVertexNeighbor.first.blockNumber;
-                if (blocksJoined[targetBlock]) continue;
+                BlockNumber_t targetBlock = targetVertexNeighbor.first.blockNumber;
+                if constexpr(checkGraphFragment){
+                    GraphFragment_t neighborFragment = targetVertexNeighbor.first.graphFragment;
+                    if (blocksJoined[targetBlock] || neighborFragment != targetFragment) continue;
+                } else{
+                    if (blocksJoined[targetBlock]) continue;
+                }
                 auto findItr = std::find(mapToUpdate[targetBlock][i].begin(), mapToUpdate[targetBlock][i].end(), targetVertexNeighbor.first.dataIndex);
                 if (findItr == mapToUpdate[targetBlock][i].end()) mapToUpdate[targetBlock][i].push_back(targetVertexNeighbor.first.dataIndex);
             } 
@@ -285,6 +288,7 @@ struct BlockUpdateContext {
     };
 
     void SetNextJoins(){
+        
         joinsToDo = std::move(newJoins);
         auto removeExtraneous = [&](const auto& item){
             const auto& [key, value] = item;
@@ -292,6 +296,7 @@ struct BlockUpdateContext {
         };
         std::erase_if(joinsToDo, removeExtraneous);
         newJoins = JoinMap();
+        
     }
 };
 
@@ -315,7 +320,7 @@ JoinMap InitializeJoinMap(const BlockContainer& blockUpdateContexts,
 
 
 
-template<typename DistType>
+template<bool checkGraphFragment = false, typename DistType>
 int UpdateBlocks(BlockUpdateContext<DistType>& blockLHS,
                  BlockUpdateContext<DistType>& blockRHS,
                  CachingFunctor<DistType>& cachingFunctor){
@@ -325,97 +330,51 @@ int UpdateBlocks(BlockUpdateContext<DistType>& blockLHS,
 
     int graphUpdates(0);
 
-    //if(doRHSJoin){
-        blockLHS.blockJoinTracker[blockRHS.queryContext.blockNumber] = true;
-        
-        cachingFunctor.SetBlocks(blockLHS.queryContext.blockNumber, blockRHS.queryContext.blockNumber);
-        
-        //auto cachingDistanceFunctor = blockLHS.queryContext.defaultQueryFunctor.CachingFunctor(distanceCache);
-        //auto cachedDistanceFunctor = blockRHS.queryContext.defaultQueryFunctor.CachedFunctor(distanceCache);
-        
 
-        JoinResults<DistType> blockLHSUpdates = BlockwiseJoin(blockLHS.joinsToDo[blockRHS.queryContext.blockNumber],
-                                                                            blockLHS.currentGraph,
-                                                                            blockLHS.joinPropagation,
-                                                                            blockRHS.queryContext,
-                                                                            cachingFunctor);
-        NewJoinQueues<float>(blockLHSUpdates, blockLHS.blockJoinTracker, blockRHS.currentGraph, blockLHS.newJoins);
+    blockLHS.blockJoinTracker[blockRHS.queryContext.blockNumber] = true;
+    
+    cachingFunctor.SetBlocks(blockLHS.queryContext.blockNumber, blockRHS.queryContext.blockNumber);
+    
 
-        
-        
-        blockRHS.blockJoinTracker[blockLHS.queryContext.blockNumber] = true;
-        /*
-        if(blockRHS.joinsToDo.find(blockLHS.queryContext.blockNumber) == blockRHS.joinsToDo.end()){
-            if (blockLHSUpdates.size() == 0) return 0;
-            size_t lhsBlockNum = blockLHS.queryContext.blockNumber;
-            for (const auto& result: blockLHSUpdates){
-                for (const auto& newNeighbor: result.second){
-                    auto findItr = std::find(blockRHS.joinsToDo[lhsBlockNum][result.first].begin(), 
-                                            blockRHS.joinsToDo[lhsBlockNum][result.first].end(),
-                                            newNeighbor.first);
-                    if (findItr == blockRHS.joinsToDo[lhsBlockNum][result.first].end()) {
-                        
-                        blockRHS.joinsToDo[blockLHS.queryContext.blockNumber][newNeighbor.first].push_back(result.first);
-                    }
-                }
-            }
+    
 
-        }
-        */
-        
-        cachingFunctor.metricFunctor.SetBlocks(blockRHS.queryContext.blockNumber, blockLHS.queryContext.blockNumber);
+    JoinResults<DistType> blockLHSUpdates = BlockwiseJoin(blockLHS.joinsToDo[blockRHS.queryContext.blockNumber],
+                                                                        blockLHS.currentGraph,
+                                                                        blockLHS.joinPropagation,
+                                                                        blockRHS.queryContext,
+                                                                        cachingFunctor);
+    NewJoinQueues<DistType, checkGraphFragment>(blockLHSUpdates, blockLHS.blockJoinTracker, blockRHS.queryContext.graphFragment, blockRHS.currentGraph, blockLHS.newJoins);
 
-        ReverseBlockJoin(blockRHS.joinsToDo[blockLHS.queryContext.blockNumber],
-                            blockRHS.currentGraph,
-                            blockRHS.joinPropagation,
-                            blockLHS.queryContext,
-                            cachingFunctor,
-                            cachingFunctor.metricFunctor);
-        
-        for(size_t i = 0; auto& vertex: cachingFunctor.reverseGraph){
-            EraseRemove(vertex, blockRHS.currentGraph[i].PushThreshold());
-            /*
-            NeighborOverDist<DistType> comparison(blockRHS.currentGraph[i].PushThreshold());
-            vertex.erase(std::remove_if(vertex.begin(),
-                                        vertex.end(),
-                                        comparison),
-                        vertex.end());
-            */
-        }
-        NewJoinQueues<float>(cachingFunctor.reverseGraph, blockRHS.blockJoinTracker, blockLHS.currentGraph, blockRHS.newJoins);
+    
+    
+    blockRHS.blockJoinTracker[blockLHS.queryContext.blockNumber] = true;
+    
+    
+    cachingFunctor.metricFunctor.SetBlocks(blockRHS.queryContext.blockNumber, blockLHS.queryContext.blockNumber);
 
-        for (size_t i = 0; auto& result: cachingFunctor.reverseGraph){
-            graphUpdates += ConsumeVertex(blockRHS.currentGraph[i], result, blockLHS.queryContext.graphFragment, blockLHS.queryContext.blockNumber);
-            i++;
-        }
-        for (auto& result: blockLHSUpdates){
-            graphUpdates += ConsumeVertex(blockLHS.currentGraph[result.first], result.second, blockRHS.queryContext.graphFragment, blockRHS.queryContext.blockNumber);
-        }
+    ReverseBlockJoin(blockRHS.joinsToDo[blockLHS.queryContext.blockNumber],
+                        blockRHS.currentGraph,
+                        blockRHS.joinPropagation,
+                        blockLHS.queryContext,
+                        cachingFunctor,
+                        cachingFunctor.metricFunctor);
+    
+    for(size_t i = 0; auto& vertex: cachingFunctor.reverseGraph){
+        EraseRemove(vertex, blockRHS.currentGraph[i].PushThreshold());
         
-        return graphUpdates;
-    /*
-    } else {
-        //This feels like som jank control flow
-        blockLHS.blockJoinTracker[blockRHS.queryContext.blockNumber] = true;
-        
-        cachingFunctor.metricFunctor.SetBlocks(blockLHS.queryContext.blockNumber, blockRHS.queryContext.blockNumber);
-        
-
-        JoinResults<size_t, DistType> blockLHSUpdates = BlockwiseJoin(blockLHS.joinsToDo[blockRHS.queryContext.blockNumber],
-                                                                            blockLHS.currentGraph,
-                                                                            blockLHS.joinPropagation,
-                                                                            blockRHS.queryContext,
-                                                                            cachingFunctor.metricFunctor);
-        NewJoinQueues<float>(blockLHSUpdates, blockLHS.blockJoinTracker, blockRHS.currentGraph, blockLHS.newJoins);
-
-        for (auto& result: blockLHSUpdates){
-            graphUpdates += ConsumeVertex(blockLHS.currentGraph[result.first], result.second, blockRHS.queryContext.blockNumber);
-        }
-        
-        return graphUpdates;
-
     }
-    */
+    NewJoinQueues<DistType, checkGraphFragment>(cachingFunctor.reverseGraph, blockRHS.blockJoinTracker, blockLHS.queryContext.graphFragment, blockLHS.currentGraph, blockRHS.newJoins);
+
+    for (size_t i = 0; auto& result: cachingFunctor.reverseGraph){
+        graphUpdates += ConsumeVertex(blockRHS.currentGraph[i], result, blockLHS.queryContext.graphFragment, blockLHS.queryContext.blockNumber);
+        i++;
+    }
+    for (auto& result: blockLHSUpdates){
+        graphUpdates += ConsumeVertex(blockLHS.currentGraph[result.first], result.second, blockRHS.queryContext.graphFragment, blockRHS.queryContext.blockNumber);
+    }
+    
+    return graphUpdates;
+    
 }
 
 }

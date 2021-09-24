@@ -97,9 +97,11 @@ struct CrossFragmentFunctor{
     };
     
     std::vector<DistType> operator()(const size_t lhsIndex, const std::vector<size_t>& rhsIndecies) const {
-        char stackBuffer[sizeof(ConstDataView)*20];
-        std::pmr::monotonic_buffer_resource stackResource(stackBuffer, sizeof(ConstDataView)*20);
-        std::pmr::vector<ConstDataView> rhsData(&stackResource);
+        constexpr size_t bufferSize = sizeof(ConstDataView)*23 + sizeof(std::pmr::vector<ConstDataView>);
+        char stackBuffer[sizeof(ConstDataView)*23 + sizeof(std::pmr::vector<ConstDataView>)];
+        std::pmr::monotonic_buffer_resource stackResource(stackBuffer, bufferSize);
+        std::pmr::vector<ConstDataView>& rhsData = *(new (stackResource.allocate(sizeof(std::pmr::vector<ConstDataView>))) std::pmr::vector<ConstDataView>(&stackResource));
+        //std::pmr::vector<ConstDataView> rhsData(&stackResource);
         rhsData.reserve(20);
         for(const auto& index: rhsIndecies){
             rhsData.push_back((*rhsBlock)[index]);
@@ -234,9 +236,11 @@ struct SearchFunctor{
     };
     
     std::vector<typename MetricPair::DistType> operator()(const size_t searchIndex, const std::vector<size_t>& targetIndecies) const{
-        char stackBuffer[sizeof(ConstDataView)*20];
-        std::pmr::monotonic_buffer_resource stackResource(stackBuffer, sizeof(ConstDataView)*20);
-        std::pmr::vector<ConstDataView> targetData(&stackResource);
+        constexpr size_t bufferSize = sizeof(ConstDataView)*23 + sizeof(std::pmr::vector<ConstDataView>);
+        char stackBuffer[sizeof(ConstDataView)*23 + sizeof(std::pmr::vector<ConstDataView>)];
+        std::pmr::monotonic_buffer_resource stackResource(stackBuffer, bufferSize);
+        std::pmr::vector<ConstDataView>& targetData = *(new (stackResource.allocate(sizeof(std::pmr::vector<ConstDataView>))) std::pmr::vector<ConstDataView>(&stackResource));
+        //std::pmr::vector<ConstDataView> targetData(&stackResource);
         targetData.reserve(20);
         for(const auto& index: targetIndecies){
             targetData.push_back((*targetBlock)[index]);

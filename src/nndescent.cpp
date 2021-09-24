@@ -319,24 +319,24 @@ int main(int argc, char *argv[]){
     
     /*
     std::string trainDataFilePath("./TestData/MNIST-Fashion-Train.bin");
-    DataSet<AlignedArray<float>> mnistFashionTrain(trainDataFilePath, 28*28, 60'000, &ExtractNumericArray<AlignedArray<float>,dataEndianness>);
+    DataSet<float> mnistFashionTrain(trainDataFilePath, 28*28, 60'000);
 
 
     std::string testDataFilePath("./TestData/MNIST-Fashion-Test.bin");
     std::string testNeighborsFilePath("./TestData/MNIST-Fashion-Neighbors.bin");
-    DataSet<AlignedArray<float>> mnistFashionTest(testDataFilePath, 28*28, 10'000, &ExtractNumericArray<AlignedArray<float>,dataEndianness>);
-    DataSet<AlignedArray<uint32_t>> mnistFashionTestNeighbors(testNeighborsFilePath, 100, 10'000, &ExtractNumericArray<AlignedArray<uint32_t>,dataEndianness>);
+    DataSet<float> mnistFashionTest(testDataFilePath, 28*28, 10'000);
+    DataSet<uint32_t, alignof(uint32_t)> mnistFashionTestNeighbors(testNeighborsFilePath, 100, 10'000);
     */
 
-        
+    
     std::string trainDataFilePath("./TestData/SIFT-Train.bin");
-    DataSet<AlignedArray<float>> mnistFashionTrain(trainDataFilePath, 128, 1'000'000, &ExtractNumericArray<AlignedArray<float>,dataEndianness>);
+    DataSet<float> mnistFashionTrain(trainDataFilePath, 128, 1'000'000);
 
 
     std::string testDataFilePath("./TestData/SIFT-Test.bin");
     std::string testNeighborsFilePath("./TestData/SIFT-Neighbors.bin");
-    DataSet<AlignedArray<float>> mnistFashionTest(testDataFilePath, 128, 10'000, &ExtractNumericArray<AlignedArray<float>,dataEndianness>);
-    DataSet<AlignedArray<uint32_t>> mnistFashionTestNeighbors(testNeighborsFilePath, 100, 10'000, &ExtractNumericArray<AlignedArray<uint32_t>,dataEndianness>);
+    DataSet<float> mnistFashionTest(testDataFilePath, 128, 10'000);
+    DataSet<uint32_t, alignof(uint32_t)> mnistFashionTestNeighbors(testNeighborsFilePath, 100, 10'000);
     
 
     /*
@@ -360,8 +360,8 @@ int main(int argc, char *argv[]){
     
 
     auto [rpTrees, splittingVectors] = (parallelIndexBuild) ? 
-                                        BuildRPForest<ParallelEuclidianScheme<AlignedArray<float>, AlignedArray<float>>>(std::execution::par_unseq, mnistFashionTrain, parameters.splitParams, numThreads) :
-                                        BuildRPForest<EuclidianScheme<AlignedArray<float>, AlignedArray<float>>>(std::execution::seq, mnistFashionTrain, parameters.splitParams);
+                                        BuildRPForest<ParallelEuclidianScheme<float, AlignedArray<float>>>(std::execution::par_unseq, mnistFashionTrain, parameters.splitParams, numThreads) :
+                                        BuildRPForest<EuclidianScheme<float, AlignedArray<float>>>(std::execution::seq, mnistFashionTrain, parameters.splitParams);
                                         
 
     //std::chrono::time_point<std::chrono::steady_clock> rpTrainEnd = std::chrono::steady_clock::now();
@@ -373,8 +373,8 @@ int main(int argc, char *argv[]){
     ThreadPool<void> blockBuilder(numThreads);
 
     auto [indexMappings, dataBlocks] = (parallelIndexBuild) ? 
-                                        PartitionData<AlignedArray<float>>(rpTrees, mnistFashionTrain, blockBuilder):
-                                        PartitionData<AlignedArray<float>>(rpTrees, mnistFashionTrain);
+                                        PartitionData<float>(rpTrees, mnistFashionTrain, blockBuilder):
+                                        PartitionData<float>(rpTrees, mnistFashionTrain);
 
     
     MetricFunctor<float, EuclideanMetricPair> euclideanFunctor(dataBlocks);
@@ -451,12 +451,12 @@ int main(int argc, char *argv[]){
         context.queryContext.querySize = numberSearchNeighbors;
     }
 
-    SearchFunctor<float, DataSet<AlignedArray<float>>, EuclideanMetricPair> searchDist(dataBlocks, mnistFashionTest);
+    SearchFunctor<float, DataSet<float>, EuclideanMetricPair> searchDist(dataBlocks, mnistFashionTest);
     SinglePointFunctor<float> searchFunctor(searchDist);
 
     
     //auto blocksToSearch = BlocksToSearch(metaGraph, additionalInitSearches);
-    std::vector<std::vector<size_t>> results(mnistFashionTest.samples.size());
+    std::vector<std::vector<size_t>> results(mnistFashionTest.size());
     IndexMaps<size_t> testMappings;
 
     //OffsetSpan<std::vector<size_t>> resultsView(results.data(), results.size(), metaGraph.GetBlockOffset());
@@ -464,7 +464,7 @@ int main(int argc, char *argv[]){
     if(parallelSearch){
         ThreadPool<SinglePointFunctor<float>> searchPool(numThreads, searchDist);
 
-        DataMapper<AlignedArray<float>, void, void> testMapper(mnistFashionTest);
+        DataMapper<float, void, void> testMapper(mnistFashionTest);
         std::vector<ParallelContextBlock<float>> searchContexts;
 
         auto searcherConstructor = [&, &splitToBlockNum=indexMappings.splitToBlockNum](size_t splittingIndex, std::span<const size_t> indicies)->void{
@@ -534,7 +534,7 @@ int main(int argc, char *argv[]){
             i++;
         }
     } else{
-        DataMapper<AlignedArray<float>, void, void> testMapper(mnistFashionTest);
+        DataMapper<float, void, void> testMapper(mnistFashionTest);
         std::vector<ContextBlock<float>> searchContexts;
         auto searcherConstructor = [&, &splitToBlockNum=indexMappings.splitToBlockNum](size_t splittingIndex, std::span<const size_t> indicies)->void{
             
@@ -623,8 +623,8 @@ int main(int argc, char *argv[]){
     std::vector<size_t> correctNeighborsPerIndex(results.size());
     for(size_t i = 0; const auto& result: results){
         for(size_t j = 0; const auto& neighbor: result){
-            auto findItr = std::find(std::begin(mnistFashionTestNeighbors.samples[i]), std::begin(mnistFashionTestNeighbors.samples[i]) + 10, neighbor);
-            if (findItr != (std::begin(mnistFashionTestNeighbors.samples[i]) + 10)){
+            auto findItr = std::find(std::begin(mnistFashionTestNeighbors[i]), std::begin(mnistFashionTestNeighbors[i]) + 10, neighbor);
+            if (findItr != (std::begin(mnistFashionTestNeighbors[i]) + 10)){
                 numNeighborsCorrect++;
                 correctNeighborsPerIndex[i]++;
             }
@@ -643,7 +643,7 @@ int main(int argc, char *argv[]){
         correctPerBlockFloat[i] = float(correctNeighborsPerBlock[i]*10)/float(searchContexts[i].size());
     }
     */
-    double recall = double(numNeighborsCorrect)/ double(10*mnistFashionTestNeighbors.samples.size());
+    double recall = double(numNeighborsCorrect)/ double(10*mnistFashionTestNeighbors.size());
     std::cout << (recall * 100) << std::endl;
     //std::cout << "Recall: " << (recall * 100) << "%" << std::endl;
     

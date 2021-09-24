@@ -18,8 +18,7 @@ https://github.com/AnabelSMRuggiero/NNDescent.cpp
 
 namespace nnd{
 
-template<typename DataType>
-concept TriviallyCopyable = std::is_trivially_copyable<DataType>::value == true;
+
 
 template<TriviallyCopyable DataType, std::endian DataEndianness>
 DataType ExtractData(std::ifstream &dataStream){

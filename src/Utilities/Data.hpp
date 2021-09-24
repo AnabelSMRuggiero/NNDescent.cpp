@@ -21,6 +21,8 @@ https://github.com/AnabelSMRuggiero/NNDescent.cpp
 #include <span>
 #include <cassert>
 #include <algorithm>
+#include <filesystem>
+#include <exception>
 
 
 #include "Utilities/DataSerialization.hpp"
@@ -29,26 +31,73 @@ https://github.com/AnabelSMRuggiero/NNDescent.cpp
 
 namespace nnd{
 
+void OpenData(std::filesystem::path dataPath, const size_t vectorLength, const size_t endEntry, const size_t startEntry = 0){
+    using DataType = float;
 
-template<typename DataEntry>
-struct DataSet{
-    using ElementType = typename DataEntry::value_type;
-    using DataView = typename DefaultDataView<DataEntry>::ViewType;
+    std::ifstream dataStream(dataPath, std::ios_base::binary);
+    if (!dataStream.is_open()) throw std::filesystem::filesystem_error("File could not be opened.", dataPath, std::make_error_code(std::io_errc::stream));
+
+    const size_t numElements = vectorLength * (endEntry-startEntry);
+
+    DynamicArray<float> dataArr(uninitTag, vectorLength * (endEntry-startEntry));
+
+    dataStream.read(reinterpret_cast<char*>(dataArr.begin()), numElements*sizeof(DataType));
+
     
-    using iterator = typename std::vector<DataEntry>::iterator;
-    using const_iterator = typename std::vector<DataEntry>::const_iterator;
-    //std::valarray<unsigned char> rawData;
+}
 
-    std::vector<DataEntry> samples;
+template<typename DataEntry, size_t alignment>
+size_t EntryPadding(const size_t entryLength){
+    size_t entryBytes = sizeof(DataEntry)*entryLength;
+    size_t excessBytes = entryBytes%alignment;
+    if (excessBytes == 0) return 0;
+    size_t paddingBytes = alignment - excessBytes;
+    size_t paddingEntries = paddingBytes/sizeof(DataEntry);
+    assert(paddingEntries*sizeof(DataEntry) == paddingBytes);
+    return paddingBytes/sizeof(DataEntry);
+    //((sizeof(DataType)*entryLength)%alignment > 0) ? alignment - entryLength%alignment : 0
+}
+
+template<typename DataType, size_t align=32>
+struct DataSet{
+    using value_type = DataType;
+    using DataView = typename DefaultDataView<DynamicArray<DataType, align>>::ViewType;
+    using ConstDataView = typename DefaultDataView<DynamicArray<DataType, align>>::ViewType;
+    //using iterator = typename std::vector<DataEntry>::iterator;
+    //using const_iterator = typename std::vector<DataEntry>::const_iterator;
+    //std::valarray<unsigned char> rawData;
+    static constexpr size_t alignment = align;
+    
+
+    private:
+    //DynamicArray<DataType> samples;
     size_t sampleLength;
     size_t numberOfSamples;
     size_t indexStart;
+    DynamicArray<DataType, align> samples;
 
-    DataSet(std::string& dataLocation, size_t entryLength, size_t numSamples, DataExtractor<DataEntry> extractionFunction):
-        samples(),
+    public:
+    DataSet(std::filesystem::path dataPath, const size_t entryLength, const size_t endEntry, const size_t startEntry = 0, const size_t fileHeader = 0):
         sampleLength(entryLength),
-        numberOfSamples(numSamples),
-        indexStart(0){
+        numberOfSamples(endEntry-startEntry),
+        indexStart(startEntry),
+        samples(){
+            size_t padding = EntryPadding<DataType, alignment>(entryLength);
+
+            assert(padding==0); 
+            std::ifstream dataStream(dataPath, std::ios_base::binary);
+
+            if (!dataStream.is_open()) throw std::filesystem::filesystem_error("File could not be opened.", dataPath, std::make_error_code(std::io_errc::stream));
+
+            const size_t numElements = sampleLength * numberOfSamples;
+
+            DynamicArray<DataType, align> dataArr(uninitTag, numElements);
+
+            dataStream.seekg(fileHeader + entryLength*startEntry);
+            dataStream.read(reinterpret_cast<char*>(dataArr.begin()), numElements*sizeof(DataType));
+
+            this->samples = std::move(dataArr);
+            /*
             std::ifstream dataStream;
             dataStream.open(dataLocation, std::ios_base::binary);
             //std::cout << dataStream.is_open();      
@@ -58,25 +107,43 @@ struct DataSet{
                 //for (auto& entry: samples.back()) std::cout << entry << std::endl;
                 //dataStream.read(reinterpret_cast<char *>(&(samples[i][0])), vectorLength);
             };
+            */
     }
 
 
     size_t IndexStart() const{
         return indexStart;
     }
-
-    DataEntry& operator[](size_t i){
-        return samples[i];
+    /*
+    DataView operator[](size_t i){
+        return {samples.begin() + i*sampleLength, sampleLength};
     }
 
-    const DataEntry& operator[](size_t i) const{
-        return samples[i];
+    ConstDataView operator[](size_t i) const{
+        return {samples.begin() + i*sampleLength, sampleLength};
+    }
+    */
+    DataView operator[](size_t i){
+        AlignedPtr<value_type, alignment> ptr = samples.GetAlignedPtr(sampleLength);
+        ptr += i;
+        return DataView(ptr, sampleLength);
+        //return blockData[i];
+    }
+    
+    ConstDataView operator[](size_t i) const{
+        AlignedPtr<const value_type, alignment> ptr = samples.GetAlignedPtr(sampleLength);
+        ptr += i;
+        return ConstDataView(ptr, sampleLength);
     }
 
     size_t size() const{
-        return samples.size();
+        return numberOfSamples;
     }
 
+    size_t SampleLength() const{
+        return sampleLength;
+    }
+    /*
     constexpr iterator begin() noexcept{
         return samples.begin();
     }
@@ -100,8 +167,60 @@ struct DataSet{
     constexpr const_iterator cend() const noexcept{
         return samples.cend();
     }
+    */
 
 };
+
+/*
+struct DataIterator{
+    const size_t sampleLength;
+    DataType* pointedSample;
+
+    DataIterator& operator++(){
+        pointedSample + sampleLength;
+        return *this;
+    }
+
+    DataIterator operator++(int){
+        DataIterator copy = *this;
+        pointedSample + sampleLength;
+        return copy;
+    }
+
+    DataIterator& operator--(){
+        pointedSample - sampleLength;
+        return *this;
+    }
+
+    DataIterator operator--(int){
+        DataIterator copy = *this;
+        pointedSample - sampleLength;
+        return copy;
+    }
+
+    DataIterator operator+(std::ptrdiff_t inc){
+        DataIterator copy{sampleLength, pointedSample+inc*sampleLength};
+        return copy;
+    }
+
+    DataIterator operator-(std::ptrdiff_t inc){
+        DataIterator copy{sampleLength, pointedSample-inc*sampleLength};
+        return copy;
+    }
+
+    std::ptrdiff_t operator-(DataIterator other){
+        return (pointedSample - other.pointedSample)/sampleLength;
+    }
+
+    bool operator==(DataIterator other){
+        return pointedSample == other.pointedSample;
+    }
+
+    DataView operator*(){
+        return DataView{pointedSample, sampleLength};
+    }
+};
+*/
 
 template<typename DataEntry>
 void NormalizeDataSet(DataSet<DataEntry>& dataSet){
@@ -129,17 +248,7 @@ struct BlockIndecies{
 
 
 
-template<typename DataEntry, size_t alignment>
-size_t EntryPadding(const size_t entryLength){
-    size_t entryBytes = sizeof(DataEntry)*entryLength;
-    size_t excessBytes = entryBytes%alignment;
-    if (excessBytes == 0) return 0;
-    size_t paddingBytes = alignment - excessBytes;
-    size_t paddingEntires = paddingBytes/sizeof(DataEntry);
-    assert(paddingEntires*sizeof(DataEntry) == paddingBytes);
-    return paddingBytes/sizeof(DataEntry);
-    //((sizeof(DataType)*entryLength)%alignment > 0) ? alignment - entryLength%alignment : 0
-}
+
 
 
 //Presumably, each project would only need to instantiate for a single FloatType
@@ -156,7 +265,7 @@ struct DataBlock{
     size_t numEntries;
     size_t entryLength;
     size_t lengthWithPadding;
-    AlignedArray<DataType, alignment> blockData;
+    DynamicArray<DataType, alignment> blockData;
     //std::vector<DataEntry> blockData;
 
 
@@ -169,9 +278,9 @@ struct DataBlock{
         lengthWithPadding(entryLength + EntryPadding<DataType, alignment>(entryLength)),
         blockData(lengthWithPadding*numEntries){};
 
-    template<typename DataEntry>
-        requires std::same_as<typename DataEntry::value_type, DataType>
-    DataBlock(const DataSet<DataEntry>& dataSource, std::span<const size_t> dataPoints, const size_t entryLength, size_t blockNumber):
+    //template<typename DataEntry>
+    //    requires std::same_as<typename DataEntry::value_type, DataType>
+    DataBlock(const DataSet<DataType>& dataSource, std::span<const size_t> dataPoints, const size_t entryLength, size_t blockNumber):
         blockNumber(blockNumber), 
         numEntries(dataPoints.size()),
         entryLength(entryLength),
@@ -181,7 +290,7 @@ struct DataBlock{
         //blockData.reserve(dataPoints.size());
         for (DataType* ptrIntoBlock = blockData.begin(); const size_t& index : dataPoints){
             //blockData.push_back(dataSource.samples[index]);
-            const DataEntry& pointToCopy = dataSource.samples[index];
+            typename DataSet<DataType>::ConstDataView pointToCopy = dataSource[index];
             std::copy(pointToCopy.begin(), pointToCopy.end(), ptrIntoBlock);
             ptrIntoBlock += lengthWithPadding;
         }

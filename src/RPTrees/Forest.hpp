@@ -1182,11 +1182,11 @@ std::pair<RandomProjectionForest, typename SplittingScheme::SplittingVectors> Bu
 }
 
 
-RandomProjectionForest RPTransformData(const DataSet<AlignedArray<float>>& testSet,
+RandomProjectionForest RPTransformData(const DataSet<float>& testSet,
                      const std::unordered_set<size_t>& splittingIndecies,
                      std::unordered_map<size_t, std::pair<AlignedArray<float>, AlignedArray<float>::value_type>>&& splittingVectors){
 
-    EuclidianScheme<AlignedArray<float>, AlignedArray<float>> transformingScheme(testSet);
+    EuclidianScheme<float, AlignedArray<float>> transformingScheme(testSet);
 
     transformingScheme.splittingVectors = std::move(splittingVectors);
 
@@ -1204,12 +1204,12 @@ RandomProjectionForest RPTransformData(const DataSet<AlignedArray<float>>& testS
 }
 
 RandomProjectionForest RPTransformData(std::execution::parallel_unsequenced_policy,
-                     const DataSet<AlignedArray<float>>& testSet,
+                     const DataSet<float>& testSet,
                      const std::unordered_set<size_t>& splittingIndecies,
                      std::unordered_map<size_t, std::pair<AlignedArray<float>, AlignedArray<float>::value_type>>&& splittingVectors,
                      const size_t numThreads){
 
-    EuclidianScheme<AlignedArray<float>, AlignedArray<float>> transformingScheme(testSet);
+    EuclidianScheme<float, AlignedArray<float>> transformingScheme(testSet);
 
     transformingScheme.splittingVectors = std::move(splittingVectors);
 

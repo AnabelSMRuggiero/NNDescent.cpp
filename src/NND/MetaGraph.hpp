@@ -234,10 +234,10 @@ struct IndexMaps{
 
 };
 
-template<typename DataEntry, typename DataStructure, typename BoundConstructor>
+template<typename DataType, typename DataStructure, typename BoundConstructor>
 struct DataMapper{
 
-    const DataSet<DataEntry>& dataSource;
+    const DataSet<DataType>& dataSource;
     size_t blockCounter;
     size_t graphFragment;
     std::vector<DataStructure> dataBlocks;
@@ -247,12 +247,12 @@ struct DataMapper{
     std::vector<size_t> sourceToSplitIndex;
     BoundConstructor construct;
 
-    DataMapper(const DataSet<DataEntry>& source, BoundConstructor constructor, const size_t fragmentNumber = 0, const size_t startIndex = 0):
+    DataMapper(const DataSet<DataType>& source, BoundConstructor constructor, const size_t fragmentNumber = 0, const size_t startIndex = 0):
         dataSource(source),
         blockCounter(startIndex),
         graphFragment(fragmentNumber),
-        sourceToBlockIndex(dataSource.numberOfSamples),
-        sourceToSplitIndex(dataSource.numberOfSamples),
+        sourceToBlockIndex(dataSource.size()),
+        sourceToSplitIndex(dataSource.size()),
         construct(constructor) {};
 
     void operator()(size_t splittingIndex, std::span<const size_t> indicies){
@@ -286,8 +286,8 @@ struct DataMapper<DataEntry, void, void>{
         dataSource(source),
         blockCounter(startIndex),
         graphFragment(fragmentNumber),
-        sourceToBlockIndex(dataSource.numberOfSamples),
-        sourceToSplitIndex(dataSource.numberOfSamples) {};
+        sourceToBlockIndex(dataSource.size()),
+        sourceToSplitIndex(dataSource.size()) {};
 
     void operator()(size_t splittingIndex, std::span<const size_t> indicies){
         //[[unlikely]]if (indicies.size() == 0) return;
@@ -341,15 +341,15 @@ struct DataMapper<DataEntry, DataStructure>{
 using UnweightedGraphEdges = std::unordered_map<size_t, std::unordered_map<size_t, size_t>>;
 using WeightedGraphEdges = std::unordered_map<size_t, std::vector<std::pair<size_t, double>>>;
 
-WeightedGraphEdges NeighborsOutOfBlock(const DataSet<std::valarray<int32_t>>& groundTruth,
+WeightedGraphEdges NeighborsOutOfBlock(const DataSet<int32_t>& groundTruth,
     const std::vector<BlockIndecies>& trainClassifications,
     const std::vector<size_t>& testClassifications){
         UnweightedGraphEdges unweightedGraph;
-        for(size_t i = 0; i<groundTruth.samples.size(); i += 1){
+        for(size_t i = 0; i<groundTruth.size(); i += 1){
             size_t treeIndex = testClassifications[i];
             //for(const auto& neighbor: groundTruth.samples[i]){
             for (size_t j = 0; j<10; j +=1){
-                int32_t neighbor = groundTruth.samples[i][j];
+                int32_t neighbor = groundTruth[i][j];
                 (unweightedGraph[treeIndex])[trainClassifications[neighbor].blockNumber] += 1;
             }
         }
