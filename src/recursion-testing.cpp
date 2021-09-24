@@ -32,7 +32,76 @@ https://github.com/AnabelSMRuggiero/NNDescent.cpp
 
 using namespace nnd;
 
-void GraphwiseJoin(MetaGraph<float> metaGraphA, std::span<BlockUpdateContext<float>> graphA, MetaGraph<float> metaGraphB, std::span<BlockUpdateContext<float>> graphB, CachingFunctor<float>& cacher, EuclideanMetricSet metricSet){
+template<typename COMExtent>
+struct FragmentGraph{
+    std::vector<size_t> weights;
+    DataBlock<COMExtent> points;
+    Graph<GraphFragment_t, COMExtent> verticies;
+    QueryContext<GraphFragment_t, COMExtent> queryContext;
+
+    size_t size() const{
+        return points.numEntries;
+    }
+
+};
+
+template<typename COMExtent>
+size_t WeightedEuclideanCOM(const MetaGraph<COMExtent>& metaGraph, AlignedSpan<COMExtent> writeLocation){
+    const DataBlock<COMExtent>& dataBlock = metaGraph.points;
+    const std::vector<size_t>& weights = metaGraph.weights;
+    size_t totalWeight = 0;
+    for (size_t i = 0; i<dataBlock.size(); i += 1){
+        totalWeight += weights[i];
+        for(size_t j = 0; j<dataBlock[i].size(); j += 1){
+            writeLocation[j] += dataBlock[i][j] * weights[i];
+        }
+    }
+
+    for(auto& extent: writeLocation) extent /= totalWeight;
+
+    return totalWeight;
+}
+
+template<typename COMExtent, typename MetricSet, typename COMFunctor>
+FragmentGraph<COMExtent> BuildFragmentGraph(const DynamicArray<MetaGraph<COMExtent>>& metaGraphs, const IndexParameters& params, MetricSet metricSet, COMFunctor COMCalculator){
+    std::vector<size_t> weights(0);
+    weights.reserve(metaGraphs.size());
+    DataBlock<COMExtent> points(metaGraphs.size(), metaGraphs[0].points.entryLength, 0);
+    Graph<GraphFragment_t, COMExtent> verticies(metaGraphs.size(), params.COMNeighbors);
+    //SinglePointFunctor<COMExtent> functor(DataComDistance<DataEntry, COMExtent, MetricPair>(*this, dataBlocks, metricFunctor));
+    weights.reserve(metaGraphs.size());
+    for (size_t i = 0; const auto& graph: metaGraphs){
+        //(graph.size());
+        weights.push_back(COMCalculator(graph, points[i]));
+        i++;
+    }
+
+    AlignedArray<COMExtent> centerOfMass(points.entryLength);
+    COMCalculator(points, {centerOfMass.GetAlignedPtr(0), centerOfMass.size()});
+
+    BruteForceGraph<COMExtent>(verticies, params.COMNeighbors, points, metricSet.dataToData);
+    for(auto& vertex: verticies){
+        std::sort(vertex.begin(), vertex.end(), NeighborDistanceComparison<size_t, COMExtent>);
+    }
+
+    auto neighborFunctor = [&](size_t, size_t pointIndex){
+        return metricSet.comToCom({centerOfMass.GetAlignedPtr(0), centerOfMass.size()}, points[pointIndex]);
+    };
+    GraphVertex<GraphFragment_t, COMExtent> queryHint = QueryCOMNeighbors<COMExtent, COMExtent, GraphFragment_t>(0, verticies, params.COMNeighbors, neighborFunctor);
+
+    QueryContext<GraphFragment_t,COMExtent> queryContext(verticies,
+                                         std::move(queryHint),
+                                         params.queryDepth,
+                                         0,
+                                         GraphFragment_t{std::numeric_limits<GraphFragment_t>::max()},
+                                         points.size());
+
+    return FragmentGraph<COMExtent>{weights, std::move(points), verticies, std::move(queryContext)};
+}
+
+template<typename COMExtent>
+using FragmentStitchHint = std::tuple<BlockNumber_t, BlockNumber_t, COMExtent>;
+/*
     using COMExtent = float;
     auto nnFunctor = [&](const size_t lhsIndex, const size_t rhsIndex)->auto{
         return metricSet.comToCom(metaGraphA.points[lhsIndex], metaGraphB.points[rhsIndex]);
@@ -52,9 +121,79 @@ void GraphwiseJoin(MetaGraph<float> metaGraphA, std::span<BlockUpdateContext<flo
         joinQueue.push_back({metaGraphA.verticies[joinQueue.front().first][i].first,
                              metaGraphB.verticies[joinQueue.front().second][i].first});
     }
+*/
 
-    for (auto& [lhsIndex, rhsIndex]: joinQueue){
-        UpdateBlocks(graphA[lhsIndex], graphB[rhsIndex], cacher);
+void GraphwiseJoin(MetaGraph<float> metaGraphA,
+                   std::span<BlockUpdateContext<float>> graphA,
+                   MetaGraph<float> metaGraphB,
+                   std::span<BlockUpdateContext<float>> graphB,
+                   CachingFunctor<float>& cacher,
+                   std::vector<FragmentStitchHint<float>> stitchHints){
+    
+
+    std::unordered_set<BlockNumber_t> lhsBlocks;
+    std::unordered_set<BlockNumber_t> rhsBlocks;
+
+    for (auto& [lhsIndex, rhsIndex, ignore]: stitchHints){
+        cacher.metricFunctor.SetBlocks(lhsIndex, rhsIndex);
+        std::tuple<DataIndex_t, DataIndex_t, float> stitchHint = graphA[lhsIndex].queryContext.NearestNodes(graphB[rhsIndex].queryContext, cacher.metricFunctor);
+        graphA[lhsIndex].joinsToDo[rhsIndex].insert({std::get<0>(stitchHint), {std::get<1>(stitchHint)}});
+        graphB[rhsIndex].joinsToDo[lhsIndex].insert({std::get<1>(stitchHint), {std::get<0>(stitchHint)}}); //{};
+        if (UpdateBlocks<true>(graphA[lhsIndex], graphB[rhsIndex], cacher) > 0){
+            lhsBlocks.insert(lhsIndex);
+            rhsBlocks.insert(rhsIndex);
+        }
+    }
+
+    for (auto& lhsIndex: lhsBlocks){
+
+        std::vector<BlockNumber_t> blocksToJoin;
+        for (auto& joinList: graphA[lhsIndex].joinsToDo) blocksToJoin.push_back(joinList.first);
+
+        for(auto& rhsIndex: blocksToJoin){
+            UpdateBlocks<true>(graphA[lhsIndex], graphB[rhsIndex], cacher);
+            graphB[rhsIndex].joinsToDo.erase(lhsIndex);
+        }
+    }
+
+    for (auto& rhsIndex: rhsBlocks){
+        std::vector<BlockNumber_t> blocksToJoin;
+        for (auto& joinList: graphB[rhsIndex].joinsToDo) blocksToJoin.push_back(joinList.first);
+
+        for(auto& lhsIndex: blocksToJoin){
+            UpdateBlocks<true>(graphA[lhsIndex], graphB[rhsIndex], cacher);
+            graphA[lhsIndex].joinsToDo.erase(rhsIndex);
+        }
+    }
+
+    size_t graphUpdates = 1;
+    while(graphUpdates>0){
+        graphUpdates = 0;
+        for(size_t i = 0; i<graphA.size(); i+=1){
+            std::vector<BlockNumber_t> blocksToJoin;
+
+            for (auto& joinList: graphA[i].joinsToDo) blocksToJoin.push_back(joinList.first);
+
+            for (auto& rhsIndex: blocksToJoin){
+                graphUpdates += UpdateBlocks<true>(graphA[i], graphB[rhsIndex], cacher);
+                graphB[rhsIndex].joinsToDo.erase(i);
+            }
+        }
+
+        for(size_t i = 0; i<graphB.size(); i+=1){
+            std::vector<BlockNumber_t> blocksToJoin;
+
+            for (auto& joinList: graphB[i].joinsToDo) blocksToJoin.push_back(joinList.first);
+
+            for (auto& lhsIndex: blocksToJoin){
+                graphUpdates += UpdateBlocks<true>(graphA[lhsIndex], graphB[i], cacher);
+                graphA[lhsIndex].joinsToDo.erase(i);
+            }
+        }
+        //for (auto& context: blockSpan){
+        //    context.SetNextJoins();
+        //}
+
     }
 }
 
@@ -78,14 +217,14 @@ int main(int argc, char *argv[]){
     static const std::endian dataEndianness = std::endian::native;
     
     std::string trainDataFilePath("./TestData/SIFT-Train.bin");
-    DataSet<AlignedArray<float>> trainData(trainDataFilePath, 128, 1'000'000, &ExtractNumericArray<AlignedArray<float>,dataEndianness>);
+    DataSet<float> trainData(trainDataFilePath, 128, 1'000'000);
 
 
     std::string testDataFilePath("./TestData/SIFT-Test.bin");
     std::string testNeighborsFilePath("./TestData/SIFT-Neighbors.bin");
-    DataSet<AlignedArray<float>> testData(testDataFilePath, 128, 10'000, &ExtractNumericArray<AlignedArray<float>,dataEndianness>);
-    DataSet<AlignedArray<uint32_t>> testNeighbors(testNeighborsFilePath, 100, 10'000, &ExtractNumericArray<AlignedArray<uint32_t>,dataEndianness>);
-
+    DataSet<float> testData(testDataFilePath, 128, 10'000);
+    DataSet<uint32_t> testNeighbors(testNeighborsFilePath, 100, 10'000);
+    /*
     auto [forest, splittingVectors] = BuildRPForest<EuclidianScheme<AlignedArray<float>, AlignedArray<float>>>(std::execution::seq, trainData, firstSplitParams);
 
     //
@@ -108,24 +247,28 @@ int main(int argc, char *argv[]){
 
     }
     using BlockSet = std::vector<DataBlock<float>>;
-    std::vector<BlockSet> blocksSets;
+    std::vector<BlockSet> blockSets;
     
     for (auto& subForest: forests){
 
-        auto blockContructor = [&blocksSets, &trainData, blockNum = 0ul](size_t, std::span<const size_t> dataPoints)mutable->auto{ 
-        blocksSets.back().emplace_back(trainData, dataPoints, trainData.sampleLength, blockNum++);
+        auto blockContructor = [&blockSets, &trainData, blockNum = 0ul](size_t, std::span<const size_t> dataPoints)mutable->auto{ 
+        blockSets.back().emplace_back(trainData, dataPoints, trainData.sampleLength, blockNum++);
         };
-        blocksSets.emplace_back();
+        blockSets.emplace_back();
         CrawlTerminalLeaves(subForest, blockContructor);
         //blockContructor.blockNum = 0;
     }
 
-    std::unique_ptr<std::unique_ptr<BlockUpdateContext<float>[]>[]> graphs = std::make_unique<std::unique_ptr<BlockUpdateContext<float>[]>[]>(blocksSets.size());
+    std::vector<MetaGraph<float>> metaGraphs;
+    metaGraphs.reserve(blockSets.size());
+
+    std::unique_ptr<std::unique_ptr<BlockUpdateContext<float>[]>[]> graphs = std::make_unique<std::unique_ptr<BlockUpdateContext<float>[]>[]>(blockSets.size());
     size_t i = 0;
-    for(auto& blockSet: blocksSets){
+    for(auto& blockSet: blockSets){
         
-        MetaGraph<float> metaGraph = BuildMetaGraphFragment<float>(blockSet, parameters.indexParams, i, EuclideanMetricSet(), EuclideanCOM<float, float>);
-        DataComDistance<float, float, EuclideanMetricPair> comFunctor(metaGraph, blockSet);
+        //MetaGraph<float> metaGraph = BuildMetaGraphFragment<float>(blockSet, parameters.indexParams, i, EuclideanMetricSet(), EuclideanCOM<float, float>);
+        metaGraphs.push_back(BuildMetaGraphFragment<float>(blockSet, parameters.indexParams, i, EuclideanMetricSet(), EuclideanCOM<float, float>));
+        DataComDistance<float, float, EuclideanMetricPair> comFunctor(metaGraphs[i], blockSet);
         
         std::unique_ptr<BlockUpdateContext<float>[]> blockContextArr;
         std::span<BlockUpdateContext<float>> blockUpdateContexts;
@@ -135,7 +278,7 @@ int main(int argc, char *argv[]){
         
         ThreadPool<ThreadFunctors<float, float>> pool(12, euclideanFunctor, comFunctor, splitParams.maxTreeSize, indexParams.blockGraphNeighbors);
         pool.StartThreads();
-        blockContextArr = BuildGraph(metaGraph, parameters, pool);
+        blockContextArr = BuildGraph(metaGraphs[i], parameters, pool);
         //blockUpdateContexts = {blockContextArr.get(), blockSet.size()};
         pool.StopThreads();
 
@@ -144,7 +287,7 @@ int main(int argc, char *argv[]){
         i++;
     }
     //CrawlTerminalLeaves()
-
+    */
 
     return 0;
 }
