@@ -25,7 +25,90 @@ https://github.com/AnabelSMRuggiero/NNDescent.cpp
 
 namespace nnd{
 
+template<typename MetricPair, typename LHSData, typename RHSData>
+struct BasicFunctor{
+    using DistType = typename MetricPair::DistType;
+    using ConstDataView = typename RHSData::ConstDataView;
 
+    [[no_unique_address]] MetricPair metricPair;
+    const LHSData* lhsBlock;
+    const RHSData* rhsBlock;
+    //size_t lhsBlockNum, rhsBlockNum;
+    
+    BasicFunctor(const LHSData& lhsData, const RHSData& rhsData): metricPair(MetricPair()), lhsBlock(&lhsData), rhsBlock(&rhsData) {};
+
+    BasicFunctor(MetricPair metricPair, const LHSData& lhsData, const RHSData& rhsData): metricPair(metricPair), lhsBlock(&lhsData), rhsBlock(&rhsData) {};
+
+    DistType operator()(size_t LHSIndex, size_t RHSIndex) const {
+        return metricPair((*lhsBlock)[LHSIndex], (*rhsBlock)[RHSIndex]);
+    };
+    
+    std::vector<DistType> operator()(const size_t lhsIndex, const std::vector<size_t>& rhsIndecies) const {
+        char stackBuffer[sizeof(ConstDataView)*20];
+        std::pmr::monotonic_buffer_resource stackResource(stackBuffer, sizeof(ConstDataView)*20);
+        std::pmr::vector<ConstDataView> rhsData(&stackResource);
+        rhsData.reserve(20);
+        for(const auto& index: rhsIndecies){
+            rhsData.push_back((*rhsBlock)[index]);
+        }
+        return metricPair((*lhsBlock)[lhsIndex], rhsData);
+    };
+
+};
+
+template<typename DistType>
+struct ErasedMetricPair{
+
+    ErasedMetricPair() = default;
+
+    ErasedMetricPair(const ErasedMetricPair& other):
+        ptrToFunc(other.ptrToFunc){};
+
+    ErasedMetricPair& operator=(const ErasedMetricPair&) = default;
+
+    template<IsNot<ErasedMetricPair> DistanceFunctor>
+    ErasedMetricPair(DistanceFunctor& distanceFunctor):
+        ptrToFunc(std::make_shared<ConcreteFunctor<DistanceFunctor>>(distanceFunctor)){};
+    
+    DistType operator()(const size_t LHSIndex, const size_t RHSIndex) const{
+        return this->ptrToFunc->operator()(LHSIndex, RHSIndex);
+    };
+
+    std::vector<DistType> operator()(const size_t lhsIndex, const std::vector<size_t>& rhsIndecies) const{
+        return this->ptrToFunc->operator()(lhsIndex, rhsIndecies);
+    };
+
+
+    private:
+    struct AbstractFunctor{
+        virtual ~AbstractFunctor(){};
+        virtual DistType operator()(size_t LHSIndex, size_t RHSIndex) const = 0;
+        virtual std::vector<DistType> operator()(const size_t lhsIndex, const std::vector<size_t>& rhsIndecies) const = 0;
+    };
+
+    template<typename DistanceFunctor>
+    struct ConcreteFunctor final : AbstractFunctor{
+
+        DistanceFunctor underlyingFunctor;
+
+        ConcreteFunctor(DistanceFunctor underlyingFunctor): underlyingFunctor(underlyingFunctor){};
+        //~ConcreteFunctor() final = default;
+
+        DistType operator()(size_t LHSIndex, size_t RHSIndex) const final {
+            return this->underlyingFunctor(LHSIndex, RHSIndex);
+        };
+
+        std::vector<DistType> operator()(const size_t lhsIndex, const std::vector<size_t>& rhsIndecies) const final{
+            return this->underlyingFunctor(lhsIndex, rhsIndecies);
+        };
+
+
+    };
+
+    private:
+    std::shared_ptr<AbstractFunctor> ptrToFunc;
+    
+};
 
 
 

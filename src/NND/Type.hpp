@@ -115,6 +115,10 @@ struct NodeTracker{
         return flags[i.dataIndex];
     }
 
+    size_t size() const{
+        return flags.size();
+    }
+
 };
 
 

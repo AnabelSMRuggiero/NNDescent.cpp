@@ -30,10 +30,10 @@ namespace nnd{
 
 
 
-template<std::integral IndexType>
+template<std::integral IndexType, std::integral OtherIndex = IndexType>
 struct IntegralPairHasher{
 
-    size_t operator()(const std::pair<IndexType, IndexType>& pair) const noexcept{
+    size_t operator()(const std::pair<IndexType, OtherIndex>& pair) const noexcept{
         return std::hash<IndexType>()(size_t(pair.first)*634018663193ul ^ std::hash<IndexType>()(pair.second)*354019652443ul);
     }
 
@@ -70,7 +70,7 @@ struct DynamicArray{
         std::pmr::memory_resource* resourcePtr;
         size_t capacity;
         void operator()(ValueType* arrayToDelete) {
-            resourcePtr->deallocate(arrayToDelete, capacity, alignment);  //deallocate_object<ValueType>(arrayToDelete, capacity); 
+            resourcePtr->deallocate(arrayToDelete, capacity*sizeof(ValueType), alignment);  //deallocate_object<ValueType>(arrayToDelete, capacity); 
         };
 
     };

@@ -105,6 +105,7 @@ struct MetaGraph{
     DataBlock<COMExtent> points;
     Graph<BlockNumber_t, COMExtent> verticies;
     QueryContext<BlockNumber_t, COMExtent> queryContext;
+    NodeTracker fragmentsJoined = {};
     /*
     template<typename DataType, typename Metric, typename COMFunctor>
     MetaGraph(const std::vector<DataBlock<DataType>>& dataBlocks, const size_t numNeighbors, Metric metricFunctor, COMFunctor COMCalculator):

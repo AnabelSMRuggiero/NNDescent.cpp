@@ -92,10 +92,11 @@ struct SearchContext{
     //std::unordered_map<size_t, std::vector<size_t>> searchesToDo;
     std::unordered_map<BlockIndecies, std::vector<BlockIndecies>> comparisonResults;
     bool done;
+    size_t numNeighbors;
     //std::unordered_map<size_t, size_t> targetBlocks;
     
     SearchContext(const size_t numNeighbors, const size_t numBlocks, const size_t dataIndex):
-        currentNeighbors(numNeighbors), blocksJoined(numBlocks), dataIndex(dataIndex), done(false){};
+        currentNeighbors(numNeighbors), blocksJoined(numBlocks), dataIndex(dataIndex), done(false), numNeighbors(numNeighbors){};
 
     void AddInitialResult(GraphVertex<BlockIndecies, DistType>&& result){
         searchResults.push_back(std::move(result));
@@ -105,6 +106,20 @@ struct SearchContext{
         searchResults.push_back(std::move(result));
     }
 
+    void ConsumeUpdates(){
+        //auto [added, removed] = AddNeighbors(currentNeighbors, searchResults);
+        for (const auto& result: searchResults){
+            for(const auto& neighbor: result){
+                currentNeighbors.push_back(neighbor);
+            }
+        }
+        currentNeighbors.JoinPrep();
+        currentNeighbors.resize(numNeighbors);
+        searchResults.clear();
+        //searchUpdates += newNodes.size();
+        
+
+    }
     
     void ConsumeUpdates(std::span<const IndexBlock> graphFragments){
         auto [added, removed] = AddNeighbors(currentNeighbors, searchResults);
@@ -444,20 +459,62 @@ void UpdateInitialComparisons(std::unordered_map<BlockIndecies, std::vector<Bloc
 }
 
 
+template<typename Functor>
+DataBlock<BlockNumber_t, alignof(BlockNumber_t)> BlocksToSearch(MetaGraph<float>& metaGraph,
+                                                                const size_t numInitSearches,
+                                                                const size_t searchSetSize,
+                                                                Functor searchFunctor){
 
-std::vector<std::vector<size_t>> BlocksToSearch(//std::vector<std::vector<SearchContext<float>>>& searchContexts,
-                                                const MetaGraph<float>& metaGraph,
-                                                const size_t numInitSearches){
-    std::vector<std::vector<size_t>> blocksToSearch;
-    blocksToSearch.reserve(metaGraph.verticies.size());
-    for (const auto& vertex: metaGraph.verticies){
-        blocksToSearch.push_back({});
-        for (size_t i = 0; i<numInitSearches; i+=1){
-            blocksToSearch.back().push_back(vertex[i].first);
+    using DistType = float;
+    DataBlock<BlockNumber_t, alignof(BlockNumber_t)> blocksToSearch(searchSetSize, numInitSearches, 0);
+
+    metaGraph.queryContext.querySize = std::max(numInitSearches, metaGraph.queryContext.querySearchDepth);
+    
+    for (size_t i = 0; i<searchSetSize; i+=1){
+        GraphVertex<BlockNumber_t, DistType> initHint;
+        metaGraph.queryContext.Query(initHint, i, searchFunctor);
+        for (size_t j = 0; j<numInitSearches; j+=1){
+            blocksToSearch[i][j] = initHint[j].first;
         }
+        
     }
 
     return blocksToSearch;
+}
+
+
+std::vector<std::vector<size_t>> QueueSearches(const DataBlock<BlockNumber_t, alignof(BlockNumber_t)>& blocksToSearch, const size_t numberOfBlocks){
+
+    std::vector<std::vector<size_t>> searchesQueued(numberOfBlocks);
+    for (size_t i = 0; i<blocksToSearch.size(); i+=1){
+        for (size_t j = 0; j<blocksToSearch[0].size(); j+=1){
+            searchesQueued[blocksToSearch[i][j]].push_back(i);
+        }
+    }
+
+    return searchesQueued;
+}
+
+void DoSearches(std::span<BlockUpdateContext<float>> blocks, std::vector<SearchContext<float>>& searches, const std::vector<std::vector<size_t>>& searchesQueued, SinglePointFunctor<float>& searchFunctor){
+
+    for (size_t i = 0; const auto& blockSearch: searchesQueued){
+        searchFunctor.SetBlock(i);
+        for (const auto& searchIndex: blockSearch){
+            std::vector<DataIndex_t> emptyHint{0};
+            GraphVertex<DataIndex_t, float> newNodes = BlockwiseSearch(searches[searchIndex],
+                                                                      blocks[i].queryContext,
+                                                                      emptyHint,
+                                                                      searchFunctor);
+                
+            GraphVertex<BlockIndecies, float> convertex = ToBlockIndecies(newNodes, blocks[i].queryContext.graphFragment, i);
+            searches[searchIndex].AddSearchResult(std::move(convertex));
+        }
+        i++;
+    }
+
+    for (auto& search: searches){
+        search.ConsumeUpdates();
+    }
 }
 
 template<typename DistType>
