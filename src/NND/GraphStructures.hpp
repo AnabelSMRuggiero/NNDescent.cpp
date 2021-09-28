@@ -22,6 +22,7 @@ https://github.com/AnabelSMRuggiero/NNDescent.cpp
 #include <utility>
 #include <cstring>
 #include <span>
+#include <memory_resource>
 
 #include "UtilityFunctions.hpp"
 
@@ -654,8 +655,140 @@ struct UndirectedGraph{
     }
 };
 
+//Placeholder name while I work on the constructor for the new version
+template<TriviallyCopyable IndexType>
+struct NewUndirectedGraph{
 
+    using iterator = typename std::vector<std::vector<IndexType>>::iterator;
+    using const_iterator = typename std::vector<std::vector<IndexType>>::const_iterator;
+    private:
+    DynamicArray<std::byte, std::max(alignof(size_t), alignof(IndexType))> dataStorage;
+    size_t numVerticies;
+    public:
 
+    NewUndirectedGraph(): verticies(){};
+
+    //NewUndirectedGraph(size_t numVerticies, size_t numNeighbors): 
+    //    verticies(numVerticies, std::vector<IndexType>(numNeighbors)){};
+
+    template<typename DistType>
+    NewUndirectedGraph(Graph<IndexType, DistType> undirectedGraph, size_t numBytes, size_t numVerticies, size_t numIndecies, std::pmr::memory_resource* resource): dataStorage(numBytes, resource), numVerticies(numVerticies){
+        //std::pmr::polymorphic_allocator<std::byte> alloc(resource);
+        //alloc.construct
+        size_t* vertexStart = new (dataStorage.begin()) size_t[numVerticies];
+        //*vertexStart = 0;
+
+        std::transform_inclusive_scan(undirectedGraph.begin(), undirectedGraph.end(), vertexStart, 0, std::plus<size_t>{},[](const auto& vertex){
+            return vertex.size();
+        });
+
+        size_t padding;
+        if constexpr (alignof(IndexType)>alignof(size_t)){
+            size_t headerBytes = sizeof(size_t)*numVerticies;
+            padding = alignof(IndexType) - headerBytes%alignof(IndexType);
+        } else {
+            padding = 0;
+        }
+
+        IndexType* indexStart = new (dataStorage.begin() + sizeof(size_t)*numVerticies + padding) IndexType[numIndecies];
+
+        for (auto& vertex: undirectedGraph){
+            std::ranges::sort(vertex, NeighborDistanceComparison<IndexType, DistType>);
+            //This orders everything from closest to furtherest. Opposite of what it used to be
+            std::transform(vertex.begin(), vertex.end(), indexStart, [](const auto& neighbor){ return neighbor.first });
+            indexStart += vertex.size();
+        }
+        
+    }
+
+    std::vector<IndexType>& operator[](size_t i){
+        return verticies[i];
+    }
+
+    std::vector<IndexType>& operator[](BlockIndecies i){
+        // I'm assuming the block number is correct
+        return verticies[i.dataIndex];
+    }
+
+    constexpr const std::vector<IndexType>& operator[](size_t i) const{
+        return this->verticies[i];
+    }
+
+    constexpr const std::vector<IndexType>& operator[](BlockIndecies i) const{
+        return this->verticies[i.dataIndex];
+    }
+
+    constexpr void push_back(const std::vector<IndexType>& value){
+        verticies.push_back(value);
+    }
+
+    template<typename VertexReferenceType>
+    constexpr void push_back(std::vector<IndexType>&& value){
+        verticies.push_back(std::forward<VertexReferenceType>(value));
+    }
+
+    size_t size() const noexcept{
+        return verticies.size();
+    }
+    
+    constexpr iterator begin() noexcept{
+        return verticies.begin();
+    }
+
+    constexpr const_iterator begin() const noexcept{
+        return verticies.begin();
+    }
+
+    constexpr const_iterator cbegin() const noexcept{
+        return verticies.cbegin();
+    }
+
+    constexpr iterator end() noexcept{
+        return verticies.end();
+    }
+
+    constexpr const_iterator end() const noexcept{
+        return verticies.end();
+    }
+
+    constexpr const_iterator cend() const noexcept{
+        return verticies.cend();
+    }
+};
+
+template<typename IndexType, typename DistType>
+void BuildUndirectedGraph(Graph<IndexType, DistType> directedGraph, std::pmr::memory_resource* resource = std::pmr::get_default_resource()){
+    for (size_t i = 0; auto& vertex: directedGraph){
+        vertex.neighbors.reserve(vertex.size()*2);
+        for (const auto& neighbor: vertex){
+            if(std::find_if(directedGraph[neighbor.first].begin(), directedGraph[neighbor.first].end(), NeighborSearchFunctor<IndexType, DistType>(i)) == directedGraph[neighbor.first].end()) 
+                directedGraph[neighbor.first].push_back({static_cast<IndexType>(i), neighbor.second});
+        }
+        i++;
+    }
+
+    //size_t totalSize = directedGraph.size();
+    size_t numberOfVerticies = directedGraph.size();
+    size_t totalIndecies = 0;
+
+    for(const auto& vertex : directedGraph){
+        totalIndecies += vertex.size();
+    }
+
+    size_t numberOfBytes = 0;
+
+    if constexpr(alignof(IndexType)>alignof(size_t)){
+        size_t headerBytes = sizeof(size_t)*numberOfVerticies;
+        size_t headerPadding = alignof(IndexType) - headerBytes%alignof(IndexType);
+        numberOfBytes = headerBytes + headerPadding + sizeof(IndexType)*totalIndecies;
+    } else {
+        numberOfBytes = sizeof(size_t)*numberOfVerticies + sizeof(IndexType)*totalIndecies;
+    }
+    //Okay, now I have enough information to call the constructor.
+
+    return NewDynamicArray<IndexType>(std::move(directedGraph), numberOfBytes, numberOfVerticies, totalIndecies, resource);
+
+}
 
 
 
