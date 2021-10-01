@@ -16,6 +16,7 @@ https://github.com/AnabelSMRuggiero/NNDescent.cpp
 #include <valarray>
 #include <fstream>
 
+#include "./Type.hpp"
 namespace nnd{
 
 

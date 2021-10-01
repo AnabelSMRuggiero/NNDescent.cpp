@@ -435,72 +435,7 @@ struct SplittingHeurisitcs{
     uint32_t maxTreeSize = 130;
     float maxSplitFraction = 0.0f;
 };
-/*
-template<typename ElementType>
-struct OffsetSpan{
-    using value_type = ElementType;
-    using iterator = typename std::span<ElementType>::iterator;
-    using const_iterator = const typename std::span<ElementType>::iterator;
 
-    std::span<ElementType> arrView;
-    size_t indexOffset;
-
-    OffsetSpan() = default;
-
-    OffsetSpan(ElementType* arr, size_t arrSize, size_t indexOffset): 
-        arrView(arr, arrSize), 
-        indexOffset(indexOffset){}
-
-    OffsetSpan(std::span<ElementType> arrView, size_t indexOffset): arrView(arrView), indexOffset(indexOffset) {}
-
-    
-
-    size_t Offset(){
-        return indexOffset;
-    }
-
-    size_t StopIndex(){
-        return indexOffset + arrView.size();
-    }
-
-    ElementType& operator[](size_t i){
-        return arrView[i-indexOffset];
-    }
-
-    const ElementType& operator[](size_t i) const{
-        return arrView[i - indexOffset];
-    }
-
-    iterator begin(){
-        return arrView.begin();
-    }
-
-    iterator end(){
-        return arrView.end();
-    }
-
-    const_iterator begin() const{
-        return arrView.begin();
-    }
-
-    const_iterator end() const{
-        return arrView.end();
-    }
-
-    const_iterator cbegin() const{
-        return arrView.begin();
-    }
-
-    const_iterator cend() const{
-        return arrView.end();
-    }
-
-    size_t size() const{
-        return arrView.size();
-    }
-
-};
-*/
 template<typename DataType>
 concept TriviallyCopyable = std::is_trivially_copyable<DataType>::value == true;
 }

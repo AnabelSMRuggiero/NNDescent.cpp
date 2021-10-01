@@ -23,7 +23,7 @@ https://github.com/AnabelSMRuggiero/NNDescent.cpp
 #include <algorithm>
 #include <filesystem>
 #include <exception>
-
+#include <memory_resource>
 
 #include "Utilities/DataSerialization.hpp"
 #include "Utilities/Metrics/SpaceMetrics.hpp"
@@ -229,27 +229,6 @@ void NormalizeDataSet(DataSet<DataEntry>& dataSet){
     }
 };
 
-//Conceptual layout
-
-//struct DataSet
-/*
-template<typename BlockNumberType = size_t, typename DataIndexType = size_t>
-struct BlockIndecies{
-    // The block a data point exists in
-    BlockNumberType blockNumber;
-    // The index within that block
-    DataIndexType dataIndex;
-
-};
-*/
-
-
-
-
-
-
-
-
 
 //Presumably, each project would only need to instantiate for a single FloatType
 template<typename DataType, size_t align = 32>
@@ -356,6 +335,179 @@ void SerializeDataSet(const DataSet<DataEntry>& dataSet, const std::string fileP
         }
     };
 
+}
+
+template<typename ElementType>
+struct UnevenBlockIterator{
+    using value_type = std::span<ElementType>;
+    using difference_type = std::ptrdiff_t;
+    using reference = std::span<ElementType>;
+
+    UnevenBlockIterator(size_t* vertexStart, ElementType* vertexNeighbors): vertexStart(vertexStart), vertexNeighbors(vertexNeighbors) {}
+
+    private:
+    size_t* vertexStart;
+    ElementType* vertexNeighbors;
+
+    public:
+    UnevenBlockIterator& operator++(){
+        vertexNeighbors += *(vertexStart+1) - *vertexStart;
+        ++vertexStart;
+        return *this;
+    }
+
+    UnevenBlockIterator operator++(int){
+        UnevenBlockIterator copy = *this;
+        vertexNeighbors += *(vertexStart+1) - *vertexStart;
+        ++vertexStart;
+        return copy;
+    }
+
+    UnevenBlockIterator& operator--(){
+        vertexNeighbors -= *vertexStart - *(vertexStart-1);
+        --vertexStart;
+        return *this;
+    }
+
+    UnevenBlockIterator operator--(int){
+        UnevenBlockIterator copy = *this;
+        vertexNeighbors -= *vertexStart - *(vertexStart-1);
+        --vertexStart;
+        return copy;
+    }
+
+    UnevenBlockIterator operator+(std::ptrdiff_t inc){
+        UnevenBlockIterator copy{vertexStart+inc, vertexNeighbors + (*(vertexStart+inc) - *vertexStart)};
+        return copy;
+    }
+
+    UnevenBlockIterator operator-(std::ptrdiff_t inc){
+        UnevenBlockIterator copy{vertexStart-inc, vertexNeighbors - (*vertexStart - *(vertexStart-inc))};
+        return copy;
+    }
+
+    std::ptrdiff_t operator-(UnevenBlockIterator other){
+        return vertexStart - other.vertexStart;
+    }
+    
+    bool operator==(UnevenBlockIterator other){
+        return vertexStart == other.vertexStart;
+    }
+    
+    reference operator*(){
+        return reference{vertexNeighbors, *(vertexStart+1) - *vertexStart};
+    }
+
+    reference operator[](size_t i){
+        return *(*this + i);
+    }
+
+    UnevenBlockIterator& operator+=(std::ptrdiff_t inc){
+        *this = *this + inc;
+        return *this;
+    }
+
+    UnevenBlockIterator& operator-=(std::ptrdiff_t inc){
+        *this = *this - inc;
+        return *this;
+    }
+
+    auto operator<=>(UnevenBlockIterator& rhs){
+        return vertexStart<=> rhs.vertexStart;
+    }
+};
+
+template<typename ElementType>
+    requires std::is_trivially_constructible_v<ElementType> && std::is_trivially_destructible_v<ElementType>
+struct UnevenBlock{
+
+    using iterator = UnevenBlockIterator<ElementType>;
+    using const_iterator = UnevenBlockIterator<const ElementType>;
+    using reference = std::span<ElementType>;
+
+    private:
+    DynamicArray<std::byte, std::max(alignof(size_t), alignof(ElementType))> dataStorage;
+    size_t numArrays;
+    ElementType* firstIndex;
+    public:
+
+    UnevenBlock() = default;
+
+    //NewUndirectedGraph(size_t numVerticies, size_t numNeighbors): 
+    //    verticies(numVerticies, std::vector<IndexType>(numNeighbors)){};
+
+    //template<typename DistType>
+    UnevenBlock(const size_t numBytes, const size_t numArrays, const size_t headerPadding, const size_t numIndecies, std::pmr::memory_resource* resource): dataStorage(numBytes, resource), numArrays(numArrays), firstIndex(nullptr){
+        //std::pmr::polymorphic_allocator<std::byte> alloc(resource);
+        //alloc.construct
+        size_t* vertexStart = new (dataStorage.begin()) size_t[numArrays+1];
+        //*vertexStart = 0;
+        firstIndex = new (dataStorage.begin() + sizeof(size_t)*(numArrays+1) + headerPadding) ElementType[numIndecies];
+
+        
+        
+    }
+
+    size_t size() const noexcept{
+        return numArrays;
+    }
+    
+    constexpr iterator begin() noexcept{
+        return iterator{static_cast<size_t*>(static_cast<void*>(dataStorage.begin())), firstIndex};
+    }
+
+    constexpr const_iterator begin() const noexcept{
+        return const_iterator{static_cast<size_t*>(static_cast<void*>(dataStorage.begin())), firstIndex};
+    }
+
+    constexpr const_iterator cbegin() const noexcept{
+        return const_iterator{static_cast<size_t*>(static_cast<void*>(dataStorage.begin())), firstIndex};
+    }
+
+    constexpr iterator end() noexcept{
+        return iterator{static_cast<size_t*>(static_cast<void*>(dataStorage.begin()))+numArrays, static_cast<ElementType*>(static_cast<void*>(dataStorage.end()))};
+    }
+
+    constexpr const_iterator end() const noexcept{
+        return const_iterator{static_cast<size_t*>(static_cast<void*>(dataStorage.begin()))+numArrays, static_cast<ElementType*>(static_cast<void*>(dataStorage.end()))};
+    }
+
+    constexpr const_iterator cend() const noexcept{
+        return const_iterator{static_cast<size_t*>(static_cast<void*>(dataStorage.begin()))+numArrays, static_cast<ElementType*>(static_cast<void*>(dataStorage.end()))};
+    }
+
+    reference operator[](size_t i){
+        return this->begin()[i];
+    }
+
+    constexpr const reference operator[](size_t i) const{
+        return this->cbegin()[i];
+    }
+
+
+
+    std::byte* get(){
+        return dataStorage.get();
+    }
+
+};
+
+template<typename ElementType>
+    requires std::is_trivially_constructible_v<ElementType> && std::is_trivially_destructible_v<ElementType>
+UnevenBlock<ElementType> UninitUnevenBlock(const size_t numArrays, const size_t numElements, std::pmr::memory_resource* resource = std::pmr::get_default_resource()){
+    size_t numberOfBytes = 0;
+    size_t headerBytes = sizeof(size_t)*(numArrays+1);
+    size_t headerPadding = 0;
+
+    if constexpr(alignof(ElementType)>alignof(size_t)){
+        size_t headerExcess = headerBytes%alignof(ElementType);
+        headerPadding = (headerExcess == 0) ? 0 : alignof(ElementType) - headerBytes%alignof(ElementType);
+        numberOfBytes = headerBytes + headerPadding + sizeof(ElementType)*numElements;
+    } else {
+        numberOfBytes = headerBytes + sizeof(ElementType)*numElements;
+    }
+
+    return UnevenBlock<ElementType>(numberOfBytes, numArrays, headerPadding, numElements, resource);
 }
 
 
