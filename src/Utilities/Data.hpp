@@ -343,10 +343,10 @@ struct UnevenBlockIterator{
     using difference_type = std::ptrdiff_t;
     using reference = std::span<ElementType>;
 
-    UnevenBlockIterator(size_t* vertexStart, ElementType* vertexNeighbors): vertexStart(vertexStart), vertexNeighbors(vertexNeighbors) {}
+    UnevenBlockIterator(const size_t* vertexStart, ElementType* vertexNeighbors): vertexStart(vertexStart), vertexNeighbors(vertexNeighbors) {}
 
     private:
-    size_t* vertexStart;
+    const size_t* vertexStart;
     ElementType* vertexNeighbors;
 
     public:
@@ -424,12 +424,13 @@ struct UnevenBlock{
     using iterator = UnevenBlockIterator<ElementType>;
     using const_iterator = UnevenBlockIterator<const ElementType>;
     using reference = std::span<ElementType>;
+    using const_reference = std::span<const ElementType>;
 
-    private:
+
     DynamicArray<std::byte, std::max(alignof(size_t), alignof(ElementType))> dataStorage;
     size_t numArrays;
     ElementType* firstIndex;
-    public:
+
 
     UnevenBlock() = default;
 
@@ -461,7 +462,7 @@ struct UnevenBlock{
     }
 
     constexpr const_iterator cbegin() const noexcept{
-        return const_iterator{static_cast<size_t*>(static_cast<void*>(dataStorage.begin())), firstIndex};
+        return const_iterator{static_cast<const size_t*>(static_cast<const void*>(dataStorage.begin())), firstIndex};
     }
 
     constexpr iterator end() noexcept{
@@ -473,14 +474,14 @@ struct UnevenBlock{
     }
 
     constexpr const_iterator cend() const noexcept{
-        return const_iterator{static_cast<size_t*>(static_cast<void*>(dataStorage.begin()))+numArrays, static_cast<ElementType*>(static_cast<void*>(dataStorage.end()))};
+        return const_iterator{static_cast<const size_t*>(static_cast<const void*>(dataStorage.begin()))+numArrays, static_cast<const ElementType*>(static_cast<const void*>(dataStorage.end()))};
     }
 
     reference operator[](size_t i){
         return this->begin()[i];
     }
 
-    constexpr const reference operator[](size_t i) const{
+    constexpr const_reference operator[](size_t i) const{
         return this->cbegin()[i];
     }
 

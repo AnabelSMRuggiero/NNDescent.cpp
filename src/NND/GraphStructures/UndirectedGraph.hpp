@@ -14,47 +14,55 @@ https://github.com/AnabelSMRuggiero/NNDescent.cpp
 #include <span>
 #include <memory_resource>
 
-#include "../GraphStructures.hpp"
+#include "Graph.hpp"
 #include "../../Utilities/Type.hpp"
 #include "../../Utilities/Data.hpp"
 
 namespace nnd{
 
-
-//Placeholder name while I work on the constructor for the new version
+/*
 template<TriviallyCopyable IndexType>
     requires std::is_trivially_constructible_v<IndexType> && std::is_trivially_destructible_v<IndexType>
-struct NewUndirectedGraph{
+struct UndirectedGraph;
+*/
+
+
+template<TriviallyCopyable IndexType>
+    requires std::is_trivially_constructible_v<IndexType> && std::is_trivially_destructible_v<IndexType>
+struct UndirectedGraph{
 
     using iterator = typename UnevenBlock<IndexType>::iterator;
     using const_iterator = typename UnevenBlock<IndexType>::const_iterator;
-    private:
-    UnevenBlock<IndexType> graphBlock;
-    public:
+    using reference = typename UnevenBlock<IndexType>::reference;
+    using const_reference = typename UnevenBlock<const IndexType>::reference;
 
-    NewUndirectedGraph(): graphBlock(){};
+
+    //private:
+    UnevenBlock<IndexType> graphBlock;
+    //public:
+
+    UndirectedGraph(): graphBlock(){};
 
     //NewUndirectedGraph(size_t numVerticies, size_t numNeighbors): 
     //    verticies(numVerticies, std::vector<IndexType>(numNeighbors)){};
 
-    template<typename DistType>
-    NewUndirectedGraph(const size_t numVerticies, const size_t numIndecies, std::pmr::memory_resource* resource): graphBlock(UninitUnevenBlock(numVerticies, numVerticies, resource)){
+    UndirectedGraph(const size_t numVerticies, const size_t numIndecies, std::pmr::memory_resource* resource): graphBlock(UninitUnevenBlock<IndexType>(numVerticies, numIndecies, resource)){
     }
 
-    std::vector<IndexType>& operator[](size_t i){
+    reference operator[](size_t i){
         return graphBlock[i];
     }
 
-    std::vector<IndexType>& operator[](BlockIndecies i){
+    reference operator[](BlockIndecies i){
         // I'm assuming the block number is correct
         return graphBlock[i.dataIndex];
     }
 
-    constexpr const std::vector<IndexType>& operator[](size_t i) const{
+    constexpr const const_reference operator[](size_t i) const{
         return graphBlock[i];
     }
 
-    constexpr const std::vector<IndexType>& operator[](BlockIndecies i) const{
+    constexpr const const_reference operator[](BlockIndecies i) const{
         return graphBlock[i.dataIndex];
     }
 
@@ -89,7 +97,7 @@ struct NewUndirectedGraph{
 };
 
 template<typename IndexType, typename DistType>
-void BuildUndirectedGraph(Graph<IndexType, DistType> directedGraph, std::pmr::memory_resource* resource = std::pmr::get_default_resource()){
+UndirectedGraph<IndexType> BuildUndirectedGraph(Graph<IndexType, DistType> directedGraph, std::pmr::memory_resource* resource = std::pmr::get_default_resource()){
     for (size_t i = 0; auto& vertex: directedGraph){
         vertex.neighbors.reserve(vertex.size()*2);
         for (const auto& neighbor: vertex){
@@ -109,16 +117,16 @@ void BuildUndirectedGraph(Graph<IndexType, DistType> directedGraph, std::pmr::me
 
     //Okay, now I have enough information to call the constructor.
 
-    NewUndirectedGraph<IndexType> retGraph(numberOfVerticies, totalIndecies, resource);
-
-    std::transform_inclusive_scan(directedGraph.begin(), directedGraph.end(), retGraph.dataStorage.get(), 0, std::plus<size_t>{},[](const auto& vertex){
+    UndirectedGraph<IndexType> retGraph(numberOfVerticies, totalIndecies, resource);
+    size_t* headerStart = static_cast<size_t*>(static_cast<void*>(retGraph.graphBlock.get()));
+    std::transform_inclusive_scan(directedGraph.begin(), directedGraph.end(), headerStart+1, std::plus<size_t>{},[](const auto& vertex){
         return vertex.size();
-    });
+    }, 0);
 
-    IndexType* indexStart = retGraph.firstIndex;
+    IndexType* indexStart = retGraph.graphBlock.firstIndex;
     for (auto& vertex: directedGraph){
         std::ranges::sort(vertex, NeighborDistanceComparison<IndexType, DistType>);
-        std::transform(vertex.begin(), vertex.end(), indexStart, [](const auto& neighbor){ return neighbor.first });
+        std::transform(vertex.begin(), vertex.end(), indexStart, [](const auto& neighbor){ return neighbor.first; });
         indexStart += vertex.size();
     }
 

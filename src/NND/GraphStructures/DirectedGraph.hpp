@@ -8,60 +8,35 @@ Please refer to the project repo for any updates regarding liscensing.
 https://github.com/AnabelSMRuggiero/NNDescent.cpp
 */
 
-#ifndef NND_GRAPHSTRUCTURES_HPP
-#define NND_GRAPHSTRUCTURES_HPP
+#ifndef NND_DIRECTEDGRAPH_HPP
+#define NND_DIRECTEDGRAPH_HPP
+
 #include <vector>
 
-#include <algorithm>
+#include "../../Utilities/Type.hpp"
+#include "../../Utilities/Metrics/FunctorErasure.hpp"
+#include "../Type.hpp"
 
+namespace nnd {
 
-#include "UtilityFunctions.hpp"
-
-
-#include "Type.hpp"
-
-#include "GraphStructures/GraphVertex.hpp"
-#include "GraphStructures/Graph.hpp"
-#include "GraphStructures/DirectedGraph.hpp"
-#include "GraphStructures/UndirectedGraph.hpp"
-#include "GraphStructures/CachingFunctor.hpp"
-
-
-#include "Utilities/DataDeserialization.hpp"
-
-namespace nnd{
-
-
-
-
-/*
 template<TriviallyCopyable IndexType>
-struct UndirectedGraph{
+struct DirectedGraph{
 
     using iterator = typename std::vector<std::vector<IndexType>>::iterator;
     using const_iterator = typename std::vector<std::vector<IndexType>>::const_iterator;
 
     std::vector<std::vector<IndexType>> verticies;
 
-    UndirectedGraph(): verticies(){};
+    DirectedGraph(): verticies(){};
 
-    UndirectedGraph(size_t numVerticies, size_t numNeighbors): 
+    DirectedGraph(size_t numVerticies, size_t numNeighbors): 
         verticies(numVerticies, std::vector<IndexType>(numNeighbors)){};
 
     template<typename DistType>
-    UndirectedGraph(Graph<IndexType, DistType> directedGraph): verticies(directedGraph.size()){
+    DirectedGraph(Graph<IndexType, DistType> directedGraph): verticies(directedGraph.size()){
+        
         
         for (size_t i = 0; auto& vertex: directedGraph){
-            vertex.neighbors.reserve(vertex.size()*2);
-            for (const auto& neighbor: vertex){
-                if(std::find_if(directedGraph[neighbor.first].begin(), directedGraph[neighbor.first].end(), NeighborSearchFunctor<IndexType, DistType>(i)) == directedGraph[neighbor.first].end()) 
-                    directedGraph[neighbor.first].push_back({static_cast<IndexType>(i), neighbor.second});
-            }
-            i++;
-        }
-        
-        for (size_t i = 0; auto& vertex: directedGraph){
-            std::ranges::sort(vertex, NeighborDistanceComparison<IndexType, DistType>);
             verticies[i].reserve(vertex.size());
             for (const auto& neighbor:vertex){
                 verticies[i].push_back(neighbor.first);
@@ -69,19 +44,9 @@ struct UndirectedGraph{
 
             i++;
         }
-        */
-        /*
-        for (size_t i = 0; const auto& vertex: directedGraph){
-            for (const auto& neighbor: vertex){
-                if(std::ranges::find(verticies[i], neighbor.first) == verticies[i].end()) verticies[i].push_back(neighbor.first);
-                if(std::ranges::find(verticies[neighbor.first], i) == verticies[neighbor.first].end()) verticies[neighbor.first].push_back(i);
-            }
-            i++;
-        }
-        */
-       /*
+        
     }
-    
+
     std::vector<IndexType>& operator[](size_t i){
         return verticies[i];
     }
@@ -136,20 +101,8 @@ struct UndirectedGraph{
         return verticies.cend();
     }
 };
-*/
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 }
-#endif //DATASTRUCTURES
+
+#endif

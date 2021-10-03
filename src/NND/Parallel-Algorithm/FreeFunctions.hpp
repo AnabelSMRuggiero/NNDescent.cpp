@@ -52,7 +52,7 @@ BlocksAndState<DistType> InitializeBlockContexts(const size_t numBlocks,
             Graph<DataIndex_t, DistType> blockGraph = BruteForceBlock(params.indexParams.blockGraphNeighbors, blockSize, functors.dispatchFunctor);
             
             GraphVertex<DataIndex_t, DistType> queryHint = QueryHintFromCOM(blockNum, blockGraph, params.indexParams.blockGraphNeighbors, functors.comDistFunctor);
-            QueryContext< DataIndex_t, DistType> queryContext(blockGraph, std::move(queryHint), params.indexParams.queryDepth, graphFragment, blockNum, blockSizes[blockNum]);
+            QueryContext<DataIndex_t, DistType> queryContext(blockGraph, std::move(queryHint), params.indexParams.queryDepth, graphFragment, blockNum, blockSizes[blockNum]);
             blockLocation->~BlockUpdateContext<DistType>();
             new(blockLocation) BlockUpdateContext<DistType>(std::move(blockGraph), std::move(queryContext), numBlocks);
             

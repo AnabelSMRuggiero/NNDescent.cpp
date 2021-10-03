@@ -204,13 +204,13 @@ namespace internal{
 
 template<typename IndexType, typename DistType>
 struct QueryContext{
-    UndirectedGraph<IndexType> subGraph;
-    GraphVertex<IndexType, DistType> queryHint;
+    const UndirectedGraph<IndexType> subGraph;
+    const GraphVertex<IndexType, DistType> queryHint;
     size_t querySize;
     size_t querySearchDepth;
     //DefaultQueryFunctor<DistType, DistanceFunctor> defaultQueryFunctor;
-    GraphFragment_t graphFragment{GraphFragment_t(-1)};
-    BlockNumber_t blockNumber{BlockNumber_t(-1)};
+    const GraphFragment_t graphFragment{GraphFragment_t(-1)};
+    const BlockNumber_t blockNumber{BlockNumber_t(-1)};
     
     size_t blockSize{size_t(-1)};
     //std::unordered_map<BlockNumberType, Graph<IndexType, DistType>> neighborCandidates;
@@ -224,7 +224,8 @@ struct QueryContext{
                  const size_t graphFragment,
                  const size_t blockNumber,
                  const size_t blockSize):
-                    subGraph(subGraph),
+                 
+                    subGraph(BuildUndirectedGraph(subGraph)),
                     queryHint(std::move(queryHint)),
                     querySearchDepth(querySearchDepth),
                     graphFragment(graphFragment),
@@ -297,7 +298,7 @@ struct QueryContext{
                     //numCompared += 1;
                     continue;
                 }
-                const std::vector<IndexType>& currentNeighbor = subGraph[neighbor.first];
+                typename UndirectedGraph<IndexType>::const_reference currentNeighbor = subGraph[neighbor.first];
                 for (const auto& joinTarget: currentNeighbor){
                     if (nodesVisited[joinTarget] == true) continue;
                     nodesVisited[joinTarget] = true;
