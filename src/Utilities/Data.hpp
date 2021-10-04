@@ -10,7 +10,6 @@ https://github.com/AnabelSMRuggiero/NNDescent.cpp
 
 #ifndef NND_DATA_HPP
 #define NND_DATA_HPP
-#include <valarray>
 #include <string>
 #include <vector>
 #include <bit>
