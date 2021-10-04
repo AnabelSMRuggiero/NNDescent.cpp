@@ -434,6 +434,10 @@ struct UnevenBlock{
 
     UnevenBlock() = default;
 
+    //Default Copy Constructor is buggy
+    UnevenBlock(const UnevenBlock& other): dataStorage(other.dataStorage), numArrays(other.numArrays), firstIndex(nullptr){
+        this->firstIndex =  static_cast<ElementType*>(static_cast<void*>(this->dataStorage.get()))   + (other.firstIndex - static_cast<const ElementType*>(static_cast<const void*>(other.dataStorage.get())));
+    }
     //NewUndirectedGraph(size_t numVerticies, size_t numNeighbors): 
     //    verticies(numVerticies, std::vector<IndexType>(numNeighbors)){};
 
