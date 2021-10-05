@@ -13,16 +13,16 @@ https://github.com/AnabelSMRuggiero/NNDescent.cpp
 
 #include <cstddef>
 
-#include "Type.hpp"
+#include "../Type.hpp"
 
 namespace nnd{
 
 
 template<typename ElementType, size_t align>
 struct DataBlockIterator{
-    using value_type = std::span<ElementType>;
+    using value_type = AlignedSpan<ElementType, align>;
     using difference_type = std::ptrdiff_t;
-    using reference = std::span<ElementType>;
+    using reference = AlignedSpan<ElementType, align>;
 
     static constexpr alignment = align;
 
@@ -157,27 +157,27 @@ struct DataBlock{
    
 
     iterator begin(){
-        return{lengthWithPadding, entryLength, }
+        return iterator{lengthWithPadding, entryLength, blockData.get()};
     }
 
     const_iterator begin() const{
-        
+        return const_iterator{lengthWithPadding, entryLength, blockData.get()};
     }
 
     const_iterator cbegin() const{
-
+        return const_iterator{lengthWithPadding, entryLength, blockData.get()};
     }
 
     iterator end(){
-
+        return iterator{lengthWithPadding, entryLength, blockData.get() + lengthWithPadding*(numEntries-1)};
     }
 
     const_iterator end() const{
-        
+        return const_iterator{lengthWithPadding, entryLength, blockData.get() + lengthWithPadding*(numEntries-1)};
     }
 
     const_iterator cend() const{
-        
+        return const_iterator{lengthWithPadding, entryLength, blockData.get() + lengthWithPadding*(numEntries-1)};
     }
 
     DataView operator[](size_t i){

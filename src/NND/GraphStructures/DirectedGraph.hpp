@@ -113,7 +113,7 @@ struct NewDirectedGraph{
     NewDirectedGraph(): verticies(){};
 
     NewDirectedGraph(size_t numVerticies, size_t numNeighbors): 
-        verticies(numVerticies, std::vector<IndexType>(numNeighbors)){};
+        verticies(numVerticies, numNeighbors, 0){};
 
     template<typename DistType>
     NewDirectedGraph(Graph<IndexType, DistType> directedGraph): verticies(directedGraph.size(), directedGraph[0].size(), 0){

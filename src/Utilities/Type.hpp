@@ -270,9 +270,14 @@ struct AlignedSpan{
 
     using value_type = std::remove_cv_t<ElementType>;
     static const size_t alignment = align;
+
+    
+
     private:
     ElementType* data;
     size_t extent;
+
+    AlignedSpan() = default;
 
     public:
 
