@@ -24,7 +24,7 @@ struct DataBlockIterator{
     using difference_type = std::ptrdiff_t;
     using reference = AlignedSpan<ElementType, align>;
 
-    static constexpr alignment = align;
+    static constexpr size_t alignment = align;
 
     DataBlockIterator(const size_t arraySize, const size_t viewSize, ElementType* arrayStart): arraySize(arraySize), viewSize(viewSize), arrayStart(arrayStart) {}
 
@@ -67,7 +67,7 @@ struct DataBlockIterator{
     }
 
     std::ptrdiff_t operator-(DataBlockIterator other){
-        return arrayStart - other.arrayStart;
+        return (arrayStart - other.arrayStart)/arraySize;
     }
     
     bool operator==(DataBlockIterator other){
@@ -75,7 +75,7 @@ struct DataBlockIterator{
     }
     
     reference operator*(){
-        return reference{arrayStart, viewSize};
+        return reference{MakeAlignedPtr(arrayStart, *this), viewSize};
     }
 
     reference operator[](size_t i){
@@ -107,8 +107,8 @@ struct DataBlock{
     using ConstDataView = AlignedSpan<const ElementType, align>;
 
     
-    using iterator = DataBlockIterator<ElementType>;
-    using const_iterator = DataBlockIterator<const ElementType>;
+    using iterator = DataBlockIterator<ElementType, align>;
+    using const_iterator = DataBlockIterator<const ElementType, align>;
     using reference = AlignedSpan<ElementType, align>;
     using const_reference = AlignedSpan<const ElementType, align>;
     
@@ -181,16 +181,22 @@ struct DataBlock{
     }
 
     DataView operator[](size_t i){
-        AlignedPtr<value_type, alignment> ptr = blockData.GetAlignedPtr(lengthWithPadding);
-        ptr += i;
-        return DataView(ptr, entryLength);
+        
+        //ptr += i;
+        return begin()[i];
+        //DataView(ptr, entryLength);
         //return blockData[i];
     }
     
     ConstDataView operator[](size_t i) const{
+        //const_iterator ptr = begin()[i];
+        //ptr += i;
+        return cbegin()[i];
+        /*
         AlignedPtr<const value_type, alignment> ptr = blockData.GetAlignedPtr(lengthWithPadding);
         ptr += i;
         return ConstDataView(ptr, entryLength);
+        */
     }
     
     size_t size() const{

@@ -113,16 +113,26 @@ struct DataSet{
     }
     */
     DataView operator[](size_t i){
+        value_type* dataPtr = samples.get();
+        dataPtr += i * sampleLength;
+        return DataView(MakeAlignedPtr(dataPtr, *this), sampleLength);
+        /*
         AlignedPtr<value_type, alignment> ptr = samples.GetAlignedPtr(sampleLength);
         ptr += i;
         return DataView(ptr, sampleLength);
+        */
         //return blockData[i];
     }
     
     ConstDataView operator[](size_t i) const{
+        const value_type* dataPtr = samples.get();
+        dataPtr += i * sampleLength;
+        return ConstDataView(MakeAlignedPtr(dataPtr, *this), sampleLength);
+        /*
         AlignedPtr<const value_type, alignment> ptr = samples.GetAlignedPtr(sampleLength);
         ptr += i;
         return ConstDataView(ptr, sampleLength);
+        */
     }
 
     size_t size() const{

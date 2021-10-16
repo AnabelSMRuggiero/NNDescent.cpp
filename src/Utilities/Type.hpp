@@ -142,9 +142,9 @@ struct DynamicArray{
 
     //std::pmr::polymorphic_allocator<>& GetAllocator() { return data.get_deleter().alloc;}
 
-    AlignedPtr<ValueType, align> GetAlignedPtr(size_t entriesToJump);
+    //AlignedPtr<ValueType, align> GetAlignedPtr(size_t entriesToJump);
 
-    AlignedPtr<const ValueType, align> GetAlignedPtr(size_t entriesToJump) const;
+    //AlignedPtr<const ValueType, align> GetAlignedPtr(size_t entriesToJump) const;
 };
 
 /*
@@ -231,6 +231,47 @@ struct AlignedArray{
     AlignedPtr<const ValueType, align> GetAlignedPtr(size_t entriesToJump) const;
 };
 */
+
+template<typename ValueType, size_t align>
+struct AlignedPtr;
+
+template<typename ValueType, size_t align>
+AlignedPtr<ValueType, align> MakeAlignedPtrHelper(ValueType* ptr);
+
+template<typename ValueType, size_t align>
+struct AlignedPtr{
+    using value_type = ValueType;
+    //using reference_type 
+    friend AlignedPtr MakeAlignedPtrHelper<ValueType, align>(ValueType* ptr);
+    static constexpr size_t alignment = align;
+
+    private:
+    ValueType* ptr;
+    AlignedPtr() = default;
+
+    AlignedPtr(ValueType* ptr): ptr(ptr) {};
+    public:
+
+    operator ValueType*() const{
+        return ptr;
+    }
+
+
+};
+
+template<typename ValueType, size_t align>
+AlignedPtr<ValueType, align> MakeAlignedPtrHelper(ValueType* ptr){
+    return AlignedPtr<ValueType, align>{ptr};
+}
+
+
+template<typename ValueType, typename AlignedContainer>
+    requires (AlignedContainer::alignment >= alignof(ValueType))
+AlignedPtr<ValueType, AlignedContainer::alignment> MakeAlignedPtr(ValueType* ptr, AlignedContainer&){
+    return MakeAlignedPtrHelper<ValueType, AlignedContainer::alignment>(ptr);
+}
+
+/*
 template<typename ValueType, size_t align>
 struct AlignedPtr{
     
@@ -264,6 +305,7 @@ template<typename ValueType, size_t align>
 AlignedPtr<const ValueType, align> DynamicArray<ValueType, align>::GetAlignedPtr(size_t entriesToJump) const{
     return AlignedPtr<const ValueType, align>(begin(), entriesToJump);
 }
+*/
 
 template<typename ElementType, size_t align=32>
 struct AlignedSpan{

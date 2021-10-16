@@ -20,6 +20,7 @@ https://github.com/AnabelSMRuggiero/NNDescent.cpp
 #include <algorithm>
 
 #include "../Utilities/Data.hpp"
+#include "../Utilities/DataSerialization.hpp"
 
 #include "Type.hpp"
 #include "GraphStructures.hpp"
@@ -155,7 +156,7 @@ MetaGraph<COMExtent> BuildMetaGraphFragment(const std::vector<DataBlock<DataType
     }
 
     AlignedArray<COMExtent> centerOfMass(dataBlocks[0].entryLength);
-    COMCalculator(points, {centerOfMass.GetAlignedPtr(0), centerOfMass.size()});
+    COMCalculator(points, {MakeAlignedPtr(centerOfMass.begin(), centerOfMass), centerOfMass.size()});
 
     BruteForceGraph<COMExtent>(verticies, params.COMNeighbors, points, metricSet.dataToData);
     for(auto& vertex: verticies){
@@ -163,7 +164,7 @@ MetaGraph<COMExtent> BuildMetaGraphFragment(const std::vector<DataBlock<DataType
     }
 
     auto neighborFunctor = [&](size_t, size_t pointIndex){
-        return metricSet.comToCom({centerOfMass.GetAlignedPtr(0), centerOfMass.size()}, points[pointIndex]);
+        return metricSet.comToCom({MakeAlignedPtr(centerOfMass.begin(), centerOfMass), centerOfMass.size()}, points[pointIndex]);
     };
     GraphVertex<BlockNumber_t, COMExtent> queryHint = QueryCOMNeighbors<COMExtent, DataType, BlockNumber_t>(0, verticies, params.COMNeighbors, neighborFunctor);
 
