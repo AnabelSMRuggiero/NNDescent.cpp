@@ -160,7 +160,9 @@ struct HyperParameterValues{
     SearchParameters searchParams;
 };
 
-using IndexBlock = std::vector<std::vector<BlockIndecies>>;
+//using IndexBlock = std::vector<std::vector<BlockIndecies>>;
+
+using IndexBlock = UnevenBlock<BlockIndecies>;
 
 }
 

@@ -11,6 +11,8 @@ https://github.com/AnabelSMRuggiero/NNDescent.cpp
 #ifndef NND_DATASERIALIZATION_HPP
 #define NND_DATASERIALIZATION_HPP
 
+#include <filesystem>
+
 #include "DataDeserialization.hpp"
 
 namespace nnd{
@@ -54,6 +56,28 @@ void SerializeVector(const std::vector<DataType>& readVector, const std::string&
 
 };
 
+
+auto BindUnformatedOutput(std::ofstream& outFile){
+
+    return [&](const auto& dataToWrite){
+        outFile.write(reinterpret_cast<const char*>(&dataToWrite), sizeof(dataToWrite));
+    };
+    
+}
+
+template<typename BlockDataType, size_t blockAlign>
+void SerializeDataBlock1(const DataBlock<BlockDataType, blockAlign>& block, std::filesystem::path outputPath){
+    std::ofstream outputFile(outputPath, std::ios_base::binary);
+    //outputFile << block.size() << block.entryLength << block.lengthWithPadding;
+    //outputFile.write(reinterpret_cast<char*>())
+
+    auto outputFunc = BindUnformatedOutput(outputFile);
+    outputFunc(block.size());
+    outputFunc(block.entryLength);
+    outputFunc(block.lengthWithPadding);
+
+    outputFile.write(reinterpret_cast<const char*>(block.blockData.begin()), block.blockData.size()*sizeof(float));
+}
 
 }
 

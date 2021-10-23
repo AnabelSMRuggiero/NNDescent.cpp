@@ -351,8 +351,8 @@ void AddComparisons(std::span<const IndexBlock> graphFragments,
                     std::vector<BlockIndecies>& addedIndecies){
     for (const auto& index: addedIndecies){
         const IndexBlock& graphFragment = graphFragments[index.blockNumber];
-        const std::vector<BlockIndecies>& vertex = graphFragment[index.dataIndex];
-        for (const auto& neighbor: vertex){
+        //const std::vector<BlockIndecies>& vertex = graphFragment[index.dataIndex];
+        for (const auto&& vertex = graphFragment[index.dataIndex]; const auto& neighbor: vertex){
             if(!context.blocksJoined[neighbor.blockNumber]){
                 context.comparisonResults[index].push_back(neighbor);
             }
@@ -368,8 +368,8 @@ void AddComparisons(std::span<const IndexBlock> graphFragments,
                     std::vector<BlockIndecies>& addedIndecies){
     for (const auto& index: addedIndecies){
         const IndexBlock& graphFragment = graphFragments[index.blockNumber];
-        const std::vector<BlockIndecies>& vertex = graphFragment[index.dataIndex];
-        for (const auto& neighbor: vertex){
+        //const std::vector<BlockIndecies>& vertex = graphFragment[index.dataIndex];
+        for (const auto&& vertex = graphFragment[index.dataIndex]; const auto& neighbor: vertex){
             if(!context.blocksJoined[neighbor.blockNumber]){
                 context.comparisonResults[index].push_back(neighbor);
             }
@@ -400,7 +400,8 @@ std::unordered_map<BlockIndecies, std::vector<BlockIndecies>> InitialComparisons
     std::unordered_map<BlockIndecies, std::vector<BlockIndecies>> comparisons;
 
     for (const auto& result: searchPoint.currentNeighbors){
-        comparisons[result.first] = graphFragment[result.first.dataIndex];
+        IndexBlock::const_reference resultNeighbors = graphFragment[result.first.dataIndex];
+        comparisons[result.first] = std::vector<BlockIndecies>(resultNeighbors.begin(), resultNeighbors.end());
     }
 
     return comparisons;
@@ -413,7 +414,9 @@ std::unordered_map<BlockIndecies, std::vector<BlockIndecies>> InitialComparisons
     std::unordered_map<BlockIndecies, std::vector<BlockIndecies>> comparisons;
 
     for (const auto& result: searchPoint.currentNeighbors){
-        comparisons[result.first] = graphFragment[result.first.dataIndex];
+        IndexBlock::const_reference resultNeighbors = graphFragment[result.first.dataIndex];
+        comparisons[result.first] = std::vector<BlockIndecies>(resultNeighbors.begin(), resultNeighbors.end());
+        //comparisons[result.first] = std::vector<BlockIndecies>(graphFragment[result.first.dataIndex]);
     }
 
     return comparisons;

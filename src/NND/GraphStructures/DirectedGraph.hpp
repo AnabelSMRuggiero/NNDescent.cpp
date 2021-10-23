@@ -15,10 +15,12 @@ https://github.com/AnabelSMRuggiero/NNDescent.cpp
 
 #include "../../Utilities/Type.hpp"
 #include "../../Utilities/Metrics/FunctorErasure.hpp"
+#include "../../Utilities/Data.hpp"
 #include "../Type.hpp"
 
 namespace nnd {
 
+/*
 template<TriviallyCopyable IndexType>
 struct DirectedGraph{
 
@@ -101,86 +103,78 @@ struct DirectedGraph{
         return verticies.cend();
     }
 };
+*/
 
 template<TriviallyCopyable IndexType>
-struct NewDirectedGraph{
+struct DirectedGraph{
 
-    using iterator = typename std::vector<std::vector<IndexType>>::iterator;
-    using const_iterator = typename std::vector<std::vector<IndexType>>::const_iterator;
+    using iterator = typename DataBlock<IndexType, alignof(IndexType)>::iterator;
+    using const_iterator = typename DataBlock<IndexType, alignof(IndexType)>::const_iterator;
+    using reference = typename DataBlock<IndexType, alignof(IndexType)>::reference;
+    using const_reference = typename DataBlock<IndexType, alignof(IndexType)>::const_reference;
 
     DataBlock<IndexType, alignof(IndexType)> verticies;
 
-    NewDirectedGraph(): verticies(){};
+    DirectedGraph(): verticies(){};
 
-    NewDirectedGraph(size_t numVerticies, size_t numNeighbors): 
+    DirectedGraph(size_t numVerticies, size_t numNeighbors): 
         verticies(numVerticies, numNeighbors, 0){};
 
     template<typename DistType>
-    NewDirectedGraph(Graph<IndexType, DistType> directedGraph): verticies(directedGraph.size(), directedGraph[0].size(), 0){
-        //(const size_t numEntries, const size_t entryLength, size_t blockNumber)
-        /*
+    DirectedGraph(Graph<IndexType, DistType> directedGraph): verticies(directedGraph.size(), directedGraph[0].size(), 0){
+        
+        
         for (size_t i = 0; auto& vertex: directedGraph){
-            verticies[i].reserve(vertex.size());
-            for (const auto& neighbor:vertex){
-                verticies[i].push_back(neighbor.first);
-            }
-
+            std::transform(vertex.begin(), vertex.end(), verticies[i].begin(), [](const auto neighbor){
+                return neighbor.first;
+            });
             i++;
         }
-        */
+        
     }
 
-    std::vector<IndexType>& operator[](size_t i){
+    reference operator[](size_t i){
         return verticies[i];
     }
 
-    std::vector<IndexType>& operator[](BlockIndecies i){
+    reference operator[](BlockIndecies i){
         // I'm assuming the block number is correct
         return verticies[i.dataIndex];
     }
 
-    constexpr const std::vector<IndexType>& operator[](size_t i) const{
+    const_reference operator[](size_t i) const{
         return this->verticies[i];
     }
 
-    constexpr const std::vector<IndexType>& operator[](BlockIndecies i) const{
+    const_reference operator[](BlockIndecies i) const{
         return this->verticies[i.dataIndex];
-    }
-
-    constexpr void push_back(const std::vector<IndexType>& value){
-        verticies.push_back(value);
-    }
-
-    template<typename VertexReferenceType>
-    constexpr void push_back(std::vector<IndexType>&& value){
-        verticies.push_back(std::forward<VertexReferenceType>(value));
     }
 
     size_t size() const noexcept{
         return verticies.size();
     }
     
-    constexpr iterator begin() noexcept{
+    iterator begin() noexcept{
         return verticies.begin();
     }
 
-    constexpr const_iterator begin() const noexcept{
+    const_iterator begin() const noexcept{
         return verticies.begin();
     }
 
-    constexpr const_iterator cbegin() const noexcept{
+    const_iterator cbegin() const noexcept{
         return verticies.cbegin();
     }
 
-    constexpr iterator end() noexcept{
+    iterator end() noexcept{
         return verticies.end();
     }
 
-    constexpr const_iterator end() const noexcept{
+    const_iterator end() const noexcept{
         return verticies.end();
     }
 
-    constexpr const_iterator cend() const noexcept{
+    const_iterator cend() const noexcept{
         return verticies.cend();
     }
 };

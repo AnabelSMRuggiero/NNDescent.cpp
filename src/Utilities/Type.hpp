@@ -339,6 +339,14 @@ struct AlignedSpan{
     ElementType& operator[](size_t index) const { return data[index]; };
 
     size_t size() const { return extent; };
+    
+    template<typename Alloc = std::allocator<ElementType>>
+    explicit operator std::vector<ElementType, Alloc>(){
+        std::vector<std::remove_cv_t<ElementType>, Alloc> retVec(this->size());
+        std::copy(this->begin(), this->end(), retVec.begin());
+
+        return retVec;
+    }
 
 };
 

@@ -96,28 +96,63 @@ std::vector<BlockIndecies> VertexToIndex(const GraphVertex<BlockIndecies, DistTy
 
 
 template<typename DistType>
-std::vector<IndexBlock> IndexFinalization(std::span<BlockUpdateContext<DistType>> blocks){
+std::vector<IndexBlock> IndexFinalization(std::span<BlockUpdateContext<DistType>> blocks, std::pmr::memory_resource* resource = std::pmr::get_default_resource()){
 
-    std::vector<std::vector<std::vector<BlockIndecies>>> index(blocks.size());
+    std::vector<UnevenBlock<BlockIndecies>> index(blocks.size());
     //index.reserve(blocks.size());
     
     //maybe I should write my own "multi_transform"
-    std::transform(blocks.begin(), blocks.end(), index.begin(), [](const auto& block){    
+    std::transform(blocks.begin(), blocks.end(), index.begin(), [&](const auto& block){    
 
-        std::vector<std::vector<BlockIndecies>> graphFragment(block.currentGraph.size());
+        auto outOfBlock = [&](const auto& neighbor){
+            return neighbor.first.graphFragment != block.queryContext.graphFragment ||
+                   neighbor.first.blockNumber != block.queryContext.blockNumber;
+        };
+
+        std::vector<size_t> filteredSizes(block.currentGraph.size());
+
+        std::transform(block.currentGraph.begin(),
+                       block.currentGraph.end(),
+                       filteredSizes.begin(),
+                       [&](const auto& vertex){
+
+            return std::transform_reduce(vertex.begin(), 
+                                         vertex.end(),
+                                         size_t{0},
+                                         std::plus<size_t>{},
+                                         outOfBlock);
+        });
+
+        size_t totalSize = std::accumulate(filteredSizes.begin(), filteredSizes.end(), size_t{0});
+
+        //std::vector<std::vector<BlockIndecies>> graphFragment(block.currentGraph.size());
+        UnevenBlock<BlockIndecies> graphFragment = UninitUnevenBlock<BlockIndecies>(filteredSizes.size(), totalSize, resource);
+        
+        size_t* headerStart = static_cast<size_t*>(static_cast<void*>(graphFragment.get()));
+        std::inclusive_scan(filteredSizes.begin(), filteredSizes.end(), headerStart+1, std::plus<size_t>{}, 0);
+        
+        BlockIndecies* indexStart = graphFragment.firstIndex;
+        for (const auto& vertex: block.currentGraph){
+            for (const auto& neighbor: vertex){
+                if (outOfBlock(neighbor)){
+                    *indexStart = neighbor.first;
+                    ++indexStart;
+                }
+            }
+        }
+        /*
         std::transform(block.currentGraph.begin(), block.currentGraph.end(), graphFragment.begin(),
             [blockNumber = block.queryContext.blockNumber](const auto& vertex){
                 return VertexToIndex(vertex, blockNumber);
             });
+        */
+
         return graphFragment;
     });
 
     return index;
 }
-        //
-
-
-    //}
+        
 
 
 
@@ -197,8 +232,8 @@ int main(int argc, char *argv[]){
     size_t searchQueryDepth = 6;
     size_t maxNewSearches = 10;
 
-    SplittingHeurisitcs splitParams= {2500, 1500, 3500, 0.0f};
-    //SplittingHeurisitcs splitParams= {205, 123, 287, 0.0f};
+    //SplittingHeurisitcs splitParams= {2500, 1500, 3500, 0.0f};
+    SplittingHeurisitcs splitParams= {205, 123, 287, 0.0f};
 
     //SplittingHeurisitcs splitParams= {20, 12, 28, 0.0f};
 
@@ -315,7 +350,7 @@ int main(int argc, char *argv[]){
     static const std::endian dataEndianness = std::endian::native;
     //static const std::endian dataEndianness = std::endian::big;
     
-    /*
+    
     std::string trainDataFilePath("./TestData/MNIST-Fashion-Train.bin");
     DataSet<float> mnistFashionTrain(trainDataFilePath, 28*28, 60'000);
 
@@ -324,9 +359,9 @@ int main(int argc, char *argv[]){
     std::string testNeighborsFilePath("./TestData/MNIST-Fashion-Neighbors.bin");
     DataSet<float> mnistFashionTest(testDataFilePath, 28*28, 10'000);
     DataSet<uint32_t, alignof(uint32_t)> mnistFashionTestNeighbors(testNeighborsFilePath, 100, 10'000);
-    */
-
     
+
+    /*
     std::string trainDataFilePath("./TestData/SIFT-Train.bin");
     DataSet<float> mnistFashionTrain(trainDataFilePath, 128, 1'000'000);
 
@@ -335,7 +370,7 @@ int main(int argc, char *argv[]){
     std::string testNeighborsFilePath("./TestData/SIFT-Neighbors.bin");
     DataSet<float> mnistFashionTest(testDataFilePath, 128, 10'000);
     DataSet<uint32_t, alignof(uint32_t)> mnistFashionTestNeighbors(testNeighborsFilePath, 100, 10'000);
-    
+    */
 
     /*
     std::string trainDataFilePath("./TestData/NYTimes-Angular-Train.bin");

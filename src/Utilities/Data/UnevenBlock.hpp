@@ -118,21 +118,31 @@ struct UnevenBlock{
 
     //Default Copy Constructor is buggy
     UnevenBlock(const UnevenBlock& other): dataStorage(other.dataStorage), numArrays(other.numArrays), firstIndex(nullptr){
-        this->firstIndex =  static_cast<ElementType*>(static_cast<void*>(this->dataStorage.get()))   + (other.firstIndex - static_cast<const ElementType*>(static_cast<const void*>(other.dataStorage.get())));
+        this->firstIndex =  static_cast<ElementType*>(static_cast<void*>(this->dataStorage.get()
+           + (static_cast<std::byte*>(static_cast<void*>(other.firstIndex)) - other.dataStorage.get())));
+    }
+
+    UnevenBlock& operator=(const UnevenBlock& other){
+        dataStorage = DynamicArray<std::byte, std::max(alignof(size_t), alignof(ElementType))>(other.dataStorage.size());
+        numArrays = other.numArrays;
+
+
+        size_t* vertexStart = new (dataStorage.begin()) size_t[numArrays+1];
+        std::ptrdiff_t indexOffset = static_cast<const std::byte*>(static_cast<const void*>(other.firstIndex)) - other.dataStorage.begin();
+
+        size_t numElements = static_cast<const ElementType*>(static_cast<const void*>(other.dataStorage.end())) - other.firstIndex;
+        firstIndex = new (dataStorage.begin() + indexOffset) ElementType[numElements];
+        std::copy(other.dataStorage.begin(), other.dataStorage.end(), dataStorage.begin());
+        
+        return *this;
     }
     //NewUndirectedGraph(size_t numVerticies, size_t numNeighbors): 
     //    verticies(numVerticies, std::vector<IndexType>(numNeighbors)){};
 
     //template<typename DistType>
     UnevenBlock(const size_t numBytes, const size_t numArrays, const size_t headerPadding, const size_t numIndecies, std::pmr::memory_resource* resource): dataStorage(numBytes, resource), numArrays(numArrays), firstIndex(nullptr){
-        //std::pmr::polymorphic_allocator<std::byte> alloc(resource);
-        //alloc.construct
         size_t* vertexStart = new (dataStorage.begin()) size_t[numArrays+1];
-        //*vertexStart = 0;
         firstIndex = new (dataStorage.begin() + sizeof(size_t)*(numArrays+1) + headerPadding) ElementType[numIndecies];
-
-        
-        
     }
 
     size_t size() const noexcept{
