@@ -119,7 +119,7 @@ struct UnevenBlock{
     //Default Copy Constructor is buggy
     UnevenBlock(const UnevenBlock& other): dataStorage(other.dataStorage), numArrays(other.numArrays), firstIndex(nullptr){
         this->firstIndex =  static_cast<ElementType*>(static_cast<void*>(this->dataStorage.get()
-           + (static_cast<std::byte*>(static_cast<void*>(other.firstIndex)) - other.dataStorage.get())));
+           + other.IndexOffset()));
     }
 
     UnevenBlock& operator=(const UnevenBlock& other){
@@ -185,6 +185,10 @@ struct UnevenBlock{
 
     std::byte* get(){
         return dataStorage.get();
+    }
+
+    std::ptrdiff_t IndexOffset() const{
+        return static_cast<std::byte*>(static_cast<void*>(firstIndex)) - dataStorage.get();
     }
 
 };

@@ -22,6 +22,7 @@ https://github.com/AnabelSMRuggiero/NNDescent.cpp
 #include <type_traits>
 
 #include "../Utilities/Data.hpp"
+#include "../Utilities/DataSerialization.hpp"
 #include "../Utilities/DataDeserialization.hpp"
 #include "../Utilities/Metrics/FunctorErasure.hpp"
 #include "GraphStructures.hpp"
@@ -475,7 +476,41 @@ struct QueryContext{
         return {bestPair.first, bestPair.second, bestDistance};
     }
 
+    
+    void serialize(std::ofstream& outFile) const {
+        
+
+
+        auto outputter = BindSerializer(outFile);
+
+        outputter(this->subGraph.graphBlock);
+
+        outputter(this->queryHint);
+
+        
+
+        outputter(this->graphFragment);
+        outputter(this->blockNumber);
+
+        
+
+        /*
+        const UndirectedGraph<IndexType> subGraph;
+        const GraphVertex<IndexType, DistType> queryHint;
+        size_t querySize;
+        size_t querySearchDepth;
+        //DefaultQueryFunctor<DistType, DistanceFunctor> defaultQueryFunctor;
+        const GraphFragment_t graphFragment{GraphFragment_t(-1)};
+        const BlockNumber_t blockNumber{BlockNumber_t(-1)};
+        
+        size_t blockSize{size_t(-1)};
+        */
+    }
+
 };
+
+
+
 
 }
 

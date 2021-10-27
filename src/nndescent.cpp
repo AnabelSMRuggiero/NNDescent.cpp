@@ -152,9 +152,39 @@ std::vector<IndexBlock> IndexFinalization(std::span<BlockUpdateContext<DistType>
 
     return index;
 }
+
+struct FragmentMetaData{
+    size_t numBlocks;
+};
         
+template<typename DistType>
+void SerializeFragmentIndex(std::span<const DataBlock<DistType>> dataBlocks, std::span<const BlockUpdateContext<DistType>> graphBlocks, std::span<const IndexBlock> indexBlocks, std::filesystem::path fragmentDirectory){
+
+    FragmentMetaData metadata{dataBlocks.size()};
+
+    std::ofstream metaDataFile{fragmentDirectory / "MetaData.bin", std::ios_base::binary};
+    Serialize(metadata, metaDataFile);
+
+    for (const auto& block: dataBlocks){
+        std::filesystem::path dataBlockPath = fragmentDirectory / ("DataBlock-" + std::to_string(block.blockNumber) + ".bin");
+        std::ofstream dataBlockFile{dataBlockPath, std::ios_base::binary};
+        Serialize(block, dataBlockFile);
+    }
 
 
+    for (const auto& block: graphBlocks){
+        std::filesystem::path queryContextPath = fragmentDirectory / ("QueryContext-" + std::to_string(block.queryContext.blockNumber) + ".bin");
+        std::ofstream contextFile{queryContextPath, std::ios_base::binary};
+        Serialize(block.queryContext, contextFile);
+    }
+
+    for (size_t i = 0; const auto& block: indexBlocks){
+        std::filesystem::path indexBlockPath = fragmentDirectory / ("IndexBlock-" + std::to_string(i) + ".bin");
+        std::ofstream indexBlockFile{indexBlockPath, std::ios_base::binary};
+        Serialize(block, indexBlockFile);
+        i++;
+    }
+}
 
 
 
@@ -354,6 +384,8 @@ int main(int argc, char *argv[]){
     std::string trainDataFilePath("./TestData/MNIST-Fashion-Train.bin");
     DataSet<float> mnistFashionTrain(trainDataFilePath, 28*28, 60'000);
 
+    std::filesystem::path indexLocation("./Saved-Indecies/MNIST-Fashion");
+
 
     std::string testDataFilePath("./TestData/MNIST-Fashion-Test.bin");
     std::string testNeighborsFilePath("./TestData/MNIST-Fashion-Neighbors.bin");
@@ -458,7 +490,10 @@ int main(int argc, char *argv[]){
     std::span<const IndexBlock> indexView{index.data(), index.size()};
     //std::chrono::time_point<std::chrono::steady_clock> finalizationEnd = std::chrono::steady_clock::now();
     //std::cout << std::chrono::duration_cast<std::chrono::duration<float>>(finalizationEnd - finalizationStart).count() << "s total for index finalization " << std::endl;
-
+    SerializeFragmentIndex(std::span<const DataBlock<float>>{dataBlocks},
+                           std::span<const BlockUpdateContext<float>>{blockUpdateContexts},
+                           indexView,
+                           indexLocation);
 
     std::chrono::time_point<std::chrono::steady_clock> runStart2 = std::chrono::steady_clock::now();
 

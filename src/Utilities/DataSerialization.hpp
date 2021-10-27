@@ -12,6 +12,8 @@ https://github.com/AnabelSMRuggiero/NNDescent.cpp
 #define NND_DATASERIALIZATION_HPP
 
 #include <filesystem>
+#include <ranges>
+#include "Data.hpp"
 
 #include "DataDeserialization.hpp"
 
@@ -45,38 +47,76 @@ void SerializeData(std::ofstream& dataStream, const DataType& dataEntry){
 
 
 
-template<TriviallyCopyable DataType>
-void SerializeVector(const std::vector<DataType>& readVector, const std::string& outputFile){
-    std::ofstream outStream(outputFile, std::ios_base::binary);
+template<TriviallyCopyable DataType, typename Alloc = std::allocator<DataType>>
+void SerializeVector(const std::vector<DataType, Alloc>& readVector, std::ofstream& outStream){
+    //std::ofstream outStream(outputFile, std::ios_base::binary);
     SerializeData<size_t, std::endian::big>(outStream, readVector.size());
 
-    for(const auto& entry : readVector){
-        SerializeData<DataType, std::endian::big>(outStream, entry);
-    };
+    outStream.write(reinterpret_cast<const char*>(&readVector.data()), sizeof(DataType)*readVector.size());
 
 };
 
+template<typename Serializee>
+void Serialize(const Serializee& objToSerialize, std::ofstream& outFile) = delete;
 
-auto BindUnformatedOutput(std::ofstream& outFile){
+template<typename Serializee>
+concept SerializableClass = requires(Serializee objToSerialize, std::ofstream& outFile){
+    objToSerialize.serialize(outFile);
+};
+
+template<SerializableClass Serializee>
+void Serialize(const Serializee& objToSerialize, std::ofstream& outFile){
+    objToSerialize.serialize(outFile);
+}
+
+template<typename Serializee>
+    requires std::is_trivially_copyable_v<Serializee>
+void Serialize(const Serializee& objToSerialize, std::ofstream& outFile){
+    outFile.write(reinterpret_cast<const char*>(&objToSerialize), sizeof(Serializee));
+}
+
+template<std::ranges::contiguous_range ContRange>
+    requires std::is_trivially_copyable_v<std::ranges::range_value_t<ContRange>>
+void Serialize(const ContRange& rangeToSerialize, std::ofstream& outFile){
+    Serialize(std::ranges::size(rangeToSerialize), outFile);
+    outFile.write(reinterpret_cast<const char*>(std::ranges::data(rangeToSerialize)), sizeof(std::ranges::range_value_t<ContRange>) * std::ranges::size(rangeToSerialize));
+}
+
+
+auto BindSerializer(std::ofstream& outFile){
 
     return [&](const auto& dataToWrite){
-        outFile.write(reinterpret_cast<const char*>(&dataToWrite), sizeof(dataToWrite));
+        Serialize(dataToWrite, outFile);
     };
     
 }
 
 template<typename BlockDataType, size_t blockAlign>
-void SerializeDataBlock1(const DataBlock<BlockDataType, blockAlign>& block, std::filesystem::path outputPath){
-    std::ofstream outputFile(outputPath, std::ios_base::binary);
+void Serialize(const DataBlock<BlockDataType, blockAlign>& block, std::ofstream& outputFile){
+    //std::ofstream outputFile(outputPath, std::ios_base::binary);
     //outputFile << block.size() << block.entryLength << block.lengthWithPadding;
     //outputFile.write(reinterpret_cast<char*>())
 
-    auto outputFunc = BindUnformatedOutput(outputFile);
+    auto outputFunc = BindSerializer(outputFile);
     outputFunc(block.size());
     outputFunc(block.entryLength);
     outputFunc(block.lengthWithPadding);
 
     outputFile.write(reinterpret_cast<const char*>(block.blockData.begin()), block.blockData.size()*sizeof(float));
+}
+
+template<typename BlockDataType>
+void Serialize(const UnevenBlock<BlockDataType>& block, std::ofstream& outputFile){
+    //std::ofstream outputFile(outputPath, std::ios_base::binary);
+    //outputFile << block.size() << block.entryLength << block.lengthWithPadding;
+    //outputFile.write(reinterpret_cast<char*>())
+
+    auto outputFunc = BindSerializer(outputFile);
+    outputFunc(block.size());
+    outputFunc(block.IndexOffset());
+    outputFunc(block.dataStorage.size());
+                                                                             //this is already the size in bytes
+    outputFile.write(reinterpret_cast<const char*>(block.dataStorage.get()), block.dataStorage.size());
 }
 
 }

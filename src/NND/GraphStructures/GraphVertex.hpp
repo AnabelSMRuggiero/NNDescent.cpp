@@ -16,6 +16,7 @@ https://github.com/AnabelSMRuggiero/NNDescent.cpp
 #include <cstring>
 
 #include "../../Utilities/Type.hpp"
+#include "../../Utilities/DataSerialization.hpp"
 #include "../Type.hpp"
 
 namespace nnd{
@@ -181,6 +182,16 @@ struct GraphVertex{
     constexpr iterator erase(const_iterator first, const_iterator last) {
         return neighbors.erase(first, last);
     }
+
+
+    //std::pair of trivially copyable types is not trivially copyable,
+    //and swaping out for a separate type is enough work at this point to make it worth defering for now
+
+    void serialize(std::ofstream& outFile) const {
+        Serialize(this->size(), outFile);
+        outFile.write(reinterpret_cast<const char*>(this->neighbors.data()), this->size()*sizeof(std::pair<IndexType, FloatType>));
+    }
+
 
     //private:
     
