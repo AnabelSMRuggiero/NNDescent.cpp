@@ -15,6 +15,7 @@ https://github.com/AnabelSMRuggiero/NNDescent.cpp
 #include <vector>
 #include <algorithm>
 #include <future>
+#include <memory>
 
 #include "../RPTrees/Forest.hpp"
 

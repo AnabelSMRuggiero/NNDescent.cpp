@@ -13,14 +13,102 @@ https://github.com/AnabelSMRuggiero/NNDescent.cpp
 
 #include <type_traits>
 #include <bit>
-#include <valarray>
 #include <fstream>
+#include <iterator>
+#include <concepts>
 
 #include "./Type.hpp"
 namespace nnd{
 
 
 
+template<typename DataType, std::endian DataEndianness = std::endian::native, typename StreamType = std::ifstream>
+DataType Extract(StreamType &dataStream) = delete;
+
+template<typename Extractee, typename StreamType, typename... Ts>
+constexpr bool hasStaticDeserialize = requires(StreamType& inFile, Ts&&... ts){
+    {Extractee::deserialize(inFile, ts...)} -> std::same_as<Extractee>;
+};
+
+template<typename Extractee, typename StreamType, typename... Ts>
+concept ExtractableClass = hasStaticDeserialize<Extractee, StreamType, Ts...> || std::is_constructible_v<Extractee, StreamType, Ts...>;
+
+template<typename DataType, std::endian DataEndianness = std::endian::native, typename StreamType = std::ifstream>
+    requires ExtractableClass<DataType, StreamType>
+DataType Extract(StreamType &dataStream){
+    if constexpr (hasStaticDeserialize<DataType, StreamType>){
+        return DataType::deserialize(dataStream);
+    } else {
+        return DataType{dataStream};
+    }
+};
+
+
+
+template<TriviallyCopyable DataType, std::endian DataEndianness = std::endian::native, typename StreamType = std::ifstream>
+DataType Extract(StreamType &dataStream){
+    static_assert((DataEndianness == std::endian::big) || (DataEndianness == std::endian::little));
+    static_assert((std::endian::native == std::endian::big) || (std::endian::native == std::endian::little));
+
+    
+
+    if constexpr (DataEndianness == std::endian::native){
+        DataType extract;
+
+        dataStream.read(reinterpret_cast<char*>(&extract), sizeof(DataType));
+
+        return extract;
+    } else {
+        static_assert(DataEndianness == std::endian::native, "Not yet implemented, curse you Linux Mint for having a repo that doesn't have the cutting edge c++ compilers.");
+        DataType extract;
+
+        dataStream.read(reinterpret_cast<char*>(&extract), sizeof(DataType));
+
+        return extract;
+    }
+
+    
+}
+
+template<TriviallyCopyable DataType, std::endian DataEndianness = std::endian::native, typename StreamType = std::ifstream>
+void Extract(StreamType &dataStream, DataType* start, size_t count){
+    static_assert((DataEndianness == std::endian::big) || (DataEndianness == std::endian::little));
+    static_assert((std::endian::native == std::endian::big) || (std::endian::native == std::endian::little));
+
+    
+
+    if constexpr (DataEndianness == std::endian::native){
+        
+
+        dataStream.read(reinterpret_cast<char*>(start), sizeof(DataType)*count);
+
+        
+    } else {
+        static_assert(DataEndianness == std::endian::native, "Not yet implemented, curse you Linux Mint for having a repo that doesn't have the cutting edge c++ compilers.");
+    }
+
+}
+
+template<TriviallyCopyable DataType, std::endian DataEndianness = std::endian::native, typename StreamType = std::ifstream>
+void Extract(StreamType &dataStream, DataType* start, DataType* end){
+    static_assert((DataEndianness == std::endian::big) || (DataEndianness == std::endian::little));
+    static_assert((std::endian::native == std::endian::big) || (std::endian::native == std::endian::little));
+
+    
+
+    if constexpr (DataEndianness == std::endian::native){
+        
+
+        dataStream.read(reinterpret_cast<char*>(start), sizeof(DataType)*std::distance(end, start));
+
+        
+    } else {
+        static_assert(DataEndianness == std::endian::native, "Not yet implemented, curse you Linux Mint for having a repo that doesn't have the cutting edge c++ compilers.");
+    }
+
+}
+
+/*
 template<TriviallyCopyable DataType, std::endian DataEndianness>
 DataType ExtractData(std::ifstream &dataStream){
     //Don't wanna deal with mixed endianess. Unlikely to be an issue I need to deal with
@@ -58,7 +146,7 @@ Container ExtractNumericArray(std::ifstream& dataStream, size_t entryLength){
     }
     return sample;
 };
-
+*/
 
 
 

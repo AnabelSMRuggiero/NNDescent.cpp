@@ -13,10 +13,28 @@ https://github.com/AnabelSMRuggiero/NNDescent.cpp
 
 #include <cstddef>
 #include <memory_resource>
+#include <type_traits>
 
 #include "../Type.hpp"
+#include "../DataSerialization.hpp"
+#include "../DataDeserialization.hpp"
+
+
 
 namespace nnd{
+
+template <typename RetType, typename ArgType>
+std::remove_pointer_t<RetType>* PtrCast(ArgType* ptrToCast){
+    if constexpr (std::is_const_v<RetType> && std::is_volatile_v<RetType>){
+        return static_cast<std::remove_pointer_t<RetType>*>(static_cast<const volatile void*>(ptrToCast));
+    } else if (std::is_const_v<RetType>){
+        return static_cast<std::remove_pointer_t<RetType>*>(static_cast<const void*>(ptrToCast));
+    } else if (std::is_volatile_v<RetType>){
+        return static_cast<std::remove_pointer_t<RetType>*>(static_cast<volatile void*>(ptrToCast));
+    } else{
+        return static_cast<std::remove_pointer_t<RetType>*>(static_cast<volatile void*>(ptrToCast));
+    }
+}
 
 
 template<typename ElementType>
@@ -113,6 +131,20 @@ struct UnevenBlock{
     size_t numArrays;
     ElementType* firstIndex;
 
+    static UnevenBlock deserialize(std::ifstream& inFile, std::pmr::memory_resource* resource = std::pmr::get_default_resource()){
+        struct DeserializationArgs{
+            size_t numBytes;
+            size_t numArrays;
+            std::ptrdiff_t indexOffset;
+        };
+
+        DeserializationArgs args = Extract<DeserializationArgs>(inFile);
+
+        UnevenBlock retBlock{args.numBytes, args.numArrays, args.indexOffset, resource};
+        Extract<std::byte>(inFile, retBlock.dataStorage.begin(), retBlock.dataStorage.end());
+
+        return retBlock;
+    }
 
     UnevenBlock() = default;
 
@@ -143,6 +175,12 @@ struct UnevenBlock{
     UnevenBlock(const size_t numBytes, const size_t numArrays, const size_t headerPadding, const size_t numIndecies, std::pmr::memory_resource* resource): dataStorage(numBytes, resource), numArrays(numArrays), firstIndex(nullptr){
         size_t* vertexStart = new (dataStorage.begin()) size_t[numArrays+1];
         firstIndex = new (dataStorage.begin() + sizeof(size_t)*(numArrays+1) + headerPadding) ElementType[numIndecies];
+    }
+
+    UnevenBlock(const size_t numBytes, const size_t numArrays, const std::ptrdiff_t indexOffset, std::pmr::memory_resource* resource): dataStorage(numBytes, resource), numArrays(numArrays), firstIndex(nullptr){
+        size_t* vertexStart = new (dataStorage.begin()) size_t[numArrays+1];
+        size_t numIndecies = (dataStorage.end() - (dataStorage.begin() + indexOffset))/sizeof(ElementType);
+        firstIndex = new (dataStorage.begin() + indexOffset) ElementType[numIndecies];
     }
 
     size_t size() const noexcept{
@@ -209,6 +247,22 @@ UnevenBlock<ElementType> UninitUnevenBlock(const size_t numArrays, const size_t 
     }
 
     return UnevenBlock<ElementType>(numberOfBytes, numArrays, headerPadding, numElements, resource);
+}
+
+
+template<typename BlockDataType>
+void Serialize(const UnevenBlock<BlockDataType>& block, std::ofstream& outputFile){
+    //std::ofstream outputFile(outputPath, std::ios_base::binary);
+    //outputFile << block.size() << block.entryLength << block.lengthWithPadding;
+    //outputFile.write(reinterpret_cast<char*>())
+
+    auto outputFunc = BindSerializer(outputFile);
+    outputFunc(block.dataStorage.size());
+    outputFunc(block.size());
+    outputFunc(block.IndexOffset());
+    
+                                                                                 //this is already the size in bytes
+    outputFile.write(reinterpret_cast<const char*>(block.dataStorage.get()), block.dataStorage.size());
 }
 
 }

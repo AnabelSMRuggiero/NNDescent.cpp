@@ -13,10 +13,13 @@ https://github.com/AnabelSMRuggiero/NNDescent.cpp
 
 #include <span>
 #include <memory_resource>
+#include <fstream>
 
 #include "Graph.hpp"
 #include "../../Utilities/Type.hpp"
 #include "../../Utilities/Data.hpp"
+#include "../../Utilities/DataSerialization.hpp"
+#include "../../Utilities/DataDeserialization.hpp"
 
 namespace nnd{
 
@@ -41,7 +44,9 @@ struct UndirectedGraph{
     UnevenBlock<IndexType> graphBlock;
     //public:
 
-    UndirectedGraph(): graphBlock(){};
+    UndirectedGraph(): graphBlock() {};
+
+    UndirectedGraph(std::ifstream& inFile): graphBlock(Extract<UnevenBlock<IndexType>>(inFile)) {}
 
     //NewUndirectedGraph(size_t numVerticies, size_t numNeighbors): 
     //    verticies(numVerticies, std::vector<IndexType>(numNeighbors)){};

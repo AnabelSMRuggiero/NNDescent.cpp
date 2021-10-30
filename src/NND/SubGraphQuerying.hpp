@@ -235,6 +235,15 @@ struct QueryContext{
             querySize = this->queryHint.size();
             //defaultQueryFunctor = DefaultQueryFunctor<IndexType, DataEntry, DistType>(distanceFunctor, dataBlock);
     };
+
+
+    QueryContext(std::ifstream& inFile): subGraph(Extract<UndirectedGraph<IndexType>>(inFile)),
+                                         queryHint(Extract<GraphVertex<IndexType, DistType>>(inFile)),
+                                         querySize(Extract<size_t>(inFile)),
+                                         querySearchDepth(Extract<size_t>(inFile)),
+                                         graphFragment(Extract<GraphFragment_t>(inFile)),
+                                         blockNumber(Extract<BlockNumber_t>(inFile)),
+                                         blockSize(Extract<size_t>(inFile)) {}
     
     QueryContext(QueryContext&&) = default;
 
@@ -475,7 +484,6 @@ struct QueryContext{
         
         return {bestPair.first, bestPair.second, bestDistance};
     }
-
     
     void serialize(std::ofstream& outFile) const {
         
@@ -483,14 +491,20 @@ struct QueryContext{
 
         auto outputter = BindSerializer(outFile);
 
+        
+
         outputter(this->subGraph.graphBlock);
 
         outputter(this->queryHint);
 
-        
+        outputter(this->querySize);
+        outputter(this->querySearchDepth);
 
         outputter(this->graphFragment);
         outputter(this->blockNumber);
+        outputter(this->blockSize);
+
+        
 
         
 

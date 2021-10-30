@@ -13,7 +13,7 @@ https://github.com/AnabelSMRuggiero/NNDescent.cpp
 
 #include <filesystem>
 #include <ranges>
-#include "Data.hpp"
+
 
 #include "DataDeserialization.hpp"
 
@@ -91,33 +91,9 @@ auto BindSerializer(std::ofstream& outFile){
     
 }
 
-template<typename BlockDataType, size_t blockAlign>
-void Serialize(const DataBlock<BlockDataType, blockAlign>& block, std::ofstream& outputFile){
-    //std::ofstream outputFile(outputPath, std::ios_base::binary);
-    //outputFile << block.size() << block.entryLength << block.lengthWithPadding;
-    //outputFile.write(reinterpret_cast<char*>())
 
-    auto outputFunc = BindSerializer(outputFile);
-    outputFunc(block.size());
-    outputFunc(block.entryLength);
-    outputFunc(block.lengthWithPadding);
 
-    outputFile.write(reinterpret_cast<const char*>(block.blockData.begin()), block.blockData.size()*sizeof(float));
-}
 
-template<typename BlockDataType>
-void Serialize(const UnevenBlock<BlockDataType>& block, std::ofstream& outputFile){
-    //std::ofstream outputFile(outputPath, std::ios_base::binary);
-    //outputFile << block.size() << block.entryLength << block.lengthWithPadding;
-    //outputFile.write(reinterpret_cast<char*>())
-
-    auto outputFunc = BindSerializer(outputFile);
-    outputFunc(block.size());
-    outputFunc(block.IndexOffset());
-    outputFunc(block.dataStorage.size());
-                                                                             //this is already the size in bytes
-    outputFile.write(reinterpret_cast<const char*>(block.dataStorage.get()), block.dataStorage.size());
-}
 
 }
 
