@@ -192,9 +192,9 @@ struct GraphVertex{
         outFile.write(reinterpret_cast<const char*>(this->neighbors.data()), this->size()*sizeof(std::pair<IndexType, FloatType>));
     }
 
-    GraphVertex(std::ifstream& inFile): neighbors(Extract<size_t>(inFile)) {
+    GraphVertex(std::ifstream& inFile): neighbors(Extract<size_t>(inFile)+1) {
         this->neighbors.resize(neighbors.size() - 1);
-        extractor(std::type_identity<std::pair<IndexType, FloatType>>{}, neighbors.begin(), neighbors.end());
+        inFile.read(reinterpret_cast<char *>(neighbors.data()), sizeof(std::pair<IndexType, FloatType>)*neighbors.size());
     }
 
 

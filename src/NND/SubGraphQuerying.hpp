@@ -238,6 +238,7 @@ struct QueryContext{
 
 
     QueryContext(std::ifstream& inFile): subGraph(Extract<UndirectedGraph<IndexType>>(inFile)),
+                                         //subGraph(inFile),
                                          queryHint(Extract<GraphVertex<IndexType, DistType>>(inFile)),
                                          querySize(Extract<size_t>(inFile)),
                                          querySearchDepth(Extract<size_t>(inFile)),

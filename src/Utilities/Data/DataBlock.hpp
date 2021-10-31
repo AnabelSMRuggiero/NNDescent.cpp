@@ -123,7 +123,28 @@ struct DataBlock{
     size_t lengthWithPadding;
     DynamicArray<ElementType, alignment> blockData;
     //std::vector<DataEntry> blockData;
+    
 
+    static DataBlock deserialize(std::ifstream& inFile, size_t blockNumber = 0){//, std::pmr::memory_resource* resource = std::pmr::get_default_resource()){
+        struct DeserializationArgs{
+            size_t size;
+            size_t entryLength;
+            size_t lengthWithPadding;
+        };
+        /*
+            outputFunc(block.size());
+            outputFunc(block.entryLength);
+            outputFunc(block.lengthWithPadding);
+
+            outputFile.write(reinterpret_cast<const char*>(block.blockData.begin()), block.blockData.size()*sizeof(float));
+        */
+        DeserializationArgs args = Extract<DeserializationArgs>(inFile);
+
+        DataBlock retBlock{args.size, args.entryLength, args.lengthWithPadding, blockNumber};
+        Extract<ElementType>(inFile, retBlock.blockData.begin(), retBlock.blockData.end());
+
+        return retBlock;
+    }
 
     DataBlock() = default;
 
@@ -133,6 +154,17 @@ struct DataBlock{
         entryLength(entryLength),
         lengthWithPadding(entryLength + EntryPadding<ElementType, alignment>(entryLength)),
         blockData(lengthWithPadding*numEntries){};
+
+    private:
+
+    DataBlock(const size_t numEntries, const size_t entryLength, const size_t lengthWithPadding, size_t blockNumber):
+        blockNumber(blockNumber), 
+        numEntries(numEntries),
+        entryLength(entryLength),
+        lengthWithPadding(lengthWithPadding),
+        blockData(lengthWithPadding*numEntries){};
+
+    public:
 
     //template<typename DataEntry>
     //    requires std::same_as<typename DataEntry::value_type, ElementType>

@@ -22,31 +22,31 @@ namespace nnd{
 
 
 
-template<typename DataType, std::endian DataEndianness = std::endian::native, typename StreamType = std::ifstream>
-DataType Extract(StreamType &dataStream) = delete;
+template<typename DataType, std::endian DataEndianness = std::endian::native, typename StreamType = std::ifstream, typename... Ts>
+DataType Extract(StreamType&& dataStream, Ts&&... ts) = delete;
 
 template<typename Extractee, typename StreamType, typename... Ts>
-constexpr bool hasStaticDeserialize = requires(StreamType& inFile, Ts&&... ts){
-    {Extractee::deserialize(inFile, ts...)} -> std::same_as<Extractee>;
+constexpr bool hasStaticDeserialize = requires(StreamType&& inFile, Ts&&... ts){
+    {Extractee::deserialize(std::forward<StreamType>(inFile), ts...)} -> std::same_as<Extractee>;
 };
 
 template<typename Extractee, typename StreamType, typename... Ts>
-concept ExtractableClass = hasStaticDeserialize<Extractee, StreamType, Ts...> || std::is_constructible_v<Extractee, StreamType, Ts...>;
+concept ExtractableClass = hasStaticDeserialize<Extractee, StreamType, Ts...> || std::is_constructible_v<Extractee, StreamType&&, Ts...>;
 
-template<typename DataType, std::endian DataEndianness = std::endian::native, typename StreamType = std::ifstream>
+template<typename DataType, std::endian DataEndianness = std::endian::native, typename StreamType = std::ifstream, typename... Ts>
     requires ExtractableClass<DataType, StreamType>
-DataType Extract(StreamType &dataStream){
+DataType Extract(StreamType&& dataStream, Ts&&... ts){
     if constexpr (hasStaticDeserialize<DataType, StreamType>){
-        return DataType::deserialize(dataStream);
+        return DataType::deserialize(std::forward<StreamType>(dataStream), std::forward<Ts>(ts)...);
     } else {
-        return DataType{dataStream};
+        return DataType{std::forward<StreamType>(dataStream), std::forward<Ts>(ts)...};
     }
 };
 
 
 
 template<TriviallyCopyable DataType, std::endian DataEndianness = std::endian::native, typename StreamType = std::ifstream>
-DataType Extract(StreamType &dataStream){
+DataType Extract(StreamType&& dataStream){
     static_assert((DataEndianness == std::endian::big) || (DataEndianness == std::endian::little));
     static_assert((std::endian::native == std::endian::big) || (std::endian::native == std::endian::little));
 
@@ -71,7 +71,7 @@ DataType Extract(StreamType &dataStream){
 }
 
 template<TriviallyCopyable DataType, std::endian DataEndianness = std::endian::native, typename StreamType = std::ifstream>
-void Extract(StreamType &dataStream, DataType* start, size_t count){
+void Extract(StreamType&& dataStream, DataType* start, size_t count){
     static_assert((DataEndianness == std::endian::big) || (DataEndianness == std::endian::little));
     static_assert((std::endian::native == std::endian::big) || (std::endian::native == std::endian::little));
 
@@ -90,7 +90,7 @@ void Extract(StreamType &dataStream, DataType* start, size_t count){
 }
 
 template<TriviallyCopyable DataType, std::endian DataEndianness = std::endian::native, typename StreamType = std::ifstream>
-void Extract(StreamType &dataStream, DataType* start, DataType* end){
+void Extract(StreamType&& dataStream, DataType* start, DataType* end){
     static_assert((DataEndianness == std::endian::big) || (DataEndianness == std::endian::little));
     static_assert((std::endian::native == std::endian::big) || (std::endian::native == std::endian::little));
 
@@ -99,7 +99,7 @@ void Extract(StreamType &dataStream, DataType* start, DataType* end){
     if constexpr (DataEndianness == std::endian::native){
         
 
-        dataStream.read(reinterpret_cast<char*>(start), sizeof(DataType)*std::distance(end, start));
+        dataStream.read(reinterpret_cast<char*>(start), sizeof(DataType)*std::distance(start, end));
 
         
     } else {

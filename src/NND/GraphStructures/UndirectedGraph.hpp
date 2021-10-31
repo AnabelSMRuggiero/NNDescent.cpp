@@ -47,6 +47,8 @@ struct UndirectedGraph{
     UndirectedGraph(): graphBlock() {};
 
     UndirectedGraph(std::ifstream& inFile): graphBlock(Extract<UnevenBlock<IndexType>>(inFile)) {}
+    //graphBlock(UnevenBlock<IndexType>::deserialize(inFile)) {}
+    
 
     //NewUndirectedGraph(size_t numVerticies, size_t numNeighbors): 
     //    verticies(numVerticies, std::vector<IndexType>(numNeighbors)){};
