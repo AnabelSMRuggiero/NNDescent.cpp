@@ -390,6 +390,7 @@ WeightedGraphEdges NeighborsOutOfBlock(const DataSet<int32_t>& groundTruth,
     xxxx     8 byte int     secondEntry.first           blockNumber of second leaf
 */
 
+/*
 void SerializeMetaGraph(const WeightedGraphEdges& readGraph, const std::string& outputFile){
     std::ofstream outStream(outputFile, std::ios_base::binary);
 
@@ -405,7 +406,7 @@ void SerializeMetaGraph(const WeightedGraphEdges& readGraph, const std::string& 
     }
 
 }
-
+*/
 
 }
 

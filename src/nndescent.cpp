@@ -163,30 +163,33 @@ void SerializeFragmentIndex(std::span<const DataBlock<DistType>> dataBlocks, std
     FragmentMetaData metadata{dataBlocks.size()};
 
     std::ofstream metaDataFile{fragmentDirectory / "MetaData.bin", std::ios_base::binary | std::ios_base::trunc};
-    Serialize(metadata, metaDataFile);
+    serialize(metadata, metaDataFile);
 
     for (const auto& block: dataBlocks){
         std::filesystem::path dataBlockPath = fragmentDirectory / ("DataBlock-" + std::to_string(block.blockNumber) + ".bin");
         std::ofstream dataBlockFile{dataBlockPath, std::ios_base::binary | std::ios_base::trunc};
-        Serialize(block, dataBlockFile);
+        serialize(block, dataBlockFile);
     }
 
 
     for (const auto& block: graphBlocks){
         std::filesystem::path queryContextPath = fragmentDirectory / ("QueryContext-" + std::to_string(block.queryContext.blockNumber) + ".bin");
         std::ofstream contextFile{queryContextPath, std::ios_base::binary | std::ios_base::trunc};
-        Serialize(block.queryContext, contextFile);
+        serialize(block.queryContext, contextFile);
     }
 
     for (size_t i = 0; const auto& block: indexBlocks){
         std::filesystem::path indexBlockPath = fragmentDirectory / ("IndexBlock-" + std::to_string(i) + ".bin");
         std::ofstream indexBlockFile{indexBlockPath, std::ios_base::binary | std::ios_base::trunc};
-        Serialize(block, indexBlockFile);
+        serialize(block, indexBlockFile);
         i++;
     }
 }
 
-
+void SerializeSplittingVectors(const std::unordered_map<size_t, std::pair<AlignedArray<float>, float>>& splittingVectors, std::filesystem::path filePath){
+    std::ofstream vectorFile{filePath, std::ios_base::binary | std::ios_base::trunc};
+    serialize(splittingVectors, vectorFile);
+}
 
 enum class Options{
     blockGraphNeighbors,
@@ -427,7 +430,7 @@ int main(int argc, char *argv[]){
                                         BuildRPForest<ParallelEuclidianScheme<float, AlignedArray<float>>>(std::execution::par_unseq, mnistFashionTrain, parameters.splitParams, numThreads) :
                                         BuildRPForest<EuclidianScheme<float, AlignedArray<float>>>(std::execution::seq, mnistFashionTrain, parameters.splitParams);
                                         
-
+    SerializeSplittingVectors(splittingVectors, indexLocation / "SplittingVectors.bin");
     //std::chrono::time_point<std::chrono::steady_clock> rpTrainEnd = std::chrono::steady_clock::now();
     //std::cout << std::chrono::duration_cast<std::chrono::duration<float>>(rpTrainEnd - runStart).count() << "s total for test set rpTrees " << std::endl;
 
