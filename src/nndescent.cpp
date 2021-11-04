@@ -444,6 +444,15 @@ int main(int argc, char *argv[]){
                                         PartitionData<float>(rpTrees, mnistFashionTrain);
 
     
+    [&](){
+        std::ofstream mappingFile{indexLocation/"SplittingIndexToBlockNumber.bin", std::ios_base::binary | std::ios_base::trunc};
+        serialize(indexMappings.splitToBlockNum, mappingFile);
+    }();
+
+    [&](){
+        std::ofstream mappingFile{indexLocation/"BlockIndexToSourceIndex.bin", std::ios_base::binary | std::ios_base::trunc};
+        serialize(indexMappings.blockIndexToSource, mappingFile);
+    }();
     MetricFunctor<float, EuclideanMetricPair> euclideanFunctor(dataBlocks);
     DispatchFunctor<float> testDispatch(euclideanFunctor);
 

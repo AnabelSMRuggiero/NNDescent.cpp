@@ -131,7 +131,11 @@ struct UnevenBlock{
     size_t numArrays;
     ElementType* firstIndex;
 
+    template<std::endian dataEndianess = std::endian::native>
     static UnevenBlock deserialize(std::ifstream& inFile, std::pmr::memory_resource* resource = std::pmr::get_default_resource()){
+
+        static_assert(dataEndianess == std::endian::native, "reverseEndianess not implemented yet for this class");
+        
         struct DeserializationArgs{
             size_t numBytes;
             size_t numArrays;

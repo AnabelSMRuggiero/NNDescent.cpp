@@ -121,7 +121,11 @@ struct DynamicArray{
     ValueType* get() { return data.get(); }
 
     const ValueType* get() const { return data.get(); }
+    /*
+    ValueType* data() { return get(); }
 
+    const ValueType* data() const { return get(); }
+    */
     ValueType* begin() { return data.get(); }
 
     ValueType* end() { return data.get() + data.get_deleter().capacity; }
@@ -492,7 +496,7 @@ struct SplittingHeurisitcs{
 };
 
 template<typename DataType>
-concept TriviallyCopyable = std::is_trivially_copyable<DataType>::value == true;
+concept TriviallyCopyable = std::is_trivially_copyable_v<DataType>;
 }
 
 

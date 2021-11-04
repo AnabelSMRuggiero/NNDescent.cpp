@@ -124,8 +124,11 @@ struct DataBlock{
     DynamicArray<ElementType, alignment> blockData;
     //std::vector<DataEntry> blockData;
     
-
+    template<std::endian dataEndianess = std::endian::native>
     static DataBlock deserialize(std::ifstream& inFile, size_t blockNumber = 0){//, std::pmr::memory_resource* resource = std::pmr::get_default_resource()){
+
+        static_assert(dataEndianess == std::endian::native, "reverseEndianess not implemented yet for this class");
+
         struct DeserializationArgs{
             size_t size;
             size_t entryLength;
@@ -138,10 +141,10 @@ struct DataBlock{
 
             outputFile.write(reinterpret_cast<const char*>(block.blockData.begin()), block.blockData.size()*sizeof(float));
         */
-        DeserializationArgs args = Extract<DeserializationArgs>(inFile);
+        DeserializationArgs args = Extract<DeserializationArgs, dataEndianess>(inFile);
 
         DataBlock retBlock{args.size, args.entryLength, args.lengthWithPadding, blockNumber};
-        Extract<ElementType>(inFile, retBlock.blockData.begin(), retBlock.blockData.end());
+        Extract<ElementType, dataEndianess>(inFile, retBlock.blockData.begin(), retBlock.blockData.end());
 
         return retBlock;
     }

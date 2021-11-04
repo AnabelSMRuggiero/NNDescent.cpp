@@ -16,30 +16,71 @@ https://github.com/AnabelSMRuggiero/NNDescent.cpp
 #include <fstream>
 #include <iterator>
 #include <concepts>
+#include <functional>
+#include <memory_resource>
 
 #include "./Type.hpp"
+#include "./DelayConstruct.hpp"
 namespace nnd{
+
 
 
 template<typename DataType, std::endian DataEndianness = std::endian::native, typename StreamType = std::ifstream, typename... Ts>
 DataType Extract(StreamType&& dataStream, Ts&&... ts) = delete;
 
-template<typename Extractee, typename StreamType, typename... Ts>
+
+template<typename Extractee, std::endian DataEndianness, typename StreamType, typename... Ts>
 constexpr bool hasStaticDeserialize = requires(StreamType&& inFile, Ts&&... ts){
-    {Extractee::deserialize(std::forward<StreamType>(inFile), std::forward<Ts>(ts)...)} -> std::same_as<Extractee>;
+    {Extractee::template deserialize<DataEndianness>(std::forward<StreamType>(inFile), std::forward<Ts>(ts)...)} -> std::same_as<Extractee>;
+    //Extractee::deserialize(...) used to work before I templated deserialize
 };
 
-template<typename Extractee, typename StreamType, typename... Ts>
-concept ExtractableClass = hasStaticDeserialize<Extractee, StreamType, Ts...> || std::is_constructible_v<Extractee, StreamType&&, Ts...>;
 
-template<typename DataType, std::endian DataEndianness = std::endian::native, typename StreamType = std::ifstream, typename... Ts>
-    requires ExtractableClass<DataType, StreamType>
-DataType Extract(StreamType&& dataStream, Ts&&... ts){
-    if constexpr (hasStaticDeserialize<DataType, StreamType>){
-        return DataType::deserialize(std::forward<StreamType>(dataStream), std::forward<Ts>(ts)...);
+struct ReverseEndiannessTag {};
+
+template<typename Extractee, std::endian DataEndianness, typename StreamType, typename... Ts>
+constexpr bool hasExtractConstructor = (DataEndianness == std::endian::native) ? 
+                                           std::is_constructible_v<Extractee, StreamType&&, Ts...> :
+                                           std::is_constructible_v<Extractee, StreamType&&, Ts..., ReverseEndiannessTag>;
+
+
+template<typename Extractee>
+struct ExtractTag{
+    using type = Extractee;
+};
+
+template<typename Extractee, std::endian DataEndianness = std::endian::native, typename StreamType = std::ifstream, typename... Ts>
+constexpr static bool extractDispatchable = requires(StreamType&& inFile, Ts&&... ts){
+    {Extract<DataEndianness, StreamType>(std::forward<StreamType>(inFile), std::forward<Ts>(ts)..., ExtractTag<Extractee>{})} -> std::same_as<Extractee>;
+};
+/*
+template<typename Extractee, std::endian DataEndianness = std::endian::native, typename StreamType = std::ifstream, typename... Ts>
+    requires extractDispatchable<Extractee, DataEndianness, StreamType, Ts...>
+Extractee Extract(StreamType&& dataStream, Ts&&... ts){
+    return Extract<DataEndianness, StreamType>(std::forward<StreamType>(dataStream), std::forward<Ts>(ts)..., ExtractTag<Extractee>{});
+}
+*/
+template<typename Extractee, std::endian DataEndianness, typename StreamType, typename... Ts>
+concept CustomExtract = hasStaticDeserialize<Extractee, DataEndianness, StreamType, Ts...> || 
+                        hasExtractConstructor<Extractee, DataEndianness, StreamType, Ts...> ||
+                        extractDispatchable<Extractee, DataEndianness, StreamType, Ts...>;
+
+template<typename Extractee, std::endian DataEndianness = std::endian::native, typename StreamType = std::ifstream, typename... Ts>
+    requires CustomExtract<Extractee, DataEndianness, StreamType, Ts...>
+Extractee Extract(StreamType&& dataStream, Ts&&... ts){
+    if constexpr (hasStaticDeserialize<Extractee, DataEndianness, StreamType, Ts...>){
+        return Extractee::template deserialize<DataEndianness>(std::forward<StreamType>(dataStream), std::forward<Ts>(ts)...);
+    } else if constexpr(hasExtractConstructor<Extractee, DataEndianness, StreamType, Ts...>){
+        if constexpr(DataEndianness == std::endian::native){
+            return Extractee{std::forward<StreamType>(dataStream), std::forward<Ts>(ts)...};
+        } else {
+            return Extractee{std::forward<StreamType>(dataStream), std::forward<Ts>(ts)..., ReverseEndiannessTag{}};
+        }
     } else {
-        return DataType{std::forward<StreamType>(dataStream), std::forward<Ts>(ts)...};
+        return Extract<DataEndianness, StreamType>(std::forward<StreamType>(dataStream), std::forward<Ts>(ts)..., ExtractTag<Extractee>{});
     }
+    
+    //Extract<DataEndianness, StreamType>(std::forward<StreamType>(dataStream), std::forward<Ts>(ts)..., ExtractTag<Extractee>{});
 };
 
 
@@ -108,30 +149,74 @@ void Extract(StreamType&& dataStream, DataType* start, DataType* end){
 }
 
 
-template<typename Extractee>
-struct ExtractTag{
-    using type = Extractee;
-};
 
-//template<typename DataType, std::endian DataEndianness = std::endian::native, typename StreamType = std::ifstream, typename... Ts>
-//DataType Extract(StreamType&& dataStream, Ts&&... ts) = delete;
-
-template<typename Extractee, std::endian DataEndianness = std::endian::native, typename StreamType = std::ifstream, typename... Ts>
-constexpr static bool extractDispatchable = requires(StreamType&& inFile, Ts&&... ts){
-    {Extract<DataEndianness, StreamType>(std::forward<StreamType>(inFile), ts..., ExtractTag<Extractee>{})} -> std::same_as<Extractee>;
-};
-
-template<typename Extractee, std::endian DataEndianness = std::endian::native, typename StreamType = std::ifstream, typename... Ts>
-    requires extractDispatchable<Extractee, DataEndianness, StreamType, Ts...>
-Extractee Extract(StreamType&& dataStream, Ts&&... ts){
-    return Extract<DataEndianness, StreamType>(std::forward<StreamType>(dataStream), std::forward<Ts>(ts)..., ExtractTag<Extractee>{});
-}
 
 template<std::endian DataEndianness = std::endian::native, typename StreamType = std::ifstream, typename ExtracteeA, typename ExtracteeB>
 std::pair<ExtracteeA, ExtracteeB> Extract(StreamType&& dataStream, ExtractTag<std::pair<ExtracteeA, ExtracteeB>>){
     return {Extract<ExtracteeA, DataEndianness>(std::forward<StreamType>(dataStream)),
             Extract<ExtracteeB, DataEndianness>(std::forward<StreamType>(dataStream))};
 }
+
+template<std::endian DataEndianness = std::endian::native, typename StreamType = std::ifstream, typename ExtracteeA, typename ExtracteeB>
+std::unordered_map<ExtracteeA, ExtracteeB> Extract(StreamType&& dataStream, ExtractTag<std::unordered_map<ExtracteeA, ExtracteeB>>){
+    const size_t mapSize = Extract<size_t, DataEndianness>(std::forward<StreamType>(dataStream));
+    
+    std::unordered_map<ExtracteeA, ExtracteeB> retMap(mapSize);
+    for(size_t i = 0; i<mapSize; i+=1) retMap.emplace(DelayConstruct<std::pair<const ExtracteeA, ExtracteeB>>([&](){
+        return Extract<std::pair<ExtracteeA, ExtracteeB>>(dataStream);
+    }));
+    return retMap;
+}
+
+template<std::endian dataEndianess = std::endian::native, typename StreamType, typename ValueType, size_t alignment>
+DynamicArray<ValueType, alignment> Extract(StreamType&& inFile, std::pmr::memory_resource* resource, ExtractTag<DynamicArray<ValueType, alignment>>){
+
+    size_t arraySize = Extract<size_t, dataEndianess>(inFile);
+
+    if constexpr (std::is_trivially_copyable_v<ValueType>){
+
+        DynamicArray<ValueType, alignment> retArray(uninitTag, arraySize, resource);
+        Extract<ValueType, dataEndianess>(inFile, retArray.begin(), retArray.end());
+
+        return retArray;
+
+    } else {
+
+        DynamicArray<ValueType, alignment> retArray(arraySize, resource);
+        for(auto&& element: retArray) element = Extract<ValueType, dataEndianess>(inFile);
+
+        return retArray;
+    }
+}
+
+template<std::endian dataEndianess = std::endian::native, typename StreamType, typename ValueType, size_t alignment>
+DynamicArray<ValueType, alignment> Extract(StreamType&& inFile, ExtractTag<DynamicArray<ValueType, alignment>>){
+    return Extract<dataEndianess>(inFile, std::pmr::get_default_resource(), ExtractTag<DynamicArray<ValueType, alignment>>{});
+}
+
+template<std::ranges::contiguous_range Extractee, std::endian DataEndianness = std::endian::native, typename StreamType = std::ifstream, typename... Ts>
+    requires (!CustomExtract<Extractee, DataEndianness, StreamType> && TriviallyCopyable<std::ranges::range_value_t<Extractee>>)
+Extractee Extract(StreamType&& dataStream){
+    const size_t rangeSize = Extract<size_t, DataEndianness>(std::forward<StreamType>(dataStream));
+    
+    std::remove_cv_t<Extractee> range(rangeSize);
+    Extract<std::ranges::range_value_t<Extractee>, DataEndianness>(std::forward<StreamType>(dataStream), range.data(), rangeSize);
+
+        /*
+        std::remove_cv_t<Extractee> range;
+        
+        std::ranges::for_each(range, [&](const auto&){
+            DelayConstruct<std::ranges::range_value_t<Extractee>>([&](){
+                return Extract<std::ranges::range_value_t<Extractee>>(std::forward<StreamType>(dataStream));
+            })
+        });
+        */
+    
+
+    return range;
+    //Extract<DataEndianness, StreamType>(std::forward<StreamType>(dataStream), std::forward<Ts>(ts)..., ExtractTag<Extractee>{});
+};
+
 
 template<typename Extractee, std::endian DataEndianness = std::endian::native>
 struct Extractor{
