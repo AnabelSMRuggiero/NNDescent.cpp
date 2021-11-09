@@ -61,6 +61,21 @@ ComparisonMap InitializeComparisonQueues(const Graph<BlockIndecies, DistType>& c
     return retMap;
 }
 
+template<typename DistType>
+std::vector<std::pair<DataIndex_t, GraphVertex<DataIndex_t, DistType>>> FlattenHints(const JoinHints& startJoins){
+    std::vector<std::pair<DataIndex_t, GraphVertex<DataIndex_t, DistType>>> joinHints(startJoins.size());
+
+    std::ranges::transform(startJoins, joinHints.begin(), [&] (const auto& hint){
+        GraphVertex<DataIndex_t, DistType> queryHint;
+        queryHint.resize(hint.second.size());
+        std::ranges::transform(hint.second, queryHint.begin(), [&](const auto& index){ 
+            return std::pair{index, std::numeric_limits<DistType>::max()};
+        });
+        return std::pair{hint.first, queryHint};
+    });
+    
+    return joinHints;
+}
 
 
 template<typename DistType>
@@ -74,29 +89,44 @@ JoinResults<DistType> BlockwiseJoin(const JoinHints& startJoins,
                    const QueryContext<DataIndex_t, DistType>& targetBlock,
                    QueryFunctor& queryFunctor){
     
-    std::vector<std::pair<DataIndex_t, GraphVertex<DataIndex_t, DistType>>> joinHints;
+    std::vector<std::pair<DataIndex_t, GraphVertex<DataIndex_t, DistType>>> joinHints = FlattenHints<DistType>(startJoins);
+    /*
+    std::vector<std::pair<DataIndex_t, GraphVertex<DataIndex_t, DistType>>> joinHints(hint.size());
+
+    std::ranges::transform(startJoins, joinHints.begin(), [&] (const auto& hint){
+        GraphVertex<DataIndex_t, DistType> queryHint;
+        queryHint.resize(hint.size());
+        std::ranges::transform(hint, queryHint.begin(), [&](const auto& index){ 
+            return {index, std::numeric_limits<DistType>::max()};
+        });
+        return {hint.first, queryHint};
+    });
+    */
+    /*
     for (const auto& hint: startJoins){
         GraphVertex<DataIndex_t, DistType> queryHint;
-        for (const auto index: hint.second){
-            queryHint.push_back({index, std::numeric_limits<DistType>::max()});
-        }
+        queryHint.resize(hint.size());
+        std::ranges::transform(hint, queryHint.begin(), [&](const auto& index){ 
+            return {index, std::numeric_limits<DistType>::max()};
+        });
+
         joinHints.push_back({hint.first, std::move(queryHint)});
     }
+    */
     NodeTracker nodesJoined(searchSubgraph.size());
     
     JoinResults<DistType> retResults;
-    //std::vector<std::pair<Data_t, GraphVertex<size_t, DistType>>> retResults;
+    
     while(joinHints.size()){
         JoinResults<DistType> joinResults;
-        //std::vector<std::pair<size_t, GraphVertex<size_t, DistType>>> joinResults;
+        
         for (auto& joinHint: joinHints){
-            //GraphVertex<size_t, DistType> joinResult = targetBlock || QueryPoint{joinHint.second, blockData[joinHint.first]};
-            //const QueryPoint<size_t, DataEntry, DistType> query(joinHint.second, blockData[joinHint.first], joinHint.first);
+            
             joinResults.push_back({joinHint.first, targetBlock.Query(joinHint.second, joinHint.first, queryFunctor)});
             nodesJoined[joinHint.first] = true;
         }
         joinHints.clear();
-        //std::vector<std::pair<size_t, GraphVertex<size_t, DistType>>> newJoins;
+        
         for(auto& result: joinResults){
             
             EraseRemove(result.second, currentGraphState[result.first].PushThreshold());
@@ -112,9 +142,9 @@ JoinResults<DistType> BlockwiseJoin(const JoinHints& startJoins,
                 }
                 retResults.push_back({result.first, std::move(result.second)});
             }
-            //result.second = updatedResult;
+            
         }
-        //joinHints = std::move(newJoins);
+        
     }
     return retResults;
 }
@@ -267,15 +297,13 @@ template<typename DistType>
 struct BlockUpdateContext {
 
     
-
     NodeTracker blockJoinTracker;
     JoinMap joinsToDo;
     JoinMap newJoins;
     QueryContext<DataIndex_t, DistType> queryContext;
     Graph<BlockIndecies, DistType> currentGraph;
     DirectedGraph<DataIndex_t> joinPropagation;
-    IndexBlock neighborsInFragment;
-    //Graph<BlockIndecies, DistType> currentGraph;
+
 
     BlockUpdateContext() = default;
 
@@ -325,25 +353,21 @@ int UpdateBlocks(BlockUpdateContext<DistType>& blockLHS,
                  BlockUpdateContext<DistType>& blockRHS,
                  CachingFunctor<DistType>& cachingFunctor){
 
-
-    //bool doRHSJoin = blockRHS.joinsToDo.find(blockLHS.queryContext.blockNumber) != blockRHS.joinsToDo.end();
-
-    int graphUpdates(0);
-
-
     blockLHS.blockJoinTracker[blockRHS.queryContext.blockNumber] = true;
     
     cachingFunctor.SetBlocks(blockLHS.queryContext.blockNumber, blockRHS.queryContext.blockNumber);
-    
-
-    
 
     JoinResults<DistType> blockLHSUpdates = BlockwiseJoin(blockLHS.joinsToDo[blockRHS.queryContext.blockNumber],
                                                                         blockLHS.currentGraph,
                                                                         blockLHS.joinPropagation,
                                                                         blockRHS.queryContext,
                                                                         cachingFunctor);
-    NewJoinQueues<DistType, checkGraphFragment>(blockLHSUpdates, blockLHS.blockJoinTracker, blockRHS.queryContext.graphFragment, blockRHS.currentGraph, blockLHS.newJoins);
+
+    NewJoinQueues<DistType, checkGraphFragment>(blockLHSUpdates, 
+                                                blockLHS.blockJoinTracker,
+                                                blockRHS.queryContext.graphFragment,
+                                                blockRHS.currentGraph,
+                                                blockLHS.newJoins);
 
     
     
@@ -364,6 +388,8 @@ int UpdateBlocks(BlockUpdateContext<DistType>& blockLHS,
         
     }
     NewJoinQueues<DistType, checkGraphFragment>(cachingFunctor.reverseGraph, blockRHS.blockJoinTracker, blockLHS.queryContext.graphFragment, blockLHS.currentGraph, blockRHS.newJoins);
+
+    int graphUpdates{0};
 
     for (size_t i = 0; auto& result: cachingFunctor.reverseGraph){
         graphUpdates += ConsumeVertex(blockRHS.currentGraph[i], result, blockLHS.queryContext.graphFragment, blockLHS.queryContext.blockNumber);

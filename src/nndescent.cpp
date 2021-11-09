@@ -186,7 +186,9 @@ void SerializeFragmentIndex(std::span<const DataBlock<DistType>> dataBlocks, std
     }
 }
 
-void SerializeSplittingVectors(const std::unordered_map<size_t, std::pair<AlignedArray<float>, float>>& splittingVectors, std::filesystem::path filePath){
+using SplittingVectors = std::unordered_map<size_t, std::pair<AlignedArray<float>, float>>;
+
+void SerializeSplittingVectors(const SplittingVectors& splittingVectors, std::filesystem::path filePath){
     std::ofstream vectorFile{filePath, std::ios_base::binary | std::ios_base::trunc};
     serialize(splittingVectors, vectorFile);
 }
@@ -247,7 +249,7 @@ int main(int argc, char *argv[]){
     SplittingHeurisitcs splitParams= {16, 140, 60, 180};
     */
 
-    constexpr size_t numThreads = 12;
+    constexpr size_t numThreads = 4;
 
     //IndexParamters indexParams{12, 40, 35, 6};
     IndexParameters indexParams{12, 20, 15, 6};
@@ -388,12 +390,12 @@ int main(int argc, char *argv[]){
 
     std::filesystem::path indexLocation("./Saved-Indecies/MNIST-Fashion");
 
-
+    /*
     std::string testDataFilePath("./TestData/MNIST-Fashion-Test.bin");
     std::string testNeighborsFilePath("./TestData/MNIST-Fashion-Neighbors.bin");
     DataSet<float> mnistFashionTest(testDataFilePath, 28*28, 10'000);
     DataSet<uint32_t, alignof(uint32_t)> mnistFashionTestNeighbors(testNeighborsFilePath, 100, 10'000);
-    
+    */
 
     /*
     std::string trainDataFilePath("./TestData/SIFT-Train.bin");
@@ -444,12 +446,12 @@ int main(int argc, char *argv[]){
                                         PartitionData<float>(rpTrees, mnistFashionTrain);
 
     
-    [&](){
+    [&, &indexMappings = indexMappings](){
         std::ofstream mappingFile{indexLocation/"SplittingIndexToBlockNumber.bin", std::ios_base::binary | std::ios_base::trunc};
         serialize(indexMappings.splitToBlockNum, mappingFile);
     }();
 
-    [&](){
+    [&, &indexMappings = indexMappings](){
         std::ofstream mappingFile{indexLocation/"BlockIndexToSourceIndex.bin", std::ios_base::binary | std::ios_base::trunc};
         serialize(indexMappings.blockIndexToSource, mappingFile);
     }();
@@ -505,7 +507,7 @@ int main(int argc, char *argv[]){
                            std::span<const BlockUpdateContext<float>>{blockUpdateContexts},
                            indexView,
                            indexLocation);
-
+    /*
     std::chrono::time_point<std::chrono::steady_clock> runStart2 = std::chrono::steady_clock::now();
 
     std::unordered_set<size_t> splittingIndicies;
@@ -680,37 +682,10 @@ int main(int argc, char *argv[]){
             i++;
         }
         
-        /*
-        std::vector<SearchContext<float>> searchContexts;
-        searchContexts.reserve(mnistFashionTest.size());
-
-        for (size_t i = 0; i<mnistFashionTest.size(); i+=1){
-            //const size_t numNeighbors, const size_t numBlocks, const size_t dataIndex
-            searchContexts.emplace_back(parameters.searchParams.searchNeighbors, blockUpdateContexts.size(), i);
-        }
-
-        BasicFunctor metaGraphSearchRefs(EuclideanMetricPair{}, mnistFashionTest, metaGraph.points);
-        ErasedMetricPair<float> metaGraphFunctor(metaGraphSearchRefs);
-        
-
-
-        DataBlock searches = BlocksToSearch(metaGraph, additionalInitSearches, mnistFashionTest.size(), metaGraphFunctor);
-
-        std::vector<std::vector<size_t>> queues = QueueSearches(searches, dataBlocks.size());
-
-        DoSearches(blockUpdateContexts, searchContexts, queues, searchFunctor);
-
-        for (size_t i = 0; i<searchContexts.size(); i+=1){
-            GraphVertex<BlockIndecies, float>& result = searchContexts[i].currentNeighbors;
-            for (const auto& neighbor: result){
-                results[i].push_back(indexMappingView[neighbor.first.blockNumber][neighbor.first.dataIndex]);
-            }
-        }
-        */
     }
     
 
-   
+    */
     
     
     
@@ -733,6 +708,7 @@ int main(int argc, char *argv[]){
         i++;
     }
     */
+    /*
     size_t numNeighborsCorrect(0);
     std::vector<size_t> correctNeighborsPerIndex(results.size());
     for(size_t i = 0; const auto& result: results){
@@ -746,7 +722,7 @@ int main(int argc, char *argv[]){
         }
         i++;
     }
-
+    */
     /*
     std::vector<size_t> correctNeighborsPerBlock(searchContexts.size());
     for (size_t i = 0; i< correctNeighborsPerIndex.size(); i+=1){
@@ -757,18 +733,9 @@ int main(int argc, char *argv[]){
         correctPerBlockFloat[i] = float(correctNeighborsPerBlock[i]*10)/float(searchContexts[i].size());
     }
     */
-    double recall = double(numNeighborsCorrect)/ double(10*mnistFashionTestNeighbors.size());
-    std::cout << (recall * 100) << std::endl;
+    //double recall = double(numNeighborsCorrect)/ double(10*mnistFashionTestNeighbors.size());
+    //std::cout << (recall * 100) << std::endl;
     //std::cout << "Recall: " << (recall * 100) << "%" << std::endl;
     
-    //WeightedGraphEdges graphEdges = NeighborsOutOfBlock(mnistFashionTestNeighbors, trainMapper.sourceToBlockIndex, testClassifications);
-
-    //for (size_t i = 0; i < trainMapper.sourceToBlockIndex.size(); i += 1){
-    //    trainClassifications[i] = trainMapper.sourceToBlockIndex[i].blockNumber;
-    //}
-
-    //SerializeCOMS(metaGraph.points, "./TestData/MNIST-Fashion-Train-COMs.bin");
-    //SerializeMetaGraph(graphEdges, "./TestData/MNIST-Fashion-Test-MetaGraphEdges.bin");
-    //SerializeVector<size_t>(trainClassifications, "./TestData/MNIST-Fashion-Train-SplittingIndicies.bin");
     return 0;
 }

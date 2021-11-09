@@ -86,17 +86,8 @@ struct DataSet{
             dataStream.read(reinterpret_cast<char*>(dataArr.begin()), numElements*sizeof(DataType));
 
             this->samples = std::move(dataArr);
-            /*
-            std::ifstream dataStream;
-            dataStream.open(dataLocation, std::ios_base::binary);
-            //std::cout << dataStream.is_open();      
-            samples.reserve(numberOfSamples);
-            for (size_t i = 0; i < numberOfSamples; i+=1){
-                samples.push_back(extractionFunction(dataStream, entryLength));
-                //for (auto& entry: samples.back()) std::cout << entry << std::endl;
-                //dataStream.read(reinterpret_cast<char *>(&(samples[i][0])), vectorLength);
-            };
-            */
+            //for (const auto& entry: this->samples) std::cout << entry << std::endl;
+            
     }
 
 

@@ -18,7 +18,7 @@ https://github.com/AnabelSMRuggiero/NNDescent.cpp
 #include "DataDeserialization.hpp"
 
 namespace nnd{
-/*
+
 template<TriviallyCopyable DataType, std::endian DataEndianness>
 void SerializeData(std::ofstream& dataStream, const DataType& dataEntry){
     //Don't wanna deal with mixed endianess. Unlikely to be an issue I need to deal with
@@ -55,7 +55,7 @@ void SerializeVector(const std::vector<DataType, Alloc>& readVector, std::ofstre
     outStream.write(reinterpret_cast<const char*>(&readVector.data()), sizeof(DataType)*readVector.size());
 
 };
-*/
+
 
 template<typename Range>
 concept ContiguousCopyableRange = std::ranges::contiguous_range<Range> && std::is_trivially_copyable_v<std::ranges::range_value_t<Range>>;

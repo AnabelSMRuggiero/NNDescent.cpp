@@ -341,7 +341,27 @@ struct DataMapper<DataEntry, DataStructure>{
 
 
 using UnweightedGraphEdges = std::unordered_map<size_t, std::unordered_map<size_t, size_t>>;
+
+
+
 using WeightedGraphEdges = std::unordered_map<size_t, std::vector<std::pair<size_t, double>>>;
+
+void SerializeMetaGraph(const WeightedGraphEdges& readGraph, const std::string& outputFile){
+    std::ofstream outStream(outputFile, std::ios_base::binary);
+
+    SerializeData<size_t, std::endian::big>(outStream, readGraph.size());
+
+    for(const auto& pair : readGraph){
+        SerializeData<size_t, std::endian::big>(outStream, pair.first);
+        SerializeData<size_t, std::endian::big>(outStream, pair.second.size());
+        for (const auto& edge : pair.second){
+            SerializeData<size_t, std::endian::big>(outStream, edge.first);
+            SerializeData<double, std::endian::big>(outStream, edge.second);
+        }
+    }
+
+}
+
 
 WeightedGraphEdges NeighborsOutOfBlock(const DataSet<int32_t>& groundTruth,
     const std::vector<BlockIndecies>& trainClassifications,

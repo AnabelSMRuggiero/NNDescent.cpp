@@ -194,6 +194,24 @@ DynamicArray<ValueType, alignment> Extract(StreamType&& inFile, ExtractTag<Dynam
     return Extract<dataEndianess>(inFile, std::pmr::get_default_resource(), ExtractTag<DynamicArray<ValueType, alignment>>{});
 }
 
+template<std::endian dataEndianness = std::endian::native, typename StreamType, typename ValueType, typename Allocator>
+std::vector<ValueType, Allocator> Extract(StreamType&& inFile, ExtractTag<std::vector<ValueType, Allocator>>){
+    const size_t rangeSize = Extract<size_t, dataEndianness>(std::forward<StreamType>(inFile));
+    if constexpr(TriviallyCopyable<ValueType>){
+        std::vector<ValueType, Allocator> retVec(rangeSize);
+        Extract<ValueType, dataEndianness>(std::forward<StreamType>(inFile), retVec.data(), retVec.size());
+        return retVec;
+    } else{
+        std::vector<ValueType, Allocator> retVec;
+        retVec.reserve(rangeSize);
+        for (size_t i = 0; i<rangeSize; i++) retVec.emplace_back(DelayConstruct<ValueType>([&](){
+            return Extract<ValueType, dataEndianness>(std::forward<StreamType>(inFile));
+        }));
+        return retVec;
+    }
+
+}
+
 template<std::ranges::contiguous_range Extractee, std::endian DataEndianness = std::endian::native, typename StreamType = std::ifstream, typename... Ts>
     requires (!CustomExtract<Extractee, DataEndianness, StreamType> && TriviallyCopyable<std::ranges::range_value_t<Extractee>>)
 Extractee Extract(StreamType&& dataStream){

@@ -25,9 +25,9 @@ struct ReturnRemoved {};
 
 static const ReturnRemoved returnRemovedTag;
 
-template<typename IndexType, typename FloatType>
+template<TriviallyCopyable IndexType, TriviallyCopyable FloatType>
 struct GraphVertex{
-
+    using EdgeType = std::pair<IndexType, FloatType>;
     using iterator = typename std::vector<std::pair<IndexType, FloatType>>::iterator;
     using const_iterator = typename std::vector<std::pair<IndexType, FloatType>>::const_iterator;
     std::vector<std::pair<IndexType, FloatType>> neighbors;
@@ -187,7 +187,7 @@ struct GraphVertex{
     //std::pair of trivially copyable types is not trivially copyable,
     //and swaping out for a separate type is enough work at this point to make it worth defering for now
 
-    void serialize(std::ofstream& outFile) const {
+    void serialize(std::ofstream& outFile) const requires (!TriviallyCopyable<std::pair<IndexType, FloatType>>){
         Serialize(this->size(), outFile);
         outFile.write(reinterpret_cast<const char*>(this->neighbors.data()), this->size()*sizeof(std::pair<IndexType, FloatType>));
     }

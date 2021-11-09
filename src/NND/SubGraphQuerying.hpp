@@ -20,6 +20,8 @@ https://github.com/AnabelSMRuggiero/NNDescent.cpp
 #include <utility>
 #include <optional>
 #include <type_traits>
+#include <ranges>
+#include <functional>
 
 #include "../Utilities/Data.hpp"
 #include "../Utilities/DataSerialization.hpp"
@@ -255,34 +257,40 @@ struct QueryContext{
         return Query(queryPoint.queryHint, queryPoint.dataIndex, defaultQueryFunctor);
     }
     */
-   
+    template<typename QueryFunctor>
+    GraphVertex<IndexType, DistType> Query(std::vector<IndexType>&& initHints,
+                                           const size_t queryIndex, //Can realistically be any parameter passed through to the Functor
+                                           QueryFunctor& queryFunctor) const{
+
+        //nodesVisited = NodeTracker(blockSize);
+        
+        auto [vertex, nodeTracker] = ForwardQueryInit(initHints,
+                                                      queryIndex, 
+                                                      queryFunctor);
+        
+
+        return std::move(QueryLoop(vertex, queryIndex, queryFunctor, nodeTracker));
+
+    }
     
     //Figure this out later
     template<typename QueryFunctor>
-    GraphVertex<IndexType, DistType> Query(GraphVertex<IndexType, DistType>& initVertex,
-                                                  const size_t queryIndex, //Can realistically be any parameter passed through to the Functor
-                                                  QueryFunctor& queryFunctor,
-                                                  std::optional<NodeTracker> previousVisits = std::nullopt) const {
+    GraphVertex<IndexType, DistType>& Query(GraphVertex<IndexType, DistType>& initVertex,
+                                           const size_t queryIndex, //Can realistically be any parameter passed through to the Functor
+                                           QueryFunctor& queryFunctor,
+                                           NodeTracker& nodesVisited) const {
 
-        NodeTracker nodesVisited;
-        if (previousVisits){
-            nodesVisited = previousVisits.value();
-            if (initVertex.size()<querySize){
-                ReverseQueryInit(initVertex,
-                                 queryIndex, 
-                                 queryFunctor,
-                                 nodesVisited);
-            }
-        } else {
-            nodesVisited = NodeTracker(blockSize);
-            ForwardQueryInit(initVertex,
-                             queryIndex, 
-                             queryFunctor,
-                             nodesVisited);
-            
+        if (initVertex.size()<querySize){
+            ReverseQueryInit(initVertex,
+                                queryIndex, 
+                                queryFunctor,
+                                nodesVisited);
         }
-        //GraphVertex<size_t, DistType> compareTargets;
-        //compareTargets.resize(querySearchDepth);
+
+        return QueryLoop(initVertex, queryIndex, queryFunctor, nodesVisited);
+    }
+        
+
         
         //constexpr size_t bufferSize = sizeof(size_t)*(internal::maxBatch+2)  + sizeof(std::pmr::vector<size_t>);
         //char stackBuffer[bufferSize];
@@ -291,99 +299,98 @@ struct QueryContext{
         
         
         //std::pmr::vector<size_t>& joinQueue= *(new (stackResource.allocate(sizeof(std::pmr::vector<size_t>))) std::pmr::vector<size_t>(&stackResource));
-        
+    template<typename QueryFunctor>
+    GraphVertex<IndexType, DistType>& QueryLoop(GraphVertex<IndexType, DistType>& initVertex,
+                                           const size_t queryIndex, //Can realistically be any parameter passed through to the Functor
+                                           QueryFunctor& queryFunctor,
+                                           NodeTracker& nodesVisited) const{
         std::vector<size_t> joinQueue;
         const size_t maxBatch = internal::maxBatch;
         joinQueue.reserve(maxBatch);
 
         NodeTracker nodesCompared(blockSize);
-
+        auto notVisited = [&](const auto& index){ return !nodesVisited[index]; };
+        
+        auto notCompared = [&](const auto& edge)->bool{ 
+            return (nodesCompared[edge.first]) ?
+                    false :
+                    !(nodesCompared[edge.first] = std::ranges::none_of(subGraph[edge.first], notVisited)); 
+        };
+        auto toNeighborView = [&](const auto& edge){ return subGraph[edge.first]; };
+        
         bool breakVar = true;
         while (breakVar){
-            //std::partial_sort_copy(initVertex.begin(), initVertex.end(), compareTargets.begin(), compareTargets.end(), NeighborDistanceComparison<size_t, DistType>);
-            breakVar = false;
-            size_t numCompared = 0;
-            for (; numCompared<querySearchDepth; numCompared+=1){
-                const auto& neighbor = initVertex[numCompared];
-                if (nodesCompared[neighbor.first]){
-                    //numCompared += 1;
-                    continue;
-                }
-                typename UndirectedGraph<IndexType>::const_reference currentNeighbor = subGraph[neighbor.first];
-                for (const auto& joinTarget: currentNeighbor){
-                    if (nodesVisited[joinTarget] == true) continue;
-                    nodesVisited[joinTarget] = true;
-                    joinQueue.push_back(joinTarget);
-                    if (joinQueue.size() == maxBatch) goto computeBatch; //double break
-                    /*
-                    DistType distance = queryFunctor(joinTarget, queryIndex, queryData);
-                    if (distance < initVertex[0].second){
-                        initVertex.PushNeighbor({joinTarget, distance});
-                        breakVar = false;
-                    }
-                    */
-                }
-                nodesCompared[neighbor.first] = true;
-                //numCompared += 1;
+            
+
+            for(const auto& joinTarget : initVertex 
+                                        | std::views::take(querySearchDepth)    
+                                        | std::views::filter(notCompared) 
+                                        | std::views::transform(toNeighborView)            
+                                        | std::views::join
+                                        | std::views::filter(notVisited)
+                                        | std::views::take(maxBatch)){
+                joinQueue.push_back(joinTarget);
+                nodesVisited[joinTarget] = true;
             }
-            computeBatch:
+            
             std::vector<DistType> distances = queryFunctor(queryIndex, joinQueue);
-            for (size_t i = 0; i<distances.size(); i+=1){
-                breakVar = initVertex.PushNeighbor({static_cast<IndexType>(joinQueue[i]), distances[i]}) || breakVar;
-            }
-            joinQueue.resize(0);
-            breakVar = breakVar || numCompared != querySearchDepth;
+            breakVar = std::transform_reduce(joinQueue.begin(), joinQueue.end(), distances.begin(),
+                                             joinQueue.size() == maxBatch,
+                                             std::logical_or<bool>{},
+                                             [&](const size_t index, const DistType distance){ 
+                                                 return initVertex.PushNeighbor({static_cast<IndexType>(index), distance});    
+            });
+
+            joinQueue.clear(0);
         }
         return initVertex;
     }
 
     template<typename QueryFunctor>
-    void ForwardQueryInit(GraphVertex<IndexType, DistType>& initVertex,
-                            const size_t queryIndex, //Can realistically be any parameter passed through to the Functor
-                            QueryFunctor& queryFunctor,
-                            NodeTracker& nodesJoined) const{
-        int sizeDif = initVertex.size() - querySize;
-        //if sizeDif is negative, fill to numCandidates
-        if(sizeDif<0){
-            //initVertex.reserve(queryHint.size());
-            for (const auto& hint: initVertex){
-                nodesJoined[hint.first] = true;
+    std::pair<GraphVertex<IndexType, DistType>, NodeTracker> ForwardQueryInit(std::vector<IndexType> startHint,
+                                                                const size_t queryIndex, //Can realistically be any parameter passed through to the Functor
+                                                                QueryFunctor& queryFunctor) const{
+        
+        
+        NodeTracker nodesJoined(blockSize);
+        for (const auto& hint : startHint) nodesJoined[hint] = true;
+
+        std::vector<size_t> initDestinations = [&](){
+            if constexpr(std::is_same_v<IndexType, size_t>) return std::move(startHint);
+            else{
+                std::vector<size_t> initDistances(startHint.size());
+                std::ranges::transform(startHint, initDistances.begin(), std::identity<size_t>{});
+                return initDistances;
             }
-            int indexOffset(0);
-            for (int i = 0; initVertex.size() < querySize; i += 1){
-                while (i+indexOffset < queryHint.size() && nodesJoined[queryHint[i+indexOffset].first]){
-                    indexOffset += 1;
-                }
-                [[likely]] if(i+indexOffset<queryHint.size()){
-                    
-                    initVertex.push_back(queryHint[i+indexOffset]);
-                    nodesJoined[queryHint[i+indexOffset].first] = true;
-                } else{
-                    while(nodesJoined[indexOffset]){
-                        indexOffset += 1;
-                    }
-                    initVertex.push_back({static_cast<IndexType>(indexOffset), std::numeric_limits<DistType>::max()});
-                    nodesJoined[indexOffset] = true;
-                    
-                }
-            }
+        }();
+
+        auto notJoined = [&](const auto& index){ return !nodesJoined; };
+        auto padIndecies = [&](const auto& range){
+            for (const auto& index: range | std::views::filter(notJoined)
+                                              | std::views::take(querySize - initDistances.size()))
+                initDestinations.push_back(index);
+                nodesJoined[index] = true;
+        };
+
+        if (initDestinations.size() < querySize){
+            padIndecies(queryHint);
+            [[unlikely]] if (initDestinations.size()<querySize) 
+                padIndecies(std::views::iota(0, blockSize));
         }
-        std::vector<size_t> initComputations;
-        for (auto& queryStart: initVertex){
-            initComputations.push_back(queryStart.first);
-            nodesJoined[queryStart.first] = true;
-        }
-        std::vector<DistType> initDistances = queryFunctor(queryIndex, initComputations);
-        for (size_t i = 0; i<initVertex.size(); i+=1){
-            initVertex[i].second = initDistances[i];
-        }
-        initVertex.JoinPrep();
-        //std::make_heap(initVertex.begin(), initVertex.end(), NeighborDistanceComparison<size_t, DistType>);
-        //if sizeDif is positive, reduce to numCandidates
-        //for (int i = 0; i < sizeDif; i+=1){
-        //    std::pop_heap(initVertex.begin(), initVertex.end(), NeighborDistanceComparison<size_t, DistType>);
-        //    initVertex.pop_back();
-        //}
+
+        std::vector<DistType> initDistances = queryFunctor(queryIndex, initDestinations);
+        
+
+        GraphVertex<IndexType, DistType> retVertex(initDistances.size()); //This constructor merely reserves
+        retVertex.resize(initDistances.size());
+
+        std::ranges::transform(initDestinations, initDistances, retVertex.begin(),
+            [&](const auto& index, const auto& distance){
+                return typename GraphVertex<indexType, DistType>::EdgeType{index, distance};
+        });
+
+        return {retVertex, nodesJoined};
+        
     }
 
     template<typename QueryFunctor>

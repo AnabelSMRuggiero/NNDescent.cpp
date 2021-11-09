@@ -235,7 +235,7 @@ int main(int argc, char *argv[]){
         //auto blocksToSearch = BlocksToSearch(metaGraph, additionalInitSearches);
 
         std::span<const IndexBlock> indexView{indexBlocks.data(), indexBlocks.size()};
-        InitialSearchTask<float> searchGenerator = { blockUpdateContexts,
+        InitialSearchTask<float> searchGenerator = { queryContexts,
             indexView,
             //std::move(blocksToSearch),
             maxNewSearches,
@@ -246,7 +246,7 @@ int main(int argc, char *argv[]){
     
         QueueView hintView = {searchHints.data(), searchHints.size()};
         
-        ParaSearchLoop(searchPool, hintView, searchContexts, blockUpdateContexts, indexView, maxNewSearches, mnistFashionTest.size());
+        ParaSearchLoop(searchPool, hintView, searchContexts, std::span{queryContexts}, indexView, maxNewSearches, mnistFashionTest.size());
         searchPool.StopThreads();
         std::chrono::time_point<std::chrono::steady_clock> runEnd2 = std::chrono::steady_clock::now();
         //std::cout << std::chrono::duration_cast<std::chrono::duration<float>>(runEnd2 - runStart2).count() << "s test set search " << std::endl;
@@ -303,12 +303,12 @@ int main(int argc, char *argv[]){
         
         //OffsetSpan<const IndexBlock> indexSpan(index.data(), index.size(), metaGraph.GetBlockOffset());
         std::span<const IndexBlock> indexView{indexBlocks.data(), indexBlocks.size()};
-        SearchQueue searchHints = FirstBlockSearch(searchContexts, searchFunctor, blockUpdateContexts, indexView, maxNewSearches);
+        SearchQueue searchHints = FirstBlockSearch(searchContexts, searchFunctor, std::span{queryContexts}, indexView, maxNewSearches);
         //std::vector<IndexBlock> index = IndexFinalization(blockUpdateContexts)
 
         QueueView hintView = {searchHints.data(), searchHints.size()};
 
-        SearchLoop(searchFunctor, hintView, searchContexts, blockUpdateContexts, indexView, maxNewSearches, mnistFashionTest.size());
+        SearchLoop(searchFunctor, hintView, searchContexts, std::span{queryContexts}, indexView, maxNewSearches, mnistFashionTest.size());
         
 
         
@@ -355,6 +355,9 @@ int main(int argc, char *argv[]){
         }
         i++;
     }
+
+    double recall = double(numNeighborsCorrect)/ double(10*mnistFashionTestNeighbors.size());
+    std::cout << (recall * 100) << std::endl;
 
     return 0;
 }

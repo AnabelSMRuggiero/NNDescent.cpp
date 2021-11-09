@@ -14,6 +14,7 @@ https://github.com/AnabelSMRuggiero/NNDescent.cpp
 #include <immintrin.h>
 #include <type_traits>
 #include <bit>
+#include <array>
 
 #include "SpaceMetrics.hpp"
 

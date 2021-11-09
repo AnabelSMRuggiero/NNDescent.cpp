@@ -72,9 +72,9 @@ inline __m256 NTLoadFloat(const float* ptr){
     
     //if constexpr(std::is_union_v<__m256>){
 
-    //    return std::bit_cast<__m256>(_mm256_stream_load_si256((const __m256i*)ptr));
+        return std::bit_cast<__m256>(_mm256_stream_load_si256((const __m256i*)ptr));
     //} else {
-        return reinterpret_cast<__m256>(_mm256_stream_load_si256((const __m256i*)ptr));
+    //    return reinterpret_cast<__m256>(_mm256_stream_load_si256((const __m256i*)ptr));
     //}
 
     
