@@ -258,7 +258,7 @@ struct QueryContext{
     }
     */
     template<typename QueryFunctor>
-    GraphVertex<IndexType, DistType> Query(std::vector<IndexType>&& initHints,
+    GraphVertex<IndexType, DistType> Query(const std::vector<IndexType>& initHints,
                                            const size_t queryIndex, //Can realistically be any parameter passed through to the Functor
                                            QueryFunctor& queryFunctor) const{
 
@@ -310,7 +310,7 @@ struct QueryContext{
 
         NodeTracker nodesCompared(blockSize);
         auto notVisited = [&](const auto& index){ return !nodesVisited[index]; };
-        
+
         auto notCompared = [&](const auto& edge)->bool{ 
             return (nodesCompared[edge.first]) ?
                     false :
@@ -341,13 +341,13 @@ struct QueryContext{
                                                  return initVertex.PushNeighbor({static_cast<IndexType>(index), distance});    
             });
 
-            joinQueue.clear(0);
+            joinQueue.clear();
         }
         return initVertex;
     }
 
     template<typename QueryFunctor>
-    std::pair<GraphVertex<IndexType, DistType>, NodeTracker> ForwardQueryInit(std::vector<IndexType> startHint,
+    std::pair<GraphVertex<IndexType, DistType>, NodeTracker> ForwardQueryInit(const std::vector<IndexType>& startHint,
                                                                 const size_t queryIndex, //Can realistically be any parameter passed through to the Functor
                                                                 QueryFunctor& queryFunctor) const{
         
@@ -356,26 +356,28 @@ struct QueryContext{
         for (const auto& hint : startHint) nodesJoined[hint] = true;
 
         std::vector<size_t> initDestinations = [&](){
-            if constexpr(std::is_same_v<IndexType, size_t>) return std::move(startHint);
+            if constexpr(std::is_same_v<IndexType, size_t>) return startHint;
             else{
                 std::vector<size_t> initDistances(startHint.size());
-                std::ranges::transform(startHint, initDistances.begin(), std::identity<size_t>{});
+                std::ranges::transform(startHint, initDistances.begin(), std::identity{});
                 return initDistances;
             }
         }();
 
-        auto notJoined = [&](const auto& index){ return !nodesJoined; };
+        auto notJoined = [&](const auto& index){ return !nodesJoined[index]; };
+        
         auto padIndecies = [&](const auto& range){
             for (const auto& index: range | std::views::filter(notJoined)
-                                              | std::views::take(querySize - initDistances.size()))
+                                              | std::views::take(querySize - initDestinations.size())){
                 initDestinations.push_back(index);
                 nodesJoined[index] = true;
+            }
         };
 
         if (initDestinations.size() < querySize){
-            padIndecies(queryHint);
+            padIndecies(queryHint | std::views::transform([&](const auto& pair){return pair.first;}));
             [[unlikely]] if (initDestinations.size()<querySize) 
-                padIndecies(std::views::iota(0, blockSize));
+                padIndecies(std::views::iota(size_t{0}, blockSize));
         }
 
         std::vector<DistType> initDistances = queryFunctor(queryIndex, initDestinations);
@@ -386,8 +388,9 @@ struct QueryContext{
 
         std::ranges::transform(initDestinations, initDistances, retVertex.begin(),
             [&](const auto& index, const auto& distance){
-                return typename GraphVertex<indexType, DistType>::EdgeType{index, distance};
+                return typename GraphVertex<IndexType, DistType>::EdgeType{index, distance};
         });
+        retVertex.JoinPrep();
 
         return {retVertex, nodesJoined};
         

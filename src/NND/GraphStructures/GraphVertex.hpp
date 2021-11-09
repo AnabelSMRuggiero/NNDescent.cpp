@@ -203,15 +203,12 @@ struct GraphVertex{
 };
 
 template<typename IndexType, typename DistType>
-void EraseRemove(GraphVertex<IndexType, DistType>& vertex, DistType minValue){
+GraphVertex<IndexType, DistType>& EraseRemove(GraphVertex<IndexType, DistType>& vertex, DistType minValue){
 
     size_t index = vertex.FindIndexFront(minValue);
     vertex.erase(vertex.begin()+index, vertex.end());
-    //NeighborOverDist<DistType> comparison(minValue);
-    //vertex.erase(std::remove_if(vertex.begin(),
-    //                            vertex.end(),
-    //                            comparison),
-    //                vertex.end());
+    
+    return vertex;
 }
 
 //Rewrite as stream operator?

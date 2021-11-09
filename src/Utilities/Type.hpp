@@ -311,6 +311,9 @@ AlignedPtr<const ValueType, align> DynamicArray<ValueType, align>::GetAlignedPtr
 }
 */
 
+template<typename Type, typename OtherType>
+concept IsNot = !std::same_as<Type, OtherType>;
+
 template<typename ElementType, size_t align=32>
 struct AlignedSpan{
 
@@ -323,14 +326,22 @@ struct AlignedSpan{
     ElementType* data;
     size_t extent;
 
-    AlignedSpan() = default;
+    
 
     public:
+
+    AlignedSpan() = default;
+
+    AlignedSpan(AlignedSpan&&) = default;
+    AlignedSpan& operator=(AlignedSpan&&) = default;
+
+    AlignedSpan(const AlignedSpan&) = default;
+    AlignedSpan& operator=(const AlignedSpan&) = default;
 
     template<typename ConvertableToElement>
     AlignedSpan(const DynamicArray<ConvertableToElement, alignment>& dataToView): data(dataToView.begin()), extent(dataToView.size()){};
 
-    template<typename ConvertableToElement>
+    template<IsNot<AlignedSpan> ConvertableToElement>
     AlignedSpan(const AlignedSpan<ConvertableToElement, alignment>& spanToCopy): data(spanToCopy.begin()), extent(spanToCopy.size()){};
 
     template<typename ConvertableToElement>
@@ -353,6 +364,7 @@ struct AlignedSpan{
     }
 
 };
+
 
 
 template<std::ranges::contiguous_range Container>
@@ -485,8 +497,7 @@ struct ZipRange{
 };
 
 
-template<typename Type, typename OtherType>
-concept IsNot = !std::same_as<Type, OtherType>;
+
 
 struct SplittingHeurisitcs{
     uint32_t splitThreshold = 80;
@@ -498,6 +509,9 @@ struct SplittingHeurisitcs{
 template<typename DataType>
 concept TriviallyCopyable = std::is_trivially_copyable_v<DataType>;
 }
+
+template <typename ValueType, std::size_t alignment>
+inline constexpr bool std::ranges::enable_borrowed_range<nnd::AlignedSpan<ValueType, alignment>> = true;
 
 
 #endif

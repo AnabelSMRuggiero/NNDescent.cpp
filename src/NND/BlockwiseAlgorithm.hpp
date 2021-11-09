@@ -15,6 +15,8 @@ https://github.com/AnabelSMRuggiero/NNDescent.cpp
 #include <algorithm>
 #include <vector>
 #include <utility>
+#include <ranges>
+#include <functional>
 
 #include "GraphStructures.hpp"
 #include "SubGraphQuerying.hpp"
@@ -62,9 +64,10 @@ ComparisonMap InitializeComparisonQueues(const Graph<BlockIndecies, DistType>& c
 }
 
 template<typename DistType>
-std::vector<std::pair<DataIndex_t, GraphVertex<DataIndex_t, DistType>>> FlattenHints(const JoinHints& startJoins){
-    std::vector<std::pair<DataIndex_t, GraphVertex<DataIndex_t, DistType>>> joinHints(startJoins.size());
-
+std::vector<std::pair<DataIndex_t, std::vector<DataIndex_t>>> FlattenHints(const JoinHints& startJoins){
+    std::vector<std::pair<DataIndex_t, std::vector<DataIndex_t>>> joinHints(startJoins.size());
+    std::ranges::transform(startJoins, joinHints.begin(), [&](auto hint) { return hint;});
+    /*
     std::ranges::transform(startJoins, joinHints.begin(), [&] (const auto& hint){
         GraphVertex<DataIndex_t, DistType> queryHint;
         queryHint.resize(hint.second.size());
@@ -73,7 +76,7 @@ std::vector<std::pair<DataIndex_t, GraphVertex<DataIndex_t, DistType>>> FlattenH
         });
         return std::pair{hint.first, queryHint};
     });
-    
+    */
     return joinHints;
 }
 
@@ -89,34 +92,14 @@ JoinResults<DistType> BlockwiseJoin(const JoinHints& startJoins,
                    const QueryContext<DataIndex_t, DistType>& targetBlock,
                    QueryFunctor& queryFunctor){
     
-    std::vector<std::pair<DataIndex_t, GraphVertex<DataIndex_t, DistType>>> joinHints = FlattenHints<DistType>(startJoins);
-    /*
-    std::vector<std::pair<DataIndex_t, GraphVertex<DataIndex_t, DistType>>> joinHints(hint.size());
-
-    std::ranges::transform(startJoins, joinHints.begin(), [&] (const auto& hint){
-        GraphVertex<DataIndex_t, DistType> queryHint;
-        queryHint.resize(hint.size());
-        std::ranges::transform(hint, queryHint.begin(), [&](const auto& index){ 
-            return {index, std::numeric_limits<DistType>::max()};
-        });
-        return {hint.first, queryHint};
-    });
-    */
-    /*
-    for (const auto& hint: startJoins){
-        GraphVertex<DataIndex_t, DistType> queryHint;
-        queryHint.resize(hint.size());
-        std::ranges::transform(hint, queryHint.begin(), [&](const auto& index){ 
-            return {index, std::numeric_limits<DistType>::max()};
-        });
-
-        joinHints.push_back({hint.first, std::move(queryHint)});
-    }
-    */
+    std::vector<std::pair<DataIndex_t, std::vector<DataIndex_t>>> joinHints = FlattenHints<DistType>(startJoins);
+    
+    
     NodeTracker nodesJoined(searchSubgraph.size());
-    
+    auto notJoined = [&](const auto& index){return !nodesJoined[index];};
+
     JoinResults<DistType> retResults;
-    
+    std::vector<std::vector<DataIndex_t>> vecCache;
     while(joinHints.size()){
         JoinResults<DistType> joinResults;
         
@@ -124,24 +107,38 @@ JoinResults<DistType> BlockwiseJoin(const JoinHints& startJoins,
             
             joinResults.push_back({joinHint.first, targetBlock.Query(joinHint.second, joinHint.first, queryFunctor)});
             nodesJoined[joinHint.first] = true;
+            joinHint.second.clear();
+            vecCache.push_back(std::move(joinHint.second));
         }
         joinHints.clear();
-        
-        for(auto& result: joinResults){
-            
+
+        for(auto& result : joinResults){
             EraseRemove(result.second, currentGraphState[result.first].PushThreshold());
+        };
+        auto notEmpty = [](const auto& result){
+            return result.second.size()>0;
+        };
+        for(auto& result: joinResults | std::views::filter(notEmpty)){
             
-            if (result.second.size()>0){   
                 
-                for(const auto& leafNeighbor: searchSubgraph[result.first]){
-                    if(!nodesJoined[leafNeighbor]){
-                        joinHints.push_back({leafNeighbor, result.second});
-                        //We can add these to nodesJoined a touch early to prevent dupes
-                        nodesJoined[leafNeighbor] = true;
-                    }
+            for(const auto& leafNeighbor: searchSubgraph[result.first] | std::views::filter(notJoined)){
+                if(vecCache.size()>0){
+                    joinHints.push_back({leafNeighbor, std::move(vecCache.back())});
+                    vecCache.pop_back();
+                } else {
+                    joinHints.push_back({leafNeighbor, std::vector<DataIndex_t>{}});
                 }
-                retResults.push_back({result.first, std::move(result.second)});
+                joinHints.back().second.resize(result.second.size());
+
+                std::ranges::transform(result.second, joinHints.back().second.begin(), [&](const auto& edge){
+                    return edge.first;
+                });
+
+                nodesJoined[leafNeighbor] = true;
             }
+
+            retResults.push_back({result.first, std::move(result.second)});
+            
             
         }
         

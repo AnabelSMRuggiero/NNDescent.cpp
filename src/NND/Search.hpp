@@ -266,7 +266,7 @@ GraphVertex<DataIndex_t, DistType> BlockwiseSearch(SearchContext<DistType>& sear
                    QueryFunctor queryFunctor){
     
     
-    
+    /*
     GraphVertex<DataIndex_t, DistType> queryHint(targetBlock.queryHint.size());
     
     for(auto index: hint){
@@ -280,16 +280,16 @@ GraphVertex<DataIndex_t, DistType> BlockwiseSearch(SearchContext<DistType>& sear
              queryHint.push_back({targetBlock.subGraph[hint[0]][i], std::numeric_limits<DistType>::max()});
         }
     }
-    
+    */
     searchingPoint.blocksJoined[targetBlock.blockNumber] = true;
     queryFunctor.SetBlock(targetBlock.blockNumber);
-    targetBlock.Query(queryHint, searchingPoint.dataIndex, queryFunctor);
+    GraphVertex<DataIndex_t, DistType> retVertex = targetBlock.Query(hint, searchingPoint.dataIndex, queryFunctor);
     //size_t resultsAdded = ConsumeVertex(searchingPoint.currentNeighbors, queryHint, targetBlock.blockNumber);
     
     //queryHint.resize(resultsAdded);
     
     
-    return queryHint;
+    return retVertex;
 }
 
 template<typename DistType, typename QueryFunctor>
@@ -299,7 +299,7 @@ GraphVertex<DataIndex_t, DistType> BlockwiseSearch(ParallelSearchContext<DistTyp
                    QueryFunctor queryFunctor){
     
     
-    
+    /*
     GraphVertex<DataIndex_t, DistType> queryHint(targetBlock.queryHint.size());
     
     for(auto index: hint){
@@ -313,16 +313,16 @@ GraphVertex<DataIndex_t, DistType> BlockwiseSearch(ParallelSearchContext<DistTyp
              queryHint.push_back({targetBlock.subGraph[hint[0]][i], std::numeric_limits<DistType>::max()});
         }
     }
-    
+    */
     //searchingPoint.blocksJoined[targetBlock.blockNumber] = true;
     queryFunctor.SetBlock(targetBlock.blockNumber);
-    targetBlock.Query(queryHint, searchingPoint.dataIndex, queryFunctor);
+    GraphVertex<DataIndex_t, DistType> retVertex = targetBlock.Query(hint, searchingPoint.dataIndex, queryFunctor);
     //size_t resultsAdded = ConsumeVertex(searchingPoint.currentNeighbors, queryHint, targetBlock.blockNumber);
     
     //queryHint.resize(resultsAdded);
     
     
-    return queryHint;
+    return retVertex;
 }
 
 
@@ -383,8 +383,8 @@ GraphVertex<BlockIndecies, DistType> InitialSearch(SinglePointFunctor<DistType>&
                                                    const QueryContext<DataIndex_t, DistType>& blockToSearch,
                                                    const size_t searchIndex){
     distFunctor.SetBlock(blockToSearch.blockNumber);
-    GraphVertex<DataIndex_t, DistType> initNeighbors = blockToSearch.queryHint;
-    blockToSearch.Query(initNeighbors, searchIndex, distFunctor);
+    //GraphVertex<DataIndex_t, DistType> initNeighbors = blockToSearch.queryHint;
+    GraphVertex<DataIndex_t, DistType> initNeighbors = blockToSearch.Query(std::vector<DataIndex_t>{}, searchIndex, distFunctor);
 
     //context.blocksJoined[blockToSearch.blockNumber] = true;
     return ToBlockIndecies(initNeighbors, blockToSearch.graphFragment, blockToSearch.blockNumber);
@@ -473,8 +473,8 @@ DataBlock<BlockNumber_t, alignof(BlockNumber_t)> BlocksToSearch(MetaGraph<float>
     metaGraph.queryContext.querySize = std::max(numInitSearches, metaGraph.queryContext.querySearchDepth);
     
     for (size_t i = 0; i<searchSetSize; i+=1){
-        GraphVertex<BlockNumber_t, DistType> initHint;
-        metaGraph.queryContext.Query(initHint, i, searchFunctor);
+        //GraphVertex<BlockNumber_t, DistType> initHint;
+        GraphVertex<BlockNumber_t, DistType> initHint = metaGraph.queryContext.Query(std::vector<BlockNumber_t>{} , i, searchFunctor);
         for (size_t j = 0; j<numInitSearches; j+=1){
             blocksToSearch[i][j] = initHint[j].first;
         }

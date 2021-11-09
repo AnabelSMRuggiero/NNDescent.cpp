@@ -15,6 +15,8 @@ https://github.com/AnabelSMRuggiero/NNDescent.cpp
 #include <type_traits>
 #include <bit>
 #include <array>
+#include <span>
+#include <cassert>
 
 #include "SpaceMetrics.hpp"
 
@@ -41,15 +43,15 @@ RetType EuclideanNorm(const VectorA& pointA, const VectorB& pointB){
 };
 
 
-template<size_t numPointsTo, size_t prefetchPeriod, typename Alloc = std::allocator<AlignedSpan<const float>>>
-std::vector<float> BatchEuclideanNorm(const std::vector<AlignedSpan<const float>, Alloc>& pointsTo, const AlignedSpan<const float>& pointB){
+template<size_t numPointsTo>
+void BatchEuclideanNorm(const AlignedSpan<const float> pointB,
+                        std::span<const AlignedSpan<const float>, numPointsTo> pointsTo,
+                        std::span<float, numPointsTo> resultLocation){
     static_assert(numPointsTo<=7 && numPointsTo>=2);
-    //size_t prefetchPeriod = 16;
-    //assert(pointsTo.size() == 7);
+    
+
     std::array<__m256, numPointsTo> accumulators;
-    for (__m256& accumulator: accumulators){
-        accumulator = _mm256_setzero_ps();
-    }
+    for (__m256& accumulator: accumulators) accumulator = _mm256_setzero_ps();
 
     std::array<__m256, numPointsTo> toComponents;
 
@@ -57,57 +59,34 @@ std::vector<float> BatchEuclideanNorm(const std::vector<AlignedSpan<const float>
 
     size_t index = 0;
 
-    std::vector<float> result(numPointsTo);
     
 
     [[likely]] if(pointB.size()>=8){
         //Pre load first set of elements
         fromComponent1 = _mm256_load_ps(&(pointB[0]));
-        for (size_t i = 0; i < numPointsTo; i+=1){
-            toComponents[i] = _mm256_load_ps(&(pointsTo[i][0]));
-        }
-        while(index+(8*prefetchPeriod - 1)<pointB.size()){
-            //Prefetch future data
-            _mm_prefetch(&(pointB[index+(8*prefetchPeriod)]), _MM_HINT_T0);
-            for (size_t j = 0; j < numPointsTo; j+=1){
-                _mm_prefetch(&(pointsTo[index+(8*prefetchPeriod)]), _MM_HINT_T0);
-            }
 
-            for (size_t j = 0; j<prefetchPeriod; j+=1){
-            //Core computation loop
-
-                fromComponent2 = _mm256_load_ps(&(pointB[index+8]));
-                for(size_t j = 0; j<numPointsTo; j+=1){
-                    toComponents[j] = _mm256_sub_ps(toComponents[j], fromComponent1);
-                    accumulators[j] = _mm256_fmadd_ps(toComponents[j], toComponents[j], accumulators[j]);
-                    //Load for next iteration
-                    //toComponents[j] = _mm256_load_ps(&(pointsTo[j][index+8]));
-                }
-                for(size_t j = 0; j<numPointsTo; j+=1) toComponents[j] = _mm256_load_ps(&(pointsTo[j][index+8]));
-                fromComponent1 = fromComponent2;
-                
-                index+=8;
-            }
-        }
+        for (size_t i = 0; i < numPointsTo; i+=1) toComponents[i] = NTLoadFloat(&(pointsTo[i][0]));
+            //toComponents[i] = _mm256_load_ps(&(pointsTo[i][0]));
+            
+        //Core computation loop
         for(;index+15<pointB.size(); index+=8){
             fromComponent2 = _mm256_load_ps(&(pointB[index+8]));
-            for(size_t j = 0; j<7; j+=1){
-                toComponents[j] = _mm256_sub_ps(toComponents[j], fromComponent1);
-                accumulators[j] = _mm256_fmadd_ps(toComponents[j], toComponents[j], accumulators[j]);
-                //Load for next iteration
-                //toComponents[j] = _mm256_load_ps(&(pointsTo[j][index+8]));
-            }
-            for(size_t j = 0; j<numPointsTo; j+=1) toComponents[j] = _mm256_load_ps(&(pointsTo[j][index+8]));
+
+            for(size_t j = 0; j<numPointsTo; j+=1) toComponents[j] = _mm256_sub_ps(toComponents[j], fromComponent1);
+            for(size_t j = 0; j<numPointsTo; j+=1) accumulators[j] = _mm256_fmadd_ps(toComponents[j], toComponents[j], accumulators[j]);
+                
+            //Load for next iteration
+            //for(size_t j = 0; j<numPointsTo; j+=1) toComponents[j] = _mm256_load_ps(&(pointsTo[j][index+8]));
+            for(size_t j = 0; j<numPointsTo; j+=1) toComponents[j] = NTLoadFloat(&(pointsTo[j][index+8]));
             fromComponent1 = fromComponent2;
         }
+        
+        
         //Already have fromComponent1 loaded for the last iter
-        for(size_t j = 0; j<numPointsTo; j+=1){
-            toComponents[j] = _mm256_sub_ps(toComponents[j], fromComponent1);
-            accumulators[j] = _mm256_fmadd_ps(toComponents[j], toComponents[j], accumulators[j]);
-            //Load for next iteration
-            //toComponents[j] = _mm256_loadu_ps(&(pointsTo[j][index+8]));
-        }
+        for(size_t j = 0; j<numPointsTo; j+=1) toComponents[j] = _mm256_sub_ps(toComponents[j], fromComponent1);
+        for(size_t j = 0; j<numPointsTo; j+=1) accumulators[j] = _mm256_fmadd_ps(toComponents[j], toComponents[j], accumulators[j]);
 
+        index +=8;
         fromComponent2 = _mm256_setzero_ps();
         //reduce the results
         for(size_t j = 0; j<2; j+=1){
@@ -117,7 +96,14 @@ std::vector<float> BatchEuclideanNorm(const std::vector<AlignedSpan<const float>
         }
 
         for (size_t j = 0; j<numPointsTo; j+=1){
-            result[j] = accumulators[j][0] + accumulators[j][4];
+            
+            //This constexpr branch works with MSVC and Clang, haven't tried GCC, but I suspect it should.
+            if constexpr (std::is_union_v<__m256>){
+                resultLocation[j] = accumulators[j].m256_f32[0] + accumulators[j].m256_f32[4];
+            } else{
+                resultLocation[j] = accumulators[j][0] + accumulators[j][4];
+            }
+            //__GNUC__
         }
 
     }
@@ -125,19 +111,16 @@ std::vector<float> BatchEuclideanNorm(const std::vector<AlignedSpan<const float>
     for ( ; index<pointB.size(); index += 1){
         for (size_t j = 0; j<numPointsTo; j+=1){
             float diff = pointsTo[j][index] - pointB[index];
-            result[j] += diff*diff;
+            resultLocation[j] += diff*diff;
         }
     }
-    //I know there's an avx instruction for this, but just wanna wrap up for now.
-    for (auto& res: result) res = std::sqrt(res);
-        
+    //Last I checked, this emits an avx sqrt on clang
+    for (auto& res: resultLocation) res = std::sqrt(res);
 
-    return result;
 
 }
 
-
-
+/*
 template<size_t numPointsTo, typename Alloc = std::allocator<AlignedSpan<const float>>>
 std::vector<float> BatchEuclideanNorm(const std::vector<AlignedSpan<const float>, Alloc>& pointsTo, const AlignedSpan<const float>& pointB){
     static_assert(numPointsTo<=7 && numPointsTo>=2);
@@ -196,14 +179,7 @@ std::vector<float> BatchEuclideanNorm(const std::vector<AlignedSpan<const float>
         }
 
         for (size_t j = 0; j<numPointsTo; j+=1){
-            /*
-            #ifdef __clang__
-            result[j] = accumulators[j][0] + accumulators[j][4];
-            #endif
-            #ifdef _MSC_VER
-            result[j] = accumulators[j].m256_f32[0] + accumulators[j].m256_f32[4];
-            #endif
-            */
+            
             //This constexpr branch works with MSVC and Clang, haven't tried GCC, but I suspect it should.
             if constexpr (std::is_union_v<__m256>){
                 result[j] = accumulators[j].m256_f32[0] + accumulators[j].m256_f32[4];
@@ -229,19 +205,83 @@ std::vector<float> BatchEuclideanNorm(const std::vector<AlignedSpan<const float>
     return result;
 
 }
+*/
+
+
+
+void EuclideanDispatch(const AlignedSpan<const float> pointFrom,
+                       std::span<const AlignedSpan<const float>> pointsTo,
+                       std::span<float> resultLocation){
+
+    switch(pointsTo.size()){
+        [[unlikely]] case 7: 
+            return BatchEuclideanNorm<7>(pointFrom,
+                                        std::span<const AlignedSpan<const float>, 7>{pointsTo},
+                                        std::span<float, 7>{resultLocation});
+        case 6: 
+            return BatchEuclideanNorm<6>(pointFrom,
+                                        std::span<const AlignedSpan<const float>, 6>{pointsTo},
+                                        std::span<float, 6>{resultLocation});
+        case 5: 
+            return BatchEuclideanNorm<5>(pointFrom,
+                                        std::span<const AlignedSpan<const float>, 5>{pointsTo},
+                                        std::span<float, 5>{resultLocation});
+        case 4: 
+            return BatchEuclideanNorm<4>(pointFrom,
+                                        std::span<const AlignedSpan<const float>, 4>{pointsTo},
+                                        std::span<float, 4>{resultLocation});
+        case 3: 
+            return BatchEuclideanNorm<3>(pointFrom,
+                                        std::span<const AlignedSpan<const float>, 3>{pointsTo},
+                                        std::span<float, 3>{resultLocation});
+        case 2: 
+            return BatchEuclideanNorm<2>(pointFrom,
+                                        std::span<const AlignedSpan<const float>, 2>{pointsTo},
+                                        std::span<float, 2>{resultLocation});
+        case 1: 
+            
+            resultLocation[0] = EuclideanNorm(pointsTo[0], pointFrom);
+            return;
+        default:
+            assert(false);
+            return;
+    }
+}
+
+std::vector<float> EuclideanBatcher(const AlignedSpan<const float> pointFrom, std::span<const AlignedSpan<const float>> pointsTo){
+    
+    std::vector<float> retVector(pointsTo.size());
+    
+    
+    size_t index = 0;
+
+
+    for( ; (index+6)< pointsTo.size(); index += 7){
+        std::span<const AlignedSpan<const float>, 7> partialBatch{pointsTo.begin()+index, 7};
+        std::span<float, 7> batchOutput{retVector.begin()+index, 7};
+        BatchEuclideanNorm<7>(pointFrom, partialBatch, batchOutput);
+    }
+    
+    if(index<pointsTo.size()){
+        size_t remainder = pointsTo.size() - index;
+        std::span<const AlignedSpan<const float>> partialBatch{pointsTo.begin()+index, remainder};
+        std::span<float> batchOutput{retVector.begin()+index, remainder};
+        EuclideanDispatch(pointFrom, partialBatch, batchOutput);
+    }
+
+    return retVector;
+    //RetType resultBatch;
+    //resultBatch.reserve(pointsTo.size());
+
+    
+
+}
 
 /*
-namespace internal{
-    static const size_t euclideanMaxBatch = 7;
-}
-*/
-//const Container<DataIndexType>& LHSIndecies, DataIndexType RHSIndex, const DataEntry& queryData
-//lhsData, queryData
-//template<typename VectorSetA, typename VectorB, typename RetType = std::vector<double>>
 template<typename Alloc = std::allocator<AlignedSpan<const float>>>
-std::vector<float> EuclideanBatcher(const AlignedSpan<const float>& pointFrom, const std::vector<AlignedSpan<const float>, Alloc>& pointsTo){
+std::vector<float> EuclideanBatcher(const AlignedSpan<const float>& pointFrom, std::span<const AlignedSpan<const float>> pointsTo){
     
-    std::vector<float> retVector;
+    std::vector<float> retVector(pointsTo.size());
     switch(pointsTo.size()){
         case 7: 
             return BatchEuclideanNorm<7>(pointsTo, pointFrom);
@@ -293,6 +333,7 @@ std::vector<float> EuclideanBatcher(const AlignedSpan<const float>& pointFrom, c
     
 
 }
+*/
 
 struct EuclideanMetricPair{
     using DistType = float;
@@ -300,10 +341,11 @@ struct EuclideanMetricPair{
         return EuclideanNorm<AlignedSpan<const float>, AlignedSpan<const float>, float>(lhsVector, rhsVector);
     };
     
-    template<typename Alloc = std::allocator<AlignedSpan<const float>>>
-    std::vector<float> operator()(AlignedSpan<const float> lhsVector, const std::vector<AlignedSpan<const float>, Alloc>& rhsVectors) const{
+    std::vector<float> operator()(AlignedSpan<const float> lhsVector, std::span<const AlignedSpan<const float>> rhsVectors) const{
         return EuclideanBatcher(lhsVector, rhsVectors);
     };
+
+    
 };
 
 struct EuclideanComDistance{
@@ -312,7 +354,7 @@ struct EuclideanComDistance{
         return EuclideanNorm<AlignedSpan<const float>, AlignedSpan<const float>, float>(comVector, dataVector);
     };
     
-    std::vector<float> operator()(const AlignedSpan<const float> comVector, const std::vector<AlignedSpan<const float>>& rhsVectors) const{
+    std::vector<float> operator()(AlignedSpan<const float> comVector, std::span<const AlignedSpan<const float>> rhsVectors) const{
         return EuclideanBatcher(comVector, rhsVectors);
     };
 };
