@@ -46,7 +46,7 @@ RetType EuclideanNorm(const VectorA& pointA, const VectorB& pointB){
 template<size_t numPointsTo>
 void BatchEuclideanNorm(const AlignedSpan<const float> pointB,
                         std::span<const AlignedSpan<const float>, numPointsTo> pointsTo,
-                        std::span<float, numPointsTo> resultLocation){
+                        std::span<float, numPointsTo> resultLocation) noexcept {
     static_assert(numPointsTo<=7 && numPointsTo>=2);
     
 
@@ -66,7 +66,7 @@ void BatchEuclideanNorm(const AlignedSpan<const float> pointB,
         fromComponent1 = _mm256_load_ps(&(pointB[0]));
 
         for (size_t i = 0; i < numPointsTo; i+=1) toComponents[i] = NTLoadFloat(&(pointsTo[i][0]));
-            //toComponents[i] = _mm256_load_ps(&(pointsTo[i][0]));
+        //for (size_t i = 0; i < numPointsTo; i += 1) toComponents[i] = _mm256_load_ps(&(pointsTo[i][0]));
             
         //Core computation loop
         for(;index+15<pointB.size(); index+=8){
@@ -211,7 +211,7 @@ std::vector<float> BatchEuclideanNorm(const std::vector<AlignedSpan<const float>
 
 void EuclideanDispatch(const AlignedSpan<const float> pointFrom,
                        std::span<const AlignedSpan<const float>> pointsTo,
-                       std::span<float> resultLocation){
+                       std::span<float> resultLocation) noexcept {
 
     switch(pointsTo.size()){
         [[unlikely]] case 7: 
@@ -248,7 +248,7 @@ void EuclideanDispatch(const AlignedSpan<const float> pointFrom,
     }
 }
 
-std::vector<float> EuclideanBatcher(const AlignedSpan<const float> pointFrom, std::span<const AlignedSpan<const float>> pointsTo){
+std::vector<float> EuclideanBatcher(const AlignedSpan<const float> pointFrom, std::span<const AlignedSpan<const float>> pointsTo) noexcept {
     
     std::vector<float> retVector(pointsTo.size());
     

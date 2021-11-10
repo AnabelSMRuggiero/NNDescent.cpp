@@ -13,6 +13,7 @@
 *.sln
 *.vcxproj*
 /PyNNDescent-Comparison
+/vsProject
 default.profraw
 nnd.profdata
 perf.data

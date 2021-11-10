@@ -134,7 +134,7 @@ struct MetricFunctor{
         return metricPair((*lhsBlock)[LHSIndex], (*rhsBlock)[RHSIndex]);
     };
     
-    std::vector<DistType> operator()(const size_t lhsIndex, std::span<const size_t> rhsIndecies) const {
+    std::vector<DistType> operator()(const size_t lhsIndex, std::span<const size_t> rhsIndecies) const noexcept {
         char stackBuffer[sizeof(ConstDataView)*20];
         std::pmr::monotonic_buffer_resource stackResource(stackBuffer, sizeof(ConstDataView)*20);
         std::pmr::vector<ConstDataView> rhsData(&stackResource);
