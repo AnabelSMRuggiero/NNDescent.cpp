@@ -184,7 +184,7 @@ struct CrossFragmentFunctor{
         char stackBuffer[sizeof(ConstDataView)*23 + sizeof(std::pmr::vector<ConstDataView>)];
         std::pmr::monotonic_buffer_resource stackResource(stackBuffer, bufferSize);
         std::pmr::vector<ConstDataView>& rhsData = *(new (stackResource.allocate(sizeof(std::pmr::vector<ConstDataView>))) std::pmr::vector<ConstDataView>(&stackResource));
-        //std::pmr::vector<ConstDataView> rhsData(&stackResource);
+        //
         rhsData.reserve(20);
         for(const auto& index: rhsIndecies){
             rhsData.push_back((*rhsBlock)[index]);
@@ -210,8 +210,9 @@ struct DispatchFunctor{
     DispatchFunctor& operator=(const DispatchFunctor&) = default;
 
     template<IsNot<DispatchFunctor> DistanceFunctor>
-    DispatchFunctor(DistanceFunctor& distanceFunctor):
-        ptrToFunc(std::make_shared<ConcreteFunctor<DistanceFunctor>>(distanceFunctor)){};
+    DispatchFunctor(DistanceFunctor&& distanceFunctor):
+        ptrToFunc(std::make_shared<ConcreteFunctor<DistanceFunctor>>(
+                  std::forward<DistanceFunctor>(distanceFunctor))){};
     
     DistType operator()(const size_t LHSIndex, const size_t RHSIndex) const{
         return this->ptrToFunc->operator()(LHSIndex, RHSIndex);

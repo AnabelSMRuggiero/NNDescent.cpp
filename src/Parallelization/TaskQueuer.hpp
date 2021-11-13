@@ -208,16 +208,7 @@ struct TaskQueuer<GenType, void>{
 
 template<typename Task, typename... GenArgs, typename... ConsArgs>
 auto GenerateTaskBuilder(std::tuple<GenArgs...>&& generatorArgs, std::tuple<ConsArgs...>&& consumerArgs){
-    /*
-    struct {
-        std::tuple<GenArgs...> genArgs;
-        std::tuple<ConsArgs...> consArgs;
-
-        operator Task(){
-            return Task(std::move(genArgs), std::move(consArgs));
-        }
-    } 
-    */
+    
     TaskBuilder<Task, std::tuple<GenArgs...>, std::tuple<ConsArgs...>> builder{std::move(generatorArgs), std::move(consumerArgs)};
     return builder;
 }
@@ -225,15 +216,7 @@ auto GenerateTaskBuilder(std::tuple<GenArgs...>&& generatorArgs, std::tuple<Cons
 template<typename Task, typename... GenArgs>
 auto GenerateTaskBuilder(std::tuple<GenArgs...>&& generatorArgs){
     static_assert(std::is_void_v<typename Task::Consumer>);
-    /*
-    struct {
-        std::tuple<GenArgs...> genArgs;
-
-        operator Task(){
-            return Task(std::move(genArgs));
-        }
-    } 
-    */
+    
     TaskBuilder<Task, std::tuple<GenArgs...>, void> builder{std::move(generatorArgs)};
 
     return builder;

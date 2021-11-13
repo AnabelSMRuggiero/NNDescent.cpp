@@ -22,6 +22,7 @@ https://github.com/AnabelSMRuggiero/NNDescent.cpp
 #include <type_traits>
 #include <ranges>
 #include <functional>
+#include <concepts>
 
 #include "../Utilities/Data.hpp"
 #include "../Utilities/DataSerialization.hpp"
@@ -205,19 +206,16 @@ namespace internal{
     static constexpr size_t maxBatch = 7;
 }
 
-template<typename IndexType, typename DistType>
+template<std::unsigned_integral IndexType, std::totally_ordered DistType>
 struct QueryContext{
+
     const UndirectedGraph<IndexType> subGraph;
     const GraphVertex<IndexType, DistType> queryHint;
     size_t querySize;
     size_t querySearchDepth;
-    //DefaultQueryFunctor<DistType, DistanceFunctor> defaultQueryFunctor;
     const GraphFragment_t graphFragment{GraphFragment_t(-1)};
     const BlockNumber_t blockNumber{BlockNumber_t(-1)};
-    
     size_t blockSize{size_t(-1)};
-    //std::unordered_map<BlockNumberType, Graph<IndexType, DistType>> neighborCandidates;
-    //SpaceMetric<DataView, DataView, DistType> distanceFunctor;
 
     QueryContext() = default;
 
@@ -251,18 +249,11 @@ struct QueryContext{
     QueryContext(QueryContext&&) = default;
 
 
-    /*
-    template<typename QueryType>
-    GraphVertex<size_t, DistType> operator||(QueryPoint<DistType>& queryPoint) const {
-        return Query(queryPoint.queryHint, queryPoint.dataIndex, defaultQueryFunctor);
-    }
-    */
     template<typename QueryFunctor>
     GraphVertex<IndexType, DistType> Query(const std::vector<IndexType>& initHints,
                                            const size_t queryIndex, //Can realistically be any parameter passed through to the Functor
                                            QueryFunctor& queryFunctor) const{
 
-        //nodesVisited = NodeTracker(blockSize);
         
         auto [vertex, nodeTracker] = ForwardQueryInit(initHints,
                                                       queryIndex, 
@@ -296,7 +287,7 @@ struct QueryContext{
         //char stackBuffer[bufferSize];
         //std::pmr::monotonic_buffer_resource stackResource(stackBuffer, bufferSize);
         
-        
+            
         
         //std::pmr::vector<size_t>& joinQueue= *(new (stackResource.allocate(sizeof(std::pmr::vector<size_t>))) std::pmr::vector<size_t>(&stackResource));
     template<typename QueryFunctor>
@@ -305,7 +296,7 @@ struct QueryContext{
                                            QueryFunctor& queryFunctor,
                                            NodeTracker& nodesVisited) const{
         std::vector<size_t> joinQueue;
-        const size_t maxBatch = internal::maxBatch;
+        constexpr size_t maxBatch = internal::maxBatch; //Compile time constant
         joinQueue.reserve(maxBatch);
 
         NodeTracker nodesCompared(blockSize);
@@ -316,7 +307,7 @@ struct QueryContext{
                     false :
                     !(nodesCompared[edge.first] = std::ranges::none_of(subGraph[edge.first], notVisited)); 
         };
-        auto toNeighborView = [&](const auto& edge){ return subGraph[edge.first]; };
+        auto toNeighborView = [&](const auto& edge){ return subGraph[edge.first]; }; //returns a view into a data block
         
         bool breakVar = true;
         while (breakVar){
@@ -332,6 +323,7 @@ struct QueryContext{
                 joinQueue.push_back(joinTarget);
                 nodesVisited[joinTarget] = true;
             }
+            
             
             std::vector<DistType> distances = queryFunctor(queryIndex, joinQueue);
             breakVar = std::transform_reduce(joinQueue.begin(), joinQueue.end(), distances.begin(),

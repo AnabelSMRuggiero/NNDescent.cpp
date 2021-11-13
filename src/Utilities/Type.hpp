@@ -104,11 +104,8 @@ struct DynamicArray{
     ~DynamicArray(){
         if(data){
             for(auto& element: *this){
-                //~element();
-                //alloc_traits::destroy(resource(), &element);
                 element.~ValueType();
             }
-            //alloc.deallocate_object<ValueType>(data, capacity);
         }
     }
 
@@ -121,11 +118,7 @@ struct DynamicArray{
     ValueType* get() { return data.get(); }
 
     const ValueType* get() const { return data.get(); }
-    /*
-    ValueType* data() { return get(); }
-
-    const ValueType* data() const { return get(); }
-    */
+    
     ValueType* begin() { return data.get(); }
 
     ValueType* end() { return data.get() + data.get_deleter().capacity; }
@@ -151,90 +144,14 @@ struct DynamicArray{
     //AlignedPtr<const ValueType, align> GetAlignedPtr(size_t entriesToJump) const;
 };
 
-/*
-template<typename ValueType>
-void swap(typename DynamicArray<ValueType>::AllocatorDeleter delA, typename DynamicArray<ValueType>::AllocatorDeleter delB){
-    //assert(arrA.resourcePtr == arrB.resource());
-    std::swap(delA.resourcePtr, delB.resourcePtr);
-    std::swap(delA.capacity, delB.capacity);
 
-}
-
-template<typename ValueType>
-void swap(DynamicArray<ValueType> arrA, DynamicArray<ValueType> arrB){
-    //assert(arrA.resource() == arrB.resource());
-    arrA.data.swap(arrB.data);
-
-}
-*/
 
 
 //template<typename ValueType, size_t align>
 //struct AlignedPtr;
 template<typename ValueType>
 using AlignedArray = DynamicArray<ValueType, 32>;
-/*
-template<typename ValueType, size_t align=32>
-struct AlignedArray{
-    using value_type = ValueType;
-    static const size_t alignment = align;
-    private:
 
-    struct AlignedDeleter{
-
-        void operator()(ValueType* arrayToDelete) {operator delete[](arrayToDelete, std::align_val_t(alignment)); };
-
-    };
-
-    std::unique_ptr<ValueType[], AlignedDeleter> data;
-    size_t capacity;
-
-    public:
-
-    AlignedArray() = default;
-
-    AlignedArray(size_t size): data(static_cast<ValueType*>(operator new[](size*sizeof(ValueType), std::align_val_t(alignment))), AlignedDeleter()), capacity(size) {
-        std::uninitialized_value_construct(this->begin(), this->end());
-    };
-
-    AlignedArray(const AlignedArray& other): data(static_cast<ValueType*>(operator new[](other.capacity*sizeof(ValueType), std::align_val_t(alignment))), AlignedDeleter()), capacity(other.capacity) {
-        std::uninitialized_copy(other.begin(), other.end(), this->begin());
-    };
-
-    AlignedArray(AlignedArray&& rhs) = default;
-
-    ~AlignedArray(){
-        if(data){
-            for(auto& element: *this){
-                //~element();
-                element.~ValueType();
-            }
-        }
-    }
-
-    AlignedArray& operator=(AlignedArray&& other) = default;
-
-    AlignedArray& operator=(const AlignedArray& other) = default;
-
-    size_t size() const { return capacity; }
-
-    ValueType* begin() { return std::assume_aligned<alignment>(data.get()); }
-
-    ValueType* end() { return data.get() + capacity; }
-
-    ValueType& operator[](size_t index) { return data[index]; }
-
-    const ValueType* begin() const { return data.get(); }
-
-    const ValueType* end() const { return data.get() + capacity; }
-
-    const ValueType& operator[](size_t index) const{ return data[index]; }
-
-    AlignedPtr<ValueType, align> GetAlignedPtr(size_t entriesToJump);
-
-    AlignedPtr<const ValueType, align> GetAlignedPtr(size_t entriesToJump) const;
-};
-*/
 
 template<typename ValueType, size_t align>
 struct AlignedPtr;
@@ -320,14 +237,12 @@ struct AlignedSpan{
     using value_type = std::remove_cv_t<ElementType>;
     static const size_t alignment = align;
 
-    
 
     private:
     ElementType* data;
     size_t extent;
 
     
-
     public:
 
     AlignedSpan() = default;

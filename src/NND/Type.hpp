@@ -65,24 +65,7 @@ struct BlockIndecies{
 inline bool operator==(const BlockIndecies lhs, const BlockIndecies& rhs){
     return (lhs.graphFragment == rhs.graphFragment) && (lhs.blockNumber == rhs.blockNumber) && (lhs.dataIndex == rhs.dataIndex);
 }
-/*
-DataView operator[](BlockIndecies i){
-        //static_assert(i.blockNumber == blockNumber);
-        return operator[](i.dataIndex);
-    }
 
-    
-template<typename DataType, size_t align>
-typename DataBlock<DataType, align>::ConstDataView DataBlock<DataType,operator[](BlockIndecies i) const{
-        //static_assert(i.blockNumber == blockNumber);
-*/     
-/*
-struct MetaGraphIndex{
-    uint32_t graphFragment;
-    uint16_t blockNumber;
-    uint16_t dataIndex;
-};
-*/
 constexpr static bool debugNND = false;
 //Maybe a block specific one that reads i.blockNumber from a BlockIndecies
 struct NodeTracker{

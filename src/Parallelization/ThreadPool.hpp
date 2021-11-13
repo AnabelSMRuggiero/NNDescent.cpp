@@ -148,23 +148,6 @@ struct TaskThread<void>{
     bool running = false;
 
 };
-/*
-template<typename Element>
-    requires std::negation_v<std::is_array<Element>>
-std::unique_ptr<Element> MakeUninitialized(){
-    return std::unique_ptr<Element>(static_cast<Element*>(operator new(sizeof(Element))));
-}
-
-template<typename Element>
-    requires std::is_unbounded_array_v<Element>
-std::unique_ptr<Element> MakeUninitialized(const size_t numElem){
-    return std::unique_ptr<Element>(static_cast<std::remove_extent_t<Element>*>(operator new[](sizeof(std::remove_extent_t<Element>)*numElem)));
-}
-
-template<typename Element, typename... Args>
-    requires std::is_bounded_array_v<Element>
-void MakeUninitialized(Args&&... ) = delete;
-*/
 
 template<typename ThreadState>
 struct ThreadPool{
