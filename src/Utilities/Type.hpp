@@ -280,8 +280,6 @@ struct AlignedSpan{
 
 };
 
-
-
 template<std::ranges::contiguous_range Container>
 struct DefaultDataView{ using ViewType = std::span<const typename Container::value_type>; };
 

@@ -135,13 +135,16 @@ struct MetricFunctor{
     };
     
     std::vector<DistType> operator()(const size_t lhsIndex, std::span<const size_t> rhsIndecies) const noexcept {
-        char stackBuffer[sizeof(ConstDataView)*20];
-        std::pmr::monotonic_buffer_resource stackResource(stackBuffer, sizeof(ConstDataView)*20);
-        std::pmr::vector<ConstDataView> rhsData(&stackResource);
-        rhsData.reserve(20);
-        for(const auto& index: rhsIndecies){
-            rhsData.push_back((*rhsBlock)[index]);
-        }
+        constexpr size_t bufferSize = sizeof(ConstDataView)*23 + sizeof(std::pmr::vector<ConstDataView>);
+        char stackBuffer[sizeof(ConstDataView)*23 + sizeof(std::pmr::vector<ConstDataView>)];
+        std::pmr::monotonic_buffer_resource stackResource(stackBuffer, bufferSize);
+        std::pmr::vector<ConstDataView>& rhsData = *(new (stackResource.allocate(sizeof(std::pmr::vector<ConstDataView>))) std::pmr::vector<ConstDataView>(&stackResource));
+        //
+        rhsData.resize(rhsIndecies.size());
+        std::ranges::transform(rhsIndecies, rhsData.begin(), [&](const auto index){
+            return (*rhsBlock)[index];
+        });
+        
         return metricPair((*lhsBlock)[lhsIndex], rhsData);
     };
 
@@ -185,10 +188,15 @@ struct CrossFragmentFunctor{
         std::pmr::monotonic_buffer_resource stackResource(stackBuffer, bufferSize);
         std::pmr::vector<ConstDataView>& rhsData = *(new (stackResource.allocate(sizeof(std::pmr::vector<ConstDataView>))) std::pmr::vector<ConstDataView>(&stackResource));
         //
-        rhsData.reserve(20);
+        rhsData.resize(rhsIndecies.size());
+        std::ranges::transform(rhsIndecies, rhsData.begin(), [&](const auto index){
+            return (*rhsBlock)[index];
+        });
+        /*
         for(const auto& index: rhsIndecies){
             rhsData.push_back((*rhsBlock)[index]);
         }
+        */
         return metricPair((*lhsBlock)[lhsIndex], rhsData);
     };
 

@@ -283,7 +283,7 @@ int main(int argc, char *argv[]){
     // max block size must be < <DataIndex_t>::max()
     // max fragment size must be <  dataSet size (min num fragments * min block size)
 
-    bool parallelIndexBuild = true;
+    bool parallelIndexBuild = false;
     bool parallelSearch = true;
 
 
