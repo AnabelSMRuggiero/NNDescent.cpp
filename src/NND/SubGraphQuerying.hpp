@@ -502,26 +502,11 @@ struct QueryContext{
 
         outputter(this->querySize);
         outputter(this->querySearchDepth);
-
+        
         outputter(this->graphFragment);
         outputter(this->blockNumber);
         outputter(this->blockSize);
 
-        
-
-        
-
-        /*
-        const UndirectedGraph<IndexType> subGraph;
-        const GraphVertex<IndexType, DistType> queryHint;
-        size_t querySize;
-        size_t querySearchDepth;
-        //DefaultQueryFunctor<DistType, DistanceFunctor> defaultQueryFunctor;
-        const GraphFragment_t graphFragment{GraphFragment_t(-1)};
-        const BlockNumber_t blockNumber{BlockNumber_t(-1)};
-        
-        size_t blockSize{size_t(-1)};
-        */
     }
 
 };

@@ -14,6 +14,7 @@ https://github.com/AnabelSMRuggiero/NNDescent.cpp
 #include <cstddef>
 #include <memory_resource>
 #include <type_traits>
+#include <new>
 
 #include "../Type.hpp"
 #include "../DataSerialization.hpp"
@@ -192,27 +193,27 @@ struct UnevenBlock{
     }
     
     constexpr iterator begin() noexcept{
-        return iterator{static_cast<size_t*>(static_cast<void*>(dataStorage.begin())), firstIndex};
+        return iterator{std::launder(static_cast<size_t*>(static_cast<void*>(dataStorage.begin()))), firstIndex};
     }
 
     constexpr const_iterator begin() const noexcept{
-        return const_iterator{static_cast<size_t*>(static_cast<void*>(dataStorage.begin())), firstIndex};
+        return const_iterator{std::launder(static_cast<size_t*>(static_cast<void*>(dataStorage.begin()))), firstIndex};
     }
 
     constexpr const_iterator cbegin() const noexcept{
-        return const_iterator{static_cast<const size_t*>(static_cast<const void*>(dataStorage.begin())), firstIndex};
+        return const_iterator{std::launder(static_cast<const size_t*>(static_cast<const void*>(dataStorage.begin()))), firstIndex};
     }
 
     constexpr iterator end() noexcept{
-        return iterator{static_cast<size_t*>(static_cast<void*>(dataStorage.begin()))+numArrays, static_cast<ElementType*>(static_cast<void*>(dataStorage.end()))};
+        return iterator{std::launder(static_cast<size_t*>(static_cast<void*>(dataStorage.begin()))+numArrays), std::launder(static_cast<ElementType*>(static_cast<void*>(dataStorage.end())))};
     }
 
     constexpr const_iterator end() const noexcept{
-        return const_iterator{static_cast<size_t*>(static_cast<void*>(dataStorage.begin()))+numArrays, static_cast<ElementType*>(static_cast<void*>(dataStorage.end()))};
+        return const_iterator{std::launder(static_cast<size_t*>(static_cast<void*>(dataStorage.begin()))+numArrays), std::launder(static_cast<ElementType*>(static_cast<void*>(dataStorage.end())))};
     }
 
     constexpr const_iterator cend() const noexcept{
-        return const_iterator{static_cast<const size_t*>(static_cast<const void*>(dataStorage.begin()))+numArrays, static_cast<const ElementType*>(static_cast<const void*>(dataStorage.end()))};
+        return const_iterator{std::launder(static_cast<const size_t*>(static_cast<const void*>(dataStorage.begin()))+numArrays), std::launder(static_cast<const ElementType*>(static_cast<const void*>(dataStorage.end())))};
     }
 
     reference operator[](size_t i){
@@ -256,9 +257,6 @@ UnevenBlock<ElementType> UninitUnevenBlock(const size_t numArrays, const size_t 
 
 template<typename BlockDataType>
 void Serialize(const UnevenBlock<BlockDataType>& block, std::ofstream& outputFile){
-    //std::ofstream outputFile(outputPath, std::ios_base::binary);
-    //outputFile << block.size() << block.entryLength << block.lengthWithPadding;
-    //outputFile.write(reinterpret_cast<char*>())
 
     auto outputFunc = BindSerializer(outputFile);
     outputFunc(block.dataStorage.size());

@@ -181,8 +181,14 @@ struct ThreadPool{
     void RebuildStates(ThreadStateArgs... args){
         for (size_t i = 0; i<numThreads; i += 1){
             ThreadState* statePtr = &(threadStates[i].state);
-            statePtr->~ThreadState();
-            new (statePtr) ThreadState(args...);
+            try{
+                statePtr->~ThreadState();
+                new (statePtr) ThreadState(args...);
+            } catch (...){
+                //ensure a valid state is in place before raising
+                new (statePtr) ThreadState();
+                throw;
+            }
         }
     }
 

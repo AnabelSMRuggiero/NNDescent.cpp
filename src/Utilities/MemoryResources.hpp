@@ -1,0 +1,245 @@
+/*
+NNDescent.cpp: Copyright (c) Anabel Ruggiero
+At the time of writting, this code is unreleased and not published under a license.
+As a result, I currently retain all legal rights I am legally entitled to.
+
+I am currently considering a permissive license for releasing this code, such as the Apache 2.0 w/LLVM exception.
+Please refer to the project repo for any updates regarding liscensing.
+https://github.com/AnabelSMRuggiero/NNDescent.cpp
+*/
+
+#ifndef NND_MULTITRANSFORM_HPP
+#define NND_MULTITRANSFORM_HPP
+
+#include <memory_resource>
+#include <cstddef>
+#include <utility>
+#include <new>
+#include <array>
+#include <optional>
+
+namespace nnd{
+
+
+struct FreeListNode{
+    std::byte* chunkStart;
+    size_t chunkSize;
+    size_t chunkAlign;
+    FreeListNode* next;
+};
+
+
+struct FreeListResource : std::pmr::memory_resource{
+
+    void* do_allocate( std::size_t bytes, std::size_t alignment ) override{
+        auto [newSize, newAlign] = AdjustAllocation(bytes, alignment);
+        if (head == nullptr){
+            return GetChunk(newSize, newAlign);
+        } else {
+
+        }
+        //itr through list and return valid chunk size
+            //if good relocate list node to new alloc end
+            //and return ptr to chunk start
+
+        //else return new chunk
+    }
+
+    void do_deallocate( void* p, std::size_t bytes, std::size_t alignment ) override{
+        //find list node location from args
+        //push to front of list
+        //if list over threshold, return an old chunk upstream
+    }
+
+    bool do_is_equal( const std::pmr::memory_resource& other ){
+        return this == &other;
+    };
+
+
+    private:
+
+    
+
+    std::pmr::memory_resource upstream = std::pmr::get_default_resource();
+    FreeListNode* head = nullptr;
+    size_t listSize = 0;
+
+    
+    void* FindNodeLocation(std::byte* chunkStart, size_t size, size_t alignment){
+        alignment = std::max(alignment < alignof(FreeListNode));
+        size_t excess = size % alignof(FreeListNode);
+        if(excess > 0){
+            size += alignof(FreeListNode) - excess;
+        }
+        void* ptrToNode = static_cast<void *>(chunkStart) + size; 
+        return ptrToNode;
+    }
+
+    void ReemplaceNode(FreeListNode* chunkNode, size_t requestedSize, size_t requestedAlignment){
+        FreeListNode temp = *chunkNode;
+        temp.next = nullptr;
+        chunkNode->~FreeListNode();
+        void* newLoc = FindNodeLocation(temp.chunkStart, requestedSize, requestedAlignment);
+        new (newLoc) FreeListNode(temp);
+    }
+
+    FreeListNode* PopFront(){
+        FreeListNode* oldHead = head;
+        head = head->next;
+        listSize -= 1;
+        return oldHead;
+    }
+    
+    void PushFront(FreeListNode* newNode){
+        
+        newNode->next = head;
+        head = newNode;
+        listSize += 1;
+        
+    }
+    
+    void ReturnChunk(FreeListNode* listNode){
+        upstream->deallocate(listNode->chunkStart, listNode->chunkSize, listNode->chunkAlign);
+    }
+
+    std::pair<size_t, size_t> AdjustAllocation(size_t size, size_t alignment){
+        alignment = std::max(alignment, alignof(FreeListNode));
+        size_t excess = size % alignof(FreeListNode);
+        if(excess > 0){
+            size += alignof(FreeListNode) - excess;
+        }
+        size += sizeof(FreeListNode);
+        return {size, alignment};
+    }
+
+    void* GetChunk(size_t size, size_t alignment){
+        
+        //auto [newSize, newAlign] = AdjustAllocation(size, alignment);
+
+        void* chunk = upstream->allocate(size, alignment);
+        
+        std::byte* = new (chunk) std::byte[size];
+        std::byte* nodeLocation = size - sizeof(FreeListNode);
+        new (nodeLocation) FreeListNode{chunk, size, alignment, nullptr};
+        
+        return chunk;
+    }
+
+};
+
+
+
+struct CacheNode{
+    std::byte* chunkStart = nullptr;
+    size_t chunkSize = 0;
+    size_t chunkAlign = 0;
+};
+
+
+struct MemoryCache : std::pmr::memory_resource{
+    using NodeType = CacheNode;
+
+    static constexpr size_t cacheSize = 3;
+
+    void* do_allocate( std::size_t bytes, std::size_t alignment ) override{
+        auto [newSize, newAlign] = AdjustAllocation(bytes, alignment);
+        
+        for (auto itr = cachedMemory.begin(); itr == partitionPoint; itr++){
+            std::optional<NodeType>& node = *itr;
+            if ((node->chunkSize >= newSize) && (node->chunkAlign >= newAlign)){
+                std::byte* memPtr = node->chunkStart;
+                ReemplaceNode(node, bytes, alignment);
+                --partitionPoint;
+                std::swap(node, *partitionPoint);
+                return static_cast<void*>(memPtr);
+            }   
+        }
+
+        return GetChunk(newSize, newAlign);
+
+        //else return new chunk
+    }
+
+    void do_deallocate( void* p, std::size_t bytes, std::size_t alignment ) override{
+
+        NodeType* nodeLocation = std::launder(static_cast<NodeType*>(FindNodeLocation(bytes, alignment)));
+
+        if (partitionPoint != cachedMemory.end()){
+            *partitionPoint = *nodeLocation;
+            partitionPoint++;
+        } else{
+            ReturnChunk(cachedMemory.back());
+            cachedMemory.back() = *nodeLocation;
+            std::swap(cachedMemory.back(), cachedMemory.front());
+        }
+        //find list node location from args
+        //push to front of list
+        //if list over threshold, return an old chunk upstream
+    }
+
+    bool do_is_equal( const std::pmr::memory_resource& other ){
+        return this == &other;
+    };
+
+
+    private:
+
+    std::array<std::optional<NodeType>, cacheSize> cachedMemory;
+    std::array<std::optional<NodeType>, cacheSize>::iterator partitionPoint = cachedMemory.begin();
+
+    std::pmr::memory_resource upstream = std::pmr::get_default_resource();
+
+
+    
+    void* FindNodeLocation(std::byte* chunkStart, size_t size, size_t alignment){
+        alignment = std::max(alignment, alignof(NodeType));
+        size_t excess = size % alignof(NodeType);
+        if(excess > 0){
+            size += alignof(NodeType) - excess;
+        }
+        void* ptrToNode = static_cast<void *>(chunkStart) + size; 
+        return ptrToNode;
+    }
+
+    void ReemplaceNode(std::optional<NodeType>& nodeToPlace, size_t requestedSize, size_t requestedAlignment){
+        
+        void* newLoc = FindNodeLocation(temp.chunkStart, requestedSize, requestedAlignment);
+        new (newLoc) NodeType(*nodeToPlace);
+        nodeToPlace = std::nullopt;
+    }
+
+    
+    void ReturnChunk(const NodeType& memToReturn){
+        upstream->deallocate(memToReturn.chunkStart, memToReturn.chunkSize, memToReturn.chunkAlign);
+    }
+
+    std::pair<size_t, size_t> AdjustAllocation(size_t size, size_t alignment){
+        alignment = std::max(alignment < alignof(NodeType));
+        size_t excess = size % alignof(NodeType);
+        if(excess > 0){
+            size += alignof(NodeType) - excess;
+        }
+        size += sizeof(NodeType);
+        return {size, alignment};
+    }
+
+    void* GetChunk(size_t size, size_t alignment){
+        
+        //auto [newSize, newAlign] = AdjustAllocation(size, alignment);
+
+        void* chunk = upstream->allocate(size, alignment);
+        
+        std::byte* = new (chunk) std::byte[size];
+        std::byte* nodeLocation = size - sizeof(NodeType);
+        new (nodeLocation) NodeType{chunk, size, alignment};
+        
+        return chunk;
+    }
+
+};
+
+
+
+}
+
+#endif

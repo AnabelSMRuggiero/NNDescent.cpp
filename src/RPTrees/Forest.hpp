@@ -230,6 +230,7 @@ struct TreeRef{
         TreeLeaf* somethingToMove = buildMemory;
         //If I'm not using the new_delete_resource, I should be able to get away with letting the resource
         //manage the memory.
+        //This is cheesy to drop the memory though...
         if(alloc.resource() == std::pmr::new_delete_resource()) memManager->Put(std::move(somethingToMove));
     }
 
