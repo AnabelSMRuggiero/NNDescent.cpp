@@ -144,7 +144,7 @@ struct MetricFunctor{
         std::ranges::transform(rhsIndecies, rhsData.begin(), [&](const auto index){
             return (*rhsBlock)[index];
         });
-        
+
         return metricPair((*lhsBlock)[lhsIndex], rhsData);
     };
 
