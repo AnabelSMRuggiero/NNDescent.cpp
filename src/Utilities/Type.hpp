@@ -229,7 +229,7 @@ AlignedPtr<const ValueType, align> DynamicArray<ValueType, align>::GetAlignedPtr
 */
 
 template<typename Type, typename OtherType>
-concept IsNot = !std::same_as<Type, OtherType>;
+concept IsNot = !std::same_as<std::remove_cvref_t<Type>, std::remove_cvref_t<OtherType>>;
 
 template<typename ElementType, size_t align=32>
 struct AlignedSpan{

@@ -139,10 +139,13 @@ struct CacheNode{
 
 //MemoryCache owns the memory it is holding, but gives up ownership of the memory it gives out.
 //This way, as long as two MemoryCaches have the same upstream, they could be interchangable (not implemented yet)
+template<size_t cacheSlots = 3>
 struct MemoryCache : std::pmr::memory_resource{
     using NodeType = CacheNode;
 
-    static constexpr size_t cacheSize = 3;
+    static constexpr size_t cacheSize = cacheSlots;
+
+    MemoryCache() = default;
     
     MemoryCache(std::pmr::memory_resource* upstream): upstream(upstream) {}
 
@@ -296,6 +299,21 @@ struct ChatterResource : std::pmr::memory_resource{
 
     std::pmr::memory_resource* upstream = std::pmr::get_default_resource();
 };
+
+namespace internal{
+    thread_local std::pmr::memory_resource* threadDefaultResource = std::pmr::get_default_resource();
+
+    void SetThreadResource(std::pmr::memory_resource* resourcePtr){
+        threadDefaultResource = resourcePtr;
+    }
+
+    std::pmr::memory_resource* GetThreadResource(){
+        return threadDefaultResource;
+    }
+}
+
+
+
 
 
 }

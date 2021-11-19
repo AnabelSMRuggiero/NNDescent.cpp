@@ -21,6 +21,7 @@ https://github.com/AnabelSMRuggiero/NNDescent.cpp
 #include "SpaceMetrics.hpp"
 
 #include "../Type.hpp"
+#include "../MemoryResources.hpp"
 
 namespace nnd{
 
@@ -160,9 +161,9 @@ void EuclideanDispatch(const AlignedSpan<const float> pointFrom,
     }
 }
 
-std::vector<float> EuclideanBatcher(const AlignedSpan<const float> pointFrom, std::span<const AlignedSpan<const float>> pointsTo) noexcept {
+std::pmr::vector<float> EuclideanBatcher(const AlignedSpan<const float> pointFrom, std::span<const AlignedSpan<const float>> pointsTo) noexcept {
     
-    std::vector<float> retVector(pointsTo.size());
+    std::pmr::vector<float> retVector(pointsTo.size(), internal::GetThreadResource());
     
     size_t index = 0;
 
@@ -191,7 +192,7 @@ struct EuclideanMetricPair{
         return EuclideanNorm<AlignedSpan<const float>, AlignedSpan<const float>, float>(lhsVector, rhsVector);
     };
     
-    std::vector<float> operator()(AlignedSpan<const float> lhsVector, std::span<const AlignedSpan<const float>> rhsVectors) const{
+    std::pmr::vector<float> operator()(AlignedSpan<const float> lhsVector, std::span<const AlignedSpan<const float>> rhsVectors) const{
         return EuclideanBatcher(lhsVector, rhsVectors);
     };
 
@@ -204,7 +205,7 @@ struct EuclideanComDistance{
         return EuclideanNorm<AlignedSpan<const float>, AlignedSpan<const float>, float>(comVector, dataVector);
     };
     
-    std::vector<float> operator()(AlignedSpan<const float> comVector, std::span<const AlignedSpan<const float>> rhsVectors) const{
+    std::pmr::vector<float> operator()(AlignedSpan<const float> comVector, std::span<const AlignedSpan<const float>> rhsVectors) const{
         return EuclideanBatcher(comVector, rhsVectors);
     };
 };

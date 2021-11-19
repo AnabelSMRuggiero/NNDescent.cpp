@@ -12,6 +12,7 @@ https://github.com/AnabelSMRuggiero/NNDescent.cpp
 #include <vector>
 #include "Utilities/MemoryResources.hpp"
 
+
 using namespace nnd;
 
 int main(){
@@ -20,6 +21,10 @@ int main(){
         ChatterResource squaker;
         MemoryCache testCache(&squaker);
 
+        {
+            std::pmr::vector<double> moreTest(45, &testCache);
+            std::pmr::vector<int> evenMoreTest(49, &testCache);
+        }
         
 
         {
@@ -29,10 +34,16 @@ int main(){
 
             std::pmr::vector<float> testVec3(15, &testCache);
 
+            std::pmr::vector<std::byte> testVec4(666, &testCache);
+            std::pmr::vector<unsigned int> testVec5(31, &testCache);
             
         }
 
-            std::pmr::vector<int> testVec4(13, &testCache);
+        std::pmr::vector<int> testVec6(13, &testCache);
+
+        {
+            std::pmr::vector<float> testVec7(5, &testCache);
+        }
 
     }
 

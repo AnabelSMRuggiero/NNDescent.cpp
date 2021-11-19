@@ -16,8 +16,10 @@ https://github.com/AnabelSMRuggiero/NNDescent.cpp
 #include <memory>
 #include <cassert>
 #include <type_traits>
+#include <memory_resource>
 
 #include "../Utilities/UniqueFunction.hpp"
+#include "../Utilities/MemoryResources.hpp"
 
 #include "AsyncQueue.hpp"
 
@@ -55,9 +57,10 @@ struct TaskThread{
                 this->workQueue.Put(this->GetTerminator());
             };
 
-
             std::stop_callback stopQueuer(stopToken, queueTerminator);
 
+            MemoryCache<5> threadCache;
+            internal::SetThreadResource(&threadCache);
             this->running = true;
             while(running){
 
@@ -77,6 +80,7 @@ struct TaskThread{
         };
     }
 
+    
 
     private:
     TaskThread(const TaskThread&) = default;
@@ -84,6 +88,10 @@ struct TaskThread{
     bool running;
     ThreadState state;
 
+    
+
+    
+    
 };
 
 //Not sure why the copy/move constructors of this specialization are generating errors.

@@ -249,7 +249,7 @@ int main(int argc, char *argv[]){
     SplittingHeurisitcs splitParams= {16, 140, 60, 180};
     */
 
-    constexpr size_t numThreads = 12;
+    constexpr size_t numThreads = 4;
 
     //IndexParamters indexParams{12, 40, 35, 6};
     IndexParameters indexParams{12, 20, 15, 6};
@@ -283,7 +283,7 @@ int main(int argc, char *argv[]){
     // max block size must be < <DataIndex_t>::max()
     // max fragment size must be <  dataSet size (min num fragments * min block size)
 
-    bool parallelIndexBuild = false;
+    bool parallelIndexBuild = true;
     bool parallelSearch = true;
 
 

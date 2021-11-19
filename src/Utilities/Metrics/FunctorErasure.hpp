@@ -43,7 +43,7 @@ struct BasicFunctor{
         return metricPair((*lhsBlock)[LHSIndex], (*rhsBlock)[RHSIndex]);
     };
     
-    std::vector<DistType> operator()(const size_t lhsIndex, std::span<const size_t> rhsIndecies) const {
+    std::pmr::vector<DistType> operator()(const size_t lhsIndex, std::span<const size_t> rhsIndecies) const {
         char stackBuffer[sizeof(ConstDataView)*20];
         std::pmr::monotonic_buffer_resource stackResource(stackBuffer, sizeof(ConstDataView)*20);
         std::pmr::vector<ConstDataView> rhsData(&stackResource);
@@ -67,14 +67,14 @@ struct ErasedMetricPair{
     ErasedMetricPair& operator=(const ErasedMetricPair&) = default;
 
     template<IsNot<ErasedMetricPair> DistanceFunctor>
-    ErasedMetricPair(DistanceFunctor& distanceFunctor):
+    ErasedMetricPair(const DistanceFunctor& distanceFunctor):
         ptrToFunc(std::make_shared<ConcreteFunctor<DistanceFunctor>>(distanceFunctor)){};
     
     DistType operator()(const size_t LHSIndex, const size_t RHSIndex) const{
         return this->ptrToFunc->operator()(LHSIndex, RHSIndex);
     };
 
-    std::vector<DistType> operator()(const size_t lhsIndex, std::span<const size_t> rhsIndecies) const{
+    std::pmr::vector<DistType> operator()(const size_t lhsIndex, std::span<const size_t> rhsIndecies) const{
         return this->ptrToFunc->operator()(lhsIndex, rhsIndecies);
     };
 
@@ -83,7 +83,7 @@ struct ErasedMetricPair{
     struct AbstractFunctor{
         virtual ~AbstractFunctor(){};
         virtual DistType operator()(size_t LHSIndex, size_t RHSIndex) const = 0;
-        virtual std::vector<DistType> operator()(const size_t lhsIndex, std::span<const size_t> rhsIndecies) const = 0;
+        virtual std::pmr::vector<DistType> operator()(const size_t lhsIndex, std::span<const size_t> rhsIndecies) const = 0;
     };
 
     template<typename DistanceFunctor>
@@ -98,7 +98,7 @@ struct ErasedMetricPair{
             return this->underlyingFunctor(LHSIndex, RHSIndex);
         };
 
-        std::vector<DistType> operator()(const size_t lhsIndex, std::span<const size_t> rhsIndecies) const final{
+        std::pmr::vector<DistType> operator()(const size_t lhsIndex, std::span<const size_t> rhsIndecies) const final{
             return this->underlyingFunctor(lhsIndex, rhsIndecies);
         };
 
@@ -134,7 +134,7 @@ struct MetricFunctor{
         return metricPair((*lhsBlock)[LHSIndex], (*rhsBlock)[RHSIndex]);
     };
     
-    std::vector<DistType> operator()(const size_t lhsIndex, std::span<const size_t> rhsIndecies) const noexcept {
+    std::pmr::vector<DistType> operator()(const size_t lhsIndex, std::span<const size_t> rhsIndecies) const noexcept {
         constexpr size_t bufferSize = sizeof(ConstDataView)*23 + sizeof(std::pmr::vector<ConstDataView>);
         char stackBuffer[sizeof(ConstDataView)*23 + sizeof(std::pmr::vector<ConstDataView>)];
         std::pmr::monotonic_buffer_resource stackResource(stackBuffer, bufferSize);
@@ -182,7 +182,7 @@ struct CrossFragmentFunctor{
         return metricPair((*lhsBlock)[LHSIndex], (*rhsBlock)[RHSIndex]);
     };
     
-    std::vector<DistType> operator()(const size_t lhsIndex, std::span<const size_t> rhsIndecies) const {
+    std::pmr::vector<DistType> operator()(const size_t lhsIndex, std::span<const size_t> rhsIndecies) const {
         constexpr size_t bufferSize = sizeof(ConstDataView)*23 + sizeof(std::pmr::vector<ConstDataView>);
         char stackBuffer[sizeof(ConstDataView)*23 + sizeof(std::pmr::vector<ConstDataView>)];
         std::pmr::monotonic_buffer_resource stackResource(stackBuffer, bufferSize);
@@ -218,15 +218,15 @@ struct DispatchFunctor{
     DispatchFunctor& operator=(const DispatchFunctor&) = default;
 
     template<IsNot<DispatchFunctor> DistanceFunctor>
-    DispatchFunctor(DistanceFunctor&& distanceFunctor):
+    DispatchFunctor(DistanceFunctor& distanceFunctor):
         ptrToFunc(std::make_shared<ConcreteFunctor<DistanceFunctor>>(
-                  std::forward<DistanceFunctor>(distanceFunctor))){};
+                  distanceFunctor)){};
     
     DistType operator()(const size_t LHSIndex, const size_t RHSIndex) const{
         return this->ptrToFunc->operator()(LHSIndex, RHSIndex);
     };
 
-    std::vector<DistType> operator()(const size_t lhsIndex, std::span<const size_t> rhsIndecies) const{
+    std::pmr::vector<DistType> operator()(const size_t lhsIndex, std::span<const size_t> rhsIndecies) const{
         return this->ptrToFunc->operator()(lhsIndex, rhsIndecies);
     };
 
@@ -239,7 +239,7 @@ struct DispatchFunctor{
     struct AbstractFunctor{
         virtual ~AbstractFunctor(){};
         virtual DistType operator()(size_t LHSIndex, size_t RHSIndex) const = 0;
-        virtual std::vector<DistType> operator()(const size_t lhsIndex, std::span<const size_t> rhsIndecies) const = 0;
+        virtual std::pmr::vector<DistType> operator()(const size_t lhsIndex, std::span<const size_t> rhsIndecies) const = 0;
         virtual void SetBlocks(size_t lhsBlockNum, size_t rhsBlockNum) = 0;
     };
 
@@ -255,7 +255,7 @@ struct DispatchFunctor{
             return this->underlyingFunctor(LHSIndex, RHSIndex);
         };
 
-        std::vector<DistType> operator()(const size_t lhsIndex, std::span<const size_t> rhsIndecies) const final{
+        std::pmr::vector<DistType> operator()(const size_t lhsIndex, std::span<const size_t> rhsIndecies) const final{
             return this->underlyingFunctor(lhsIndex, rhsIndecies);
         };
 
@@ -295,7 +295,7 @@ struct DataComDistance{
         return functor(centersOfMass.points[metagraphIndex], (*targetBlock)[dataIndex]);
     };
     
-    std::vector<float> operator()(const size_t metagraphIndex, std::span<const size_t> rhsIndecies) const{
+    std::pmr::vector<float> operator()(const size_t metagraphIndex, std::span<const size_t> rhsIndecies) const{
         std::vector<ConstDataView> rhsData;
         for(const auto& index: rhsIndecies){
             rhsData.push_back((*targetBlock)[index]);
@@ -364,7 +364,7 @@ struct SinglePointFunctor{
         return this->ptrToFunc->operator()(functorParam, targetIndex);
     };
 
-    std::vector<DistType> operator()(const size_t functorParam, std::span<const size_t> targetIndecies) const{
+    std::pmr::vector<DistType> operator()(const size_t functorParam, std::span<const size_t> targetIndecies) const{
         return this->ptrToFunc->operator()(functorParam, targetIndecies);
     };
 
@@ -376,7 +376,7 @@ struct SinglePointFunctor{
     struct AbstractFunctor{
         virtual ~AbstractFunctor(){};
         virtual DistType operator()(const size_t functorParam, const size_t targetIndex) const = 0;
-        virtual std::vector<DistType> operator()(const size_t functorParam, std::span<const size_t> targetIndecies) const = 0;
+        virtual std::pmr::vector<DistType> operator()(const size_t functorParam, std::span<const size_t> targetIndecies) const = 0;
         virtual void SetBlock(size_t targetBlockNum) = 0;
     };
 
@@ -392,7 +392,7 @@ struct SinglePointFunctor{
             return this->underlyingFunctor(functorParam, targetIndex);
         };
 
-        std::vector<DistType> operator()(const size_t functorParam, std::span<const size_t> targetIndecies) const final{
+        std::pmr::vector<DistType> operator()(const size_t functorParam, std::span<const size_t> targetIndecies) const final{
             return this->underlyingFunctor(functorParam, targetIndecies);
         };
 

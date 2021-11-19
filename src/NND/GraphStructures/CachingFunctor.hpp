@@ -71,9 +71,9 @@ struct CachingFunctor{
         return distance;
     };
 
-    std::vector<DistType> operator()(const size_t queryIndex, std::span<const size_t> targetIndecies){
+    std::ranges::contiguous_range auto operator()(const size_t queryIndex, std::span<const size_t> targetIndecies){
         
-        std::vector<DistType> distances = this->metricFunctor(queryIndex, targetIndecies);
+        std::ranges::contiguous_range auto distances = this->metricFunctor(queryIndex, targetIndecies);
         
         for(const auto& index: targetIndecies) cachedGraphSize = std::max(index, cachedGraphSize);
         for(const auto& index: targetIndecies) nodesJoined[index][queryIndex] = true;

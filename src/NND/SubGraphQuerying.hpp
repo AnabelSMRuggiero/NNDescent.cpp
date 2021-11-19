@@ -325,7 +325,7 @@ struct QueryContext{
             }
             
             
-            std::vector<DistType> distances = queryFunctor(queryIndex, joinQueue);
+            std::ranges::contiguous_range auto distances = queryFunctor(queryIndex, joinQueue);
             breakVar = std::transform_reduce(joinQueue.begin(), joinQueue.end(), distances.begin(),
                                              joinQueue.size() == maxBatch,
                                              std::logical_or<bool>{},
@@ -372,7 +372,7 @@ struct QueryContext{
                 padIndecies(std::views::iota(size_t{0}, blockSize));
         }
 
-        std::vector<DistType> initDistances = queryFunctor(queryIndex, initDestinations);
+        std::ranges::contiguous_range auto initDistances = queryFunctor(queryIndex, initDestinations);
         
 
         GraphVertex<IndexType, DistType> retVertex(initDistances.size()); //This constructor merely reserves
@@ -407,7 +407,7 @@ struct QueryContext{
             previousVisits[queryHint[i+indexOffset].first] = true;
         }
 
-        std::vector<DistType> initDistances = queryFunctor(queryIndex, initComputations);
+        std::ranges::contiguous_range auto initDistances = queryFunctor(queryIndex, initComputations);
         for (size_t i = 0; i<initDistances.size(); i+=1){
             initVertex.push_back({static_cast<IndexType>(initComputations[i]), initDistances[i]});
         }
