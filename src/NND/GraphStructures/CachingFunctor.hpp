@@ -101,7 +101,8 @@ struct CachingFunctor{
             vertex.resize(0);
         }
         for (auto& tracker: nodesJoined){
-            tracker = NodeTracker(maxBlockSize);
+            tracker.clear();
+            tracker.resize(maxBlockSize);
         }
         //for (auto& minDist: minDists){
         //    minDist = std::numeric_limits<DistType>::max();

@@ -300,6 +300,7 @@ struct QueryContext{
         joinQueue.reserve(maxBatch);
 
         NodeTracker nodesCompared(blockSize);
+        /*
         auto notVisited = [&](const auto index){ return !nodesVisited[index]; };
 
         auto notCompared = [&](const auto index)->bool{ 
@@ -308,18 +309,31 @@ struct QueryContext{
                 !(nodesCompared[index] = std::none_of(subGraph[index].begin(), subGraph[index].end(), notVisited));
         };
         auto toNeighborView = [&](const auto index){ return subGraph[index]; }; //returns a view into a data block
-
+        */
         
         
         bool breakVar = true;
         while (breakVar){
             
 
-            auto toNeighbor = [&](const auto edge) mutable {
+            //auto toNeighbor = [&](const auto edge){return edge.first;};
 
-                return edge.first; 
-            };
-
+            for(const auto joinTarget : initVertex 
+                                        | std::views::transform([&](const auto edge){return edge.first;})
+                                        | std::views::take(querySearchDepth)    
+                                        | std::views::filter([&](const auto index)->bool{ 
+            return (nodesCompared[index]) ?
+                false :
+                !(nodesCompared[index] = std::none_of(subGraph[index].begin(), subGraph[index].end(), [&](const auto index){ return !nodesVisited[index]; }));
+        }) 
+                                        | std::views::transform([&](const auto index){ return subGraph[index]; })            
+                                        | std::views::join
+                                        | std::views::filter([&](const auto index){ return !nodesVisited[index]; })
+                                        | std::views::take(maxBatch)){
+                joinQueue.push_back(joinTarget);
+                nodesVisited[joinTarget] = true;
+            }
+            /*
             for(const auto joinTarget : initVertex 
                                         | std::views::transform(toNeighbor)
                                         | std::views::take(querySearchDepth)    
@@ -331,7 +345,7 @@ struct QueryContext{
                 joinQueue.push_back(joinTarget);
                 nodesVisited[joinTarget] = true;
             }
-            
+            */
             
             std::ranges::contiguous_range auto distances = queryFunctor(queryIndex, joinQueue);
             breakVar = std::transform_reduce(joinQueue.begin(), joinQueue.end(), distances.begin(),

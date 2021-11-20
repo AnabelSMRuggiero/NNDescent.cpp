@@ -102,6 +102,13 @@ struct NodeTracker{
         return flags.size();
     }
 
+    void clear(){
+        flags.clear();
+    }
+
+    void resize(size_t newSize){
+        flags.resize(newSize);
+    }
 };
 
 
