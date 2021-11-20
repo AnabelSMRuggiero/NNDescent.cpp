@@ -1204,6 +1204,25 @@ RandomProjectionForest RPTransformData(const DataSet<float>& testSet,
 
 }
 
+RandomProjectionForest RPTransformData(const DataSet<float>& testSet,
+    const std::unordered_set<size_t>& splittingIndecies,
+    EuclidianScheme<float, AlignedArray<float>>& transformingScheme) {
+
+
+
+    //std::unique_ptr<size_t[]> testIndecies = std::make_unique<size_t[]>(testSet.size());
+    DynamicArray<size_t> testIndecies(testSet.size());
+    std::iota(testIndecies.get(), testIndecies.get() + testSet.size(), 0);
+
+    RngFunctor testFunctor(size_t(0), testSet.size() - 1);
+
+    ForestBuilder testBuilder{ std::move(testFunctor), SplittingHeurisitcs{}, transformingScheme };
+
+
+    return testBuilder(std::move(testIndecies), splittingIndecies);
+
+}
+
 RandomProjectionForest RPTransformData(std::execution::parallel_unsequenced_policy,
                      const DataSet<float>& testSet,
                      const std::unordered_set<size_t>& splittingIndecies,
@@ -1220,6 +1239,29 @@ RandomProjectionForest RPTransformData(std::execution::parallel_unsequenced_poli
     RngFunctor testFunctor(size_t(0), testSet.size() - 1);
 
     ForestBuilder testBuilder{std::move(testFunctor), SplittingHeurisitcs{}, transformingScheme};
+
+    ThreadPool<TreeRef> pool(numThreads);
+    pool.StartThreads();
+    RandomProjectionForest retForest = testBuilder(std::move(testIndecies), splittingIndecies, pool);
+    pool.StopThreads();
+
+    return retForest;
+
+}
+
+RandomProjectionForest RPTransformData(std::execution::parallel_unsequenced_policy,
+    const DataSet<float>& testSet,
+    const std::unordered_set<size_t>& splittingIndecies,
+    EuclidianScheme<float, AlignedArray<float>>& transformingScheme,
+    const size_t numThreads) {
+
+
+    DynamicArray<size_t> testIndecies(testSet.size());
+    std::iota(testIndecies.get(), testIndecies.get() + testSet.size(), 0);
+
+    RngFunctor testFunctor(size_t(0), testSet.size() - 1);
+
+    ForestBuilder testBuilder{ std::move(testFunctor), SplittingHeurisitcs{}, transformingScheme };
 
     ThreadPool<TreeRef> pool(numThreads);
     pool.StartThreads();

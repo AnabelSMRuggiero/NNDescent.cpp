@@ -328,7 +328,7 @@ struct SearchFunctor{
         return functor(points[searchIndex], (*targetBlock)[targetIndex]);
     };
     
-    std::vector<typename MetricPair::DistType> operator()(const size_t searchIndex, std::span<const size_t> targetIndecies) const{
+    std::pmr::vector<typename MetricPair::DistType> operator()(const size_t searchIndex, std::span<const size_t> targetIndecies) const{
         constexpr size_t bufferSize = sizeof(ConstDataView)*23 + sizeof(std::pmr::vector<ConstDataView>);
         char stackBuffer[sizeof(ConstDataView)*23 + sizeof(std::pmr::vector<ConstDataView>)];
         std::pmr::monotonic_buffer_resource stackResource(stackBuffer, bufferSize);

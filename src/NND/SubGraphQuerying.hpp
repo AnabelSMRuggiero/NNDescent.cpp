@@ -300,20 +300,28 @@ struct QueryContext{
         joinQueue.reserve(maxBatch);
 
         NodeTracker nodesCompared(blockSize);
-        auto notVisited = [&](const auto& index){ return !nodesVisited[index]; };
+        auto notVisited = [&](const auto index){ return !nodesVisited[index]; };
 
-        auto notCompared = [&](const auto& edge)->bool{ 
-            return (nodesCompared[edge.first]) ?
-                    false :
-                    !(nodesCompared[edge.first] = std::ranges::none_of(subGraph[edge.first], notVisited)); 
+        auto notCompared = [&](const auto index)->bool{ 
+            return (nodesCompared[index]) ?
+                false :
+                !(nodesCompared[index] = std::none_of(subGraph[index].begin(), subGraph[index].end(), notVisited));
         };
-        auto toNeighborView = [&](const auto& edge){ return subGraph[edge.first]; }; //returns a view into a data block
+        auto toNeighborView = [&](const auto index){ return subGraph[index]; }; //returns a view into a data block
+
+        
         
         bool breakVar = true;
         while (breakVar){
             
 
-            for(const auto& joinTarget : initVertex 
+            auto toNeighbor = [&](const auto edge) mutable {
+
+                return edge.first; 
+            };
+
+            for(const auto joinTarget : initVertex 
+                                        | std::views::transform(toNeighbor)
                                         | std::views::take(querySearchDepth)    
                                         | std::views::filter(notCompared) 
                                         | std::views::transform(toNeighborView)            
