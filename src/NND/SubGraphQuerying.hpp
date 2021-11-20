@@ -290,16 +290,21 @@ struct QueryContext{
             
         
         //std::pmr::vector<size_t>& joinQueue= *(new (stackResource.allocate(sizeof(std::pmr::vector<size_t>))) std::pmr::vector<size_t>(&stackResource));
-    template<typename QueryFunctor>
+    template<typename QueryFunctor, typename TrackerAlloc>
     GraphVertex<IndexType, DistType>& QueryLoop(GraphVertex<IndexType, DistType>& initVertex,
                                            const size_t queryIndex, //Can realistically be any parameter passed through to the Functor
                                            QueryFunctor& queryFunctor,
-                                           NodeTracker& nodesVisited) const{
-        std::vector<size_t> joinQueue;
+                                           NodeTrackerImpl<TrackerAlloc>& nodesVisited) const{
+
+        constexpr size_t bufferSize = sizeof(size_t)*(internal::maxBatch*3);
+        char stackBuffer[bufferSize];
+        std::pmr::monotonic_buffer_resource stackResource(stackBuffer, bufferSize);
+        
+        std::pmr::vector<size_t> joinQueue(&stackResource);
         constexpr size_t maxBatch = internal::maxBatch; //Compile time constant
         joinQueue.reserve(maxBatch);
 
-        NodeTracker nodesCompared(blockSize);
+        NodeTrackerImpl<std::pmr::polymorphic_allocator<bool>> nodesCompared(blockSize, internal::GetThreadResource());
         /*
         auto notVisited = [&](const auto index){ return !nodesVisited[index]; };
 
@@ -361,18 +366,33 @@ struct QueryContext{
     }
 
     template<typename QueryFunctor>
-    std::pair<GraphVertex<IndexType, DistType>, NodeTracker> ForwardQueryInit(const std::vector<IndexType>& startHint,
+    std::pair<GraphVertex<IndexType, DistType>, NodeTrackerImpl<std::pmr::polymorphic_allocator<bool>>> ForwardQueryInit(const std::vector<IndexType>& startHint,
                                                                 const size_t queryIndex, //Can realistically be any parameter passed through to the Functor
                                                                 QueryFunctor& queryFunctor) const{
         
         
-        NodeTracker nodesJoined(blockSize);
+        NodeTrackerImpl<std::pmr::polymorphic_allocator<bool>> nodesJoined(blockSize, internal::GetThreadResource());
         for (const auto& hint : startHint) nodesJoined[hint] = true;
 
-        std::vector<size_t> initDestinations = [&](){
-            if constexpr(std::is_same_v<IndexType, size_t>) return startHint;
-            else{
-                std::vector<size_t> initDistances(startHint.size());
+        constexpr size_t bufferSize = sizeof(size_t)*(internal::maxBatch*3);
+        char stackBuffer[bufferSize];
+        std::pmr::monotonic_buffer_resource stackResource(stackBuffer, bufferSize);
+        
+            
+        
+        std::pmr::vector<size_t> joinQueue(&stackResource);
+
+        std::pmr::vector<size_t> initDestinations = [&](){
+            if constexpr(std::is_same_v<IndexType, size_t>) {
+                std::pmr::vector<size_t> initDest(&stackResource);
+                initDest.reserve(querySize);
+                initDest.resize(startHint.size());
+                std::ranges::copy(startHint, initDest.begin());
+                return initDest;
+            } else{
+                std::pmr::vector<size_t> initDistances(&stackResource);
+                initDistances.reserve(querySize);
+                initDistances.resize(startHint.size());
                 std::ranges::transform(startHint, initDistances.begin(), std::identity{});
                 return initDistances;
             }

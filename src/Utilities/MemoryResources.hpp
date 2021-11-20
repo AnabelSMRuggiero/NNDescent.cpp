@@ -209,7 +209,7 @@ struct MemoryCache : std::pmr::memory_resource{
     private:
 
     std::array<std::optional<NodeType>, cacheSize> cachedMemory;
-    std::array<std::optional<NodeType>, cacheSize>::iterator partitionPoint = cachedMemory.begin();
+    typename std::array<std::optional<NodeType>, cacheSize>::iterator partitionPoint = cachedMemory.begin();
 
     std::pmr::memory_resource* upstream = std::pmr::get_default_resource();
 

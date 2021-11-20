@@ -5,6 +5,7 @@
 #include <concepts>
 #include "../Utilities/Type.hpp"
 #include <cstdint>
+#include <memory>
 
 namespace nnd{
 
@@ -68,17 +69,20 @@ inline bool operator==(const BlockIndecies lhs, const BlockIndecies& rhs){
 
 constexpr static bool debugNND = false;
 //Maybe a block specific one that reads i.blockNumber from a BlockIndecies
-struct NodeTracker{
+template<typename Alloc = std::allocator<bool>>
+struct NodeTrackerImpl{
 
-    using reference = std::vector<bool>::reference;
-    using const_reference = std::vector<bool>::const_reference;
-    using size_type = std::vector<bool>::size_type;
+    using reference = typename std::vector<bool, Alloc>::reference;
+    using const_reference = typename std::vector<bool, Alloc>::const_reference;
+    using size_type = typename std::vector<bool, Alloc>::size_type;
 
-    std::vector<bool> flags;
+    std::vector<bool, Alloc> flags;
 
-    NodeTracker() = default;
+    NodeTrackerImpl() = default;
 
-    NodeTracker(size_t graphSize): flags(graphSize, false){};
+    NodeTrackerImpl(size_t graphSize): flags(graphSize, false){};
+
+    NodeTrackerImpl(size_t graphSize, Alloc allocator): flags(graphSize, false, allocator){};
 
     reference operator[](size_type i){
         return flags[i];
@@ -111,7 +115,7 @@ struct NodeTracker{
     }
 };
 
-
+using NodeTracker = NodeTrackerImpl<>;
 //using SearchQueue = std::vector<std::vector<std::pair<BlockIndecies, size_t>>>;
 // Two member struct with the following properties. hash({x,y}) == hash({y,x}) and {x,y} == {y,x}
 // This way a set can be used to queue up an operation between two blocks without worrying which is first or second.
