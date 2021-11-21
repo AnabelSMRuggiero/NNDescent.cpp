@@ -100,7 +100,7 @@ std::vector<IndexBlock> OpenIndexBlocks(std::filesystem::path fragmentDirectory)
 
 int main(int argc, char *argv[]){
 
-    constexpr size_t numThreads = 12;
+    constexpr size_t numThreads = 4;
 
     //IndexParamters indexParams{12, 40, 35, 6};
     IndexParameters indexParams{12, 20, 15, 6};
@@ -129,7 +129,7 @@ int main(int argc, char *argv[]){
     bool parallelIndexBuild = true;
     bool parallelSearch = true;
 
-    /*
+    
     std::filesystem::path indexLocation("./Saved-Indecies/MNIST-Fashion");
 
 
@@ -137,15 +137,15 @@ int main(int argc, char *argv[]){
     std::string testNeighborsFilePath("./TestData/MNIST-Fashion-Neighbors.bin");
     DataSet<float> mnistFashionTest(testDataFilePath, 28*28, 10'000);
     DataSet<uint32_t, alignof(uint32_t)> mnistFashionTestNeighbors(testNeighborsFilePath, 100, 10'000);
-    */
     
+    /*
     std::filesystem::path indexLocation("./Saved-Indecies/SIFT");
     
     std::string testDataFilePath("./TestData/SIFT-Test.bin");
     std::string testNeighborsFilePath("./TestData/SIFT-Neighbors.bin");
     DataSet<float> mnistFashionTest(testDataFilePath, 128, 10'000);
     DataSet<uint32_t, alignof(uint32_t)> mnistFashionTestNeighbors(testNeighborsFilePath, 100, 10'000);
-    
+    */
 
     auto dataBlocks = OpenDataBlocks<float>(indexLocation);
 
@@ -171,6 +171,8 @@ int main(int argc, char *argv[]){
     }();
     std::unordered_set<size_t> splittingIndicies;
     for (const auto& [key, value] : splittingVectors) splittingIndicies.insert(key);
+    
+    for (const auto& [key, value] : splitToBlockNum) splittingIndicies.erase(key);
 
     EuclidianScheme<float, AlignedArray<float>> transformingScheme(mnistFashionTest);
 

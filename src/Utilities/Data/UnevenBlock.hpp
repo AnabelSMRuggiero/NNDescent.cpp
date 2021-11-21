@@ -43,6 +43,7 @@ struct UnevenBlockIterator{
     using value_type = std::span<ElementType>;
     using difference_type = std::ptrdiff_t;
     using reference = std::span<ElementType>;
+    using const_reference = const std::span<const ElementType>;
 
     UnevenBlockIterator(const size_t* vertexStart, ElementType* vertexNeighbors): vertexStart(vertexStart), vertexNeighbors(vertexNeighbors) {}
 
@@ -99,7 +100,15 @@ struct UnevenBlockIterator{
         return reference{vertexNeighbors, *(vertexStart+1) - *vertexStart};
     }
 
-    reference operator[](size_t i)const {
+    const_reference operator*()const{
+        return reference{vertexNeighbors, *(vertexStart+1) - *vertexStart};
+    }
+
+    reference operator[](size_t i) {
+        return *(*this + i);
+    }
+
+    const_reference operator[](size_t i)const {
         return *(*this + i);
     }
 
@@ -125,7 +134,7 @@ struct UnevenBlock{
     using iterator = UnevenBlockIterator<ElementType>;
     using const_iterator = UnevenBlockIterator<const ElementType>;
     using reference = std::span<ElementType>;
-    using const_reference = std::span<const ElementType>;
+    using const_reference = const std::span<const ElementType>;
 
 
     DynamicArray<std::byte, std::max(alignof(size_t), alignof(ElementType))> dataStorage;
