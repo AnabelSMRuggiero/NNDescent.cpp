@@ -4,8 +4,9 @@
 #include <vector>
 #include <concepts>
 #include "../Utilities/Type.hpp"
+#include "../Utilities/Data.hpp"
 #include <cstdint>
-#include <memory>
+//#include <memory>
 
 namespace nnd{
 

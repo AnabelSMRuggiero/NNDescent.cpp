@@ -380,23 +380,18 @@ struct QueryContext{
         
             
         
-        std::pmr::vector<size_t> joinQueue(&stackResource);
 
-        std::pmr::vector<size_t> initDestinations = [&](){
-            if constexpr(std::is_same_v<IndexType, size_t>) {
-                std::pmr::vector<size_t> initDest(&stackResource);
-                initDest.reserve(querySize);
-                initDest.resize(startHint.size());
-                std::ranges::copy(startHint, initDest.begin());
-                return initDest;
-            } else{
-                std::pmr::vector<size_t> initDistances(&stackResource);
-                initDistances.reserve(querySize);
-                initDistances.resize(startHint.size());
-                std::ranges::transform(startHint, initDistances.begin(), std::identity{});
-                return initDistances;
-            }
-        }();
+        std::pmr::vector<size_t> initDestinations(&stackResource);
+        initDestinations.reserve(querySize);
+        initDestinations.resize(startHint.size());
+
+        if constexpr(std::is_same_v<IndexType, size_t>) {
+            std::ranges::copy(startHint, initDestinations.begin());
+        } else{
+            std::ranges::transform(startHint, initDestinations.begin(), std::identity{});
+            
+        }
+        
 
         auto notJoined = [&](const auto& index){ return !nodesJoined[index]; };
         
@@ -426,7 +421,7 @@ struct QueryContext{
         });
         retVertex.JoinPrep();
 
-        return {retVertex, nodesJoined};
+        return std::pair{std::move(retVertex), nodesJoined};
         
     }
 

@@ -15,6 +15,7 @@ https://github.com/AnabelSMRuggiero/NNDescent.cpp
 #include <unordered_map>
 #include <atomic>
 #include <optional>
+#include <ranges>
 
 #include "GraphStructures/GraphVertex.hpp"
 
@@ -86,15 +87,8 @@ void AddComparisons(std::span<const IndexBlock> graphFragments,
                     std::vector<BlockIndecies>& addedIndecies){
     for (const auto& index: addedIndecies){
         const IndexBlock& graphFragment = graphFragments[index.blockNumber];
-        //const std::vector<BlockIndecies>& vertex = graphFragment[index.dataIndex];
         context.comparisonResults[index] = graphFragment[index.dataIndex];
-        /*
-        for (const auto&& vertex = graphFragment[index.dataIndex]; const auto& neighbor: vertex){
-            if(!context.blocksJoined[neighbor.blockNumber]){
-                context.comparisonResults[index].push_back(neighbor);
-            }
-        }
-        */
+        
     }
 
 }
@@ -143,33 +137,42 @@ struct SearchContext{
         if(done) return std::nullopt;
         currentNeighbors.UnPrep();
         SearchSet searchesToDo;
-        for (size_t i = 0; auto& neighbor: currentNeighbors){
-            if (comparisonResults.contains(neighbor.first)){
-                
-                for (auto& comparison: comparisonResults[neighbor.first]){
-                    if(!blocksJoined[comparison.blockNumber]){
-                    
-                    auto result = std::find(searchesToDo[comparison.blockNumber].begin(),
-                                            searchesToDo[comparison.blockNumber].end(),
-                                            comparison.dataIndex);
-                    if(result == searchesToDo[comparison.blockNumber].end())
-                        searchesToDo[comparison.blockNumber].push_back(comparison.dataIndex);
-                    }
-                }
-                comparisonResults.erase(neighbor.first);
-            }
-            if(i == maxQueueDepth) break;
-            i++;
+
+        auto haveComparison = [&](const auto& edge){return this->comparisonResults.contains(edge.first);};
+
+        auto extractComparison = [&](const auto& edge){
+            auto span = comparisonResults[edge.first];
+            comparisonResults.erase(edge.first);
+            return span;
+        };
+
+        auto notQueued = [&](const auto& comparison){
+            return !blocksJoined[comparison.blockNumber] && 
+                    (searchesToDo[comparison.blockNumber].end() ==
+                        std::find(searchesToDo[comparison.blockNumber].begin(),
+                                  searchesToDo[comparison.blockNumber].end(),
+                                  comparison.dataIndex));
+        };
+
+        for(const auto& comparison : currentNeighbors
+                                 | std::views::take(maxQueueDepth)
+                                 | std::views::filter(haveComparison)
+                                 | std::views::transform(extractComparison)
+                                 | std::views::join
+                                 | std::views::filter(notQueued)){
+            searchesToDo[comparison.blockNumber].push_back(comparison.dataIndex);
         }
-        currentNeighbors.JoinPrep();
-        if (searchesToDo.size() > 0){
-            for(const auto& [blockNum, ignore]: searchesToDo){
-                blocksJoined[blockNum] = true;
-            }
-            return searchesToDo;
+        
+        //currentNeighbors.JoinPrep();
+        if (searchesToDo.size() == 0){
+            done = true;
+            return std::nullopt;
         }
-        done = true;
-        return std::nullopt;
+        
+        for(const auto& [blockNum, ignore]: searchesToDo){
+            blocksJoined[blockNum] = true;
+        }
+        return searchesToDo;
     }
 
 };
@@ -228,37 +231,45 @@ struct ParallelSearchContext{
         if(done) return std::nullopt;
         //currentNeighbors.UnPrep();
         SearchSet searchesToDo;
-        for (size_t i = 0; auto& neighbor: currentNeighbors){
-            if (comparisonResults.contains(neighbor.first)){
-                
-                for (auto& comparison: comparisonResults[neighbor.first]){
-                    if(!blocksJoined[comparison.blockNumber]){
-                    
-                    auto result = std::find(searchesToDo[comparison.blockNumber].begin(),
-                                            searchesToDo[comparison.blockNumber].end(),
-                                            comparison.dataIndex);
-                    if(result == searchesToDo[comparison.blockNumber].end())
-                        searchesToDo[comparison.blockNumber].push_back(comparison.dataIndex);
-                    }
-                }
-                comparisonResults.erase(neighbor.first);
-                
-            }
-            if(i == maxQueueDepth) break;
-            i++;
+        auto haveComparison = [&](const auto& edge){return this->comparisonResults.contains(edge.first);};
+
+        auto extractComparison = [&](const auto& edge){
+            auto span = comparisonResults[edge.first];
+            comparisonResults.erase(edge.first);
+            return span;
+        };
+
+        auto notQueued = [&](const auto& comparison){
+            return !blocksJoined[comparison.blockNumber] && 
+                    (searchesToDo[comparison.blockNumber].end() ==
+                        std::find(searchesToDo[comparison.blockNumber].begin(),
+                                  searchesToDo[comparison.blockNumber].end(),
+                                  comparison.dataIndex));
+        };
+
+        for(const auto& comparison : currentNeighbors
+                                 | std::views::take(maxQueueDepth)
+                                 | std::views::filter(haveComparison)
+                                 | std::views::transform(extractComparison)
+                                 | std::views::join
+                                 | std::views::filter(notQueued)){
+            searchesToDo[comparison.blockNumber].push_back(comparison.dataIndex);
         }
+        
         //currentNeighbors.JoinPrep();
-        if (searchesToDo.size() > 0){
-            for(const auto& [blockNum, ignore]: searchesToDo){
-                blocksJoined[blockNum] = true;
-            }
-            searchResults.resize(searchesToDo.size());
-            resultIndex = 0;
-            resultsAdded = 0;
-            return searchesToDo;
+        if (searchesToDo.size() == 0){
+            done = true;
+            return std::nullopt;
         }
-        done = true;
-        return std::nullopt;
+        
+
+        for(const auto& [blockNum, ignore]: searchesToDo){
+            blocksJoined[blockNum] = true;
+        }
+        searchResults.resize(searchesToDo.size());
+        resultIndex = 0;
+        resultsAdded = 0;
+        return searchesToDo;
     }
     private:
     std::atomic<size_t> resultIndex;

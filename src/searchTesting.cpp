@@ -127,7 +127,7 @@ int main(int argc, char *argv[]){
     HyperParameterValues parameters{splitParams, indexParams, searchParams};
     
     bool parallelIndexBuild = true;
-    bool parallelSearch = true;
+    bool parallelSearch = false;
 
     
     std::filesystem::path indexLocation("./Saved-Indecies/MNIST-Fashion");
@@ -214,7 +214,7 @@ int main(int argc, char *argv[]){
         
 
             ThreadPool<SinglePointFunctor<float>> searchPool(numThreads, searchDist);
-
+            
             DataMapper<float, void, void> testMapper(mnistFashionTest);
             std::vector<ParallelContextBlock<float>> searchContexts;
 
@@ -246,9 +246,6 @@ int main(int argc, char *argv[]){
                 std::move(testMapper.sourceToSplitIndex)
             };
     
-    
-            //auto blocksToSearch = BlocksToSearch(searchContexts, metaGraph, additionalInitSearches);
-            //auto blocksToSearch = BlocksToSearch(metaGraph, additionalInitSearches);
 
             std::span<const IndexBlock> indexView{indexBlocks.data(), indexBlocks.size()};
             InitialSearchTask<float> searchGenerator = { queryContexts,
@@ -264,6 +261,57 @@ int main(int argc, char *argv[]){
         
             ParaSearchLoop(searchPool, hintView, searchContexts, std::span{queryContexts}, indexView, maxNewSearches, mnistFashionTest.size());
             searchPool.StopThreads();
+            
+            /*
+            DataMapper<float, void, void> testMapper(mnistFashionTest);
+            std::vector<ContextBlock<float>> searchContexts;
+
+            auto searcherConstructor = [&, &splitToBlockNum=splitToBlockNum](size_t splittingIndex, std::span<const size_t> indicies)->void{
+            
+                ContextBlock<float> retBlock;
+                retBlock.first = splitToBlockNum[splittingIndex];
+                retBlock.second.reserve(indicies.size());
+                for(size_t index: indicies){
+                    //const DataView searchPoint, const std::vector<DataBlock<DataEntry>>& blocks
+                
+                    retBlock.second.push_back({numberSearchNeighbors, numberSearchBlocks, index});
+                }
+                searchContexts.push_back(std::move(retBlock));
+                testMapper(splittingIndex, indicies);
+            };
+            //DataMapper<AlignedArray<float>, std::vector<ParallelSearchContext<float>>, decltype(searcherConstructor)> testMapper(mnistFashionTest, searcherConstructor);
+            CrawlTerminalLeaves(rpTreesTest, searcherConstructor);
+
+            //auto searchContexts = std::move(testMapper.dataBlocks);
+
+            testMappings = {
+                std::move(testMapper.splitToBlockNum),
+                std::move(testMapper.blockIndexToSource),
+                std::move(testMapper.sourceToBlockIndex),
+                std::move(testMapper.sourceToSplitIndex)
+            };
+    
+
+            std::span<const IndexBlock> indexView{indexBlocks.data(), indexBlocks.size()};
+
+            auto taskGen = [queryContexts = std::span{queryContexts}, indexView, maxNewSearches](const BlockNumber_t startBlock, SearchContext<float>& context){
+                auto task = [=, &context](SinglePointFunctor<float>& searchFunctor){
+                    SingleSearch(queryContexts, indexView, context,
+                                 0, startBlock, searchFunctor, maxNewSearches);
+                };
+                return task;
+            };
+
+            searchPool.StartThreads();
+            for (auto& [blockNum, contexts]: searchContexts){
+                for (auto& context: contexts){
+                    searchPool.DelegateTask(taskGen(blockNum, context));
+                }
+            }
+            searchPool.StopThreads();
+            */
+
+
             std::chrono::time_point<std::chrono::steady_clock> runEnd2 = std::chrono::steady_clock::now();
             //std::cout << std::chrono::duration_cast<std::chrono::duration<float>>(runEnd2 - runStart2).count() << "s test set search " << std::endl;
             std::cout << std::chrono::duration_cast<std::chrono::duration<float>>(runEnd2 - runStart2).count() << std::endl;
@@ -315,10 +363,11 @@ int main(int argc, char *argv[]){
             };
         
         
-            //auto blocksToSearch = BlocksToSearch(searchContexts, metaGraph, additionalInitSearches);
         
             //OffsetSpan<const IndexBlock> indexSpan(index.data(), index.size(), metaGraph.GetBlockOffset());
             std::span<const IndexBlock> indexView{indexBlocks.data(), indexBlocks.size()};
+
+            
             SearchQueue searchHints = FirstBlockSearch(searchContexts, searchFunctor, std::span{queryContexts}, indexView, maxNewSearches);
             //std::vector<IndexBlock> index = IndexFinalization(blockUpdateContexts)
 
@@ -326,7 +375,22 @@ int main(int argc, char *argv[]){
 
             SearchLoop(searchFunctor, hintView, searchContexts, std::span{queryContexts}, indexView, maxNewSearches, mnistFashionTest.size());
         
+            
+            /*
+            auto task = [queryContexts = std::span{queryContexts}, indexView, maxNewSearches](const BlockNumber_t startBlock, SearchContext<float>& context, SinglePointFunctor<float>& searchFunctor){
+                
+                    SingleSearch(queryContexts, indexView, context,
+                                 0, startBlock, searchFunctor, maxNewSearches);
+                
+            };
 
+            
+            for (auto& [blockNum, contexts]: searchContexts){
+                for (auto& context: contexts){
+                    task(blockNum, context, searchFunctor);
+                }
+            }
+            */
         
 
             std::chrono::time_point<std::chrono::steady_clock> runEnd2 = std::chrono::steady_clock::now();
