@@ -98,7 +98,7 @@ struct DefaultInitalizer{
 
 struct NullReinitalizer{
 
-    void operator()(auto&){};
+    auto&& operator()(auto&& obj){ return std::move(obj);};
 
 };
 
@@ -112,7 +112,7 @@ struct CacheHandler{
     }
 
 };
-
+/*
 template<typename Cache, typename Reinializer = NullReinitalizer>
 struct CacherGenerator{
     using Derived = typename Cache;
@@ -130,24 +130,43 @@ struct CacherGenerator{
     }
 
 };
+*/
+template<typename Cache>
+struct CacherGenerator{
+    using Derived = typename Cache;
+    using ResourceType = typename Cache::CachedType;
 
-template<std::movable ValueType, template<typename> typename HandlerGenerator, typename Initalizer>
+    //[[no_unique_address]] Reinializer reinit{};
+    //Cache& source;
+
+    auto Handler(auto reinit){
+        auto handler = [&, reinit](ResourceType&& resourceToReturn){
+            static_cast<Derived&>(*this).Put(std::move(reinit(resourceToReturn)));
+        };
+        return handler;
+    }
+
+};
+
+
+template<std::movable ValueType, template<typename> typename HandlerGenerator, typename Reinitalizer, typename Initalizer>
 struct BasicCache : public HandlerGenerator<BasicCache>{
     using HandlerGenerator<BasicCache>::Handler();
     using value_type = ValueType;
     using CachedType = ValueType;
-    using Cachable = UniqueResource<ValueType, decltype(Handler())>;
+    using Cachable = UniqueResource<ValueType, decltype(Handler(std::declval<Reinitalizer>()))>;
     
     std::vector<ValueType> cache;
+    [[no_unique_address]] Reinitalizer reinit{};
     [[no_unique_address]] Initalizer init{};
 
     //Cache(Reinitalizer& reinit, Initalizer& init): reinit{reinit}, init{init} {}
 
     Cachable Take(){
         if (cache.size() == 0){
-            return Cachable(init(), Handler());
+            return Cachable(init(), Handler(reinit));
         } else {
-            Cachable temp(std::move(cache.back()), Handler());
+            Cachable temp(std::move(cache.back()), Handler(reinit));
             cache.pop_back();
             return std::move(temp);
         }
@@ -165,7 +184,7 @@ struct BasicCache : public HandlerGenerator<BasicCache>{
 
 };
 
-
+/*
 template<std::movable ValueType, typename Reinitalizer = NullReinitalizer, typename Initalizer = DefaultInitalizer<ValueType>>
 struct Cache{
     using value_type = ValueType;
@@ -199,11 +218,10 @@ struct Cache{
     }
 
 };
+*/
 
-//constexpr bindCacher
-//template<typename ValueType, typename Reinitalizer = NullReinitalizer, typename Initalizer = DefaultInitalizer<ValueType>
-//using LocalCache = BasicCache<ValueType,
-//= NullReinitalizer, typename Initalizer = DefaultInitalizer<ValueType>
+template<typename ValueType, typename Reinitalizer, typename Initalizer = DefaultInitalizer<ValueType>>
+using LocalCache = BasicCache<ValueType, CacherGenerator, Reinitalizer, Initalizer>;
 
 template<typename DistType>
 auto MakeVertexCache(const size_t numNeighbors = 0){
@@ -215,11 +233,38 @@ auto MakeVertexCache(const size_t numNeighbors = 0){
         returningVertex.resize(0);
     };
 
-    return Cache<GraphVertex<DataIndex_t, DistType>, decltype(reinitalizer), decltype(initalizer)>{std::vector<GraphVertex<DataIndex_t, DistType>>(), reinitalizer, initalizer};
+    return LocalCache<GraphVertex<DataIndex_t, DistType>, decltype(reinitalizer), decltype(initalizer)>{std::vector<GraphVertex<DataIndex_t, DistType>>(), reinitalizer, initalizer};
+};
+
+template<typename Cache>
+struct ThreadCacherGenerator;
+
+namespace internal{
+
+
+
+}
+
+
+template<typename Cache>
+struct ThreadCacherGenerator{
+    using Derived = typename Cache;
+    using ResourceType = typename Cache::CachedType;
+
+    //[[no_unique_address]] Reinializer reinit{};
+    //Cache& source;
+
+    auto Handler(auto reinit){
+        auto handler = [&, reinit](ResourceType&& resourceToReturn){
+            static_cast<Derived&>(*this).Put(std::move(reinit(resourceToReturn)));
+        };
+        return handler;
+    }
+
 };
 
 template<typename DistType>
-using CachableVertex = UniqueResource<GraphVertex<DataIndex_t, DistType>, CacheHandler<decltype(MakeVertexCache<DistType>())>>;
+using CachableVertex = decltype(MakeVertexCache<DistType>())::Cachable;
 
 }
 

@@ -19,6 +19,8 @@ https://github.com/AnabelSMRuggiero/NNDescent.cpp
 #include <optional>
 #include <iostream>
 #include <algorithm>
+#include <atomic>
+#include <mutex>
 
 namespace nnd{
 
@@ -298,6 +300,51 @@ struct ChatterResource : std::pmr::memory_resource{
     };
 
     std::pmr::memory_resource* upstream = std::pmr::get_default_resource();
+};
+
+struct SingleListNode{
+    SingleListNode* next;
+};
+
+struct Pool{
+    size_t chunkSize;
+    std::atomic<SingleListNode*> stackHead;
+
+    std::mutex allocLock;
+
+};
+
+struct Multipool : std::pmr::memory_resource{
+    
+    Multipool() = default;
+
+    Multipool(std::pmr::memory_resource* upstream): upstream(upstream){}
+
+    Multipool(const ChatterResource&) = delete;
+
+    Multipool(ChatterResource&&) = delete;
+
+    Multipool& operator=(const ChatterResource&) = delete;
+
+    Multipool& operator=(ChatterResource&&) = delete;
+
+
+    void* do_allocate( std::size_t bytes, std::size_t alignment ) override{
+        
+        
+        
+    }
+
+    void do_deallocate( void* p, std::size_t bytes, std::size_t alignment ) override{
+
+    }
+
+    bool do_is_equal( const std::pmr::memory_resource& other ) const noexcept override{
+        return this == &other;
+    };
+
+    std::pmr::memory_resource* upstream = std::pmr::get_default_resource();
+    std::mutex upstreamLock;
 };
 
 namespace internal{

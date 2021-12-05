@@ -14,6 +14,7 @@ https://github.com/AnabelSMRuggiero/NNDescent.cpp
 #include <vector>
 #include <algorithm>
 #include <cstring>
+#include <memory>
 
 #include "../../Utilities/Type.hpp"
 #include "../../Utilities/DataSerialization.hpp"
@@ -25,12 +26,12 @@ struct ReturnRemoved {};
 
 static const ReturnRemoved returnRemovedTag;
 
-template<TriviallyCopyable IndexType, TriviallyCopyable FloatType>
+template<TriviallyCopyable IndexType, TriviallyCopyable FloatType, typename Alloc = std::allocator<std::pair<IndexType, FloatType>>>
 struct GraphVertex{
     using EdgeType = std::pair<IndexType, FloatType>;
     using iterator = typename std::vector<std::pair<IndexType, FloatType>>::iterator;
     using const_iterator = typename std::vector<std::pair<IndexType, FloatType>>::const_iterator;
-    std::vector<std::pair<IndexType, FloatType>> neighbors;
+    std::vector<std::pair<IndexType, FloatType>, Alloc> neighbors;
     //std::vector<size_t> reverseNeighbor;
 
     GraphVertex(): neighbors(0){};
