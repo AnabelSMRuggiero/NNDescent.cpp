@@ -348,7 +348,9 @@ struct Multipool : std::pmr::memory_resource{
 };
 
 namespace internal{
-    thread_local std::pmr::memory_resource* threadDefaultResource = std::pmr::get_default_resource();
+    //Can't grab the default here because set_default_resource is usually called in main,
+    //the static and first thread_local one are instantiated before then.
+    thread_local std::pmr::memory_resource* threadDefaultResource = std::pmr::new_delete_resource();
 
     void SetThreadResource(std::pmr::memory_resource* resourcePtr){
         threadDefaultResource = resourcePtr;
@@ -357,7 +359,33 @@ namespace internal{
     std::pmr::memory_resource* GetThreadResource(){
         return threadDefaultResource;
     }
+
+    static std::atomic<std::pmr::memory_resource*> internalDefaultResource = std::pmr::new_delete_resource();
+
+    void SetInternalResource(std::pmr::memory_resource* resourcePtr){
+        internalDefaultResource = resourcePtr;
+    }
+
+    std::pmr::memory_resource* GetInternalResource(){
+        return internalDefaultResource;
+    }
+
+
 }
+
+//literally just std::pmr::polymorphic_allocator, but with overwritten default constructor that pulls from the internal resource.
+template<typename ValueType>
+struct PolymorphicAllocator : std::pmr::polymorphic_allocator<ValueType>{
+    using std::pmr::polymorphic_allocator<ValueType>::polymorphic_allocator;
+    PolymorphicAllocator() : std::pmr::polymorphic_allocator<ValueType>(internal::GetInternalResource()){}
+    
+    template<typename OtherValueType>
+    PolymorphicAllocator(const std::pmr::polymorphic_allocator<OtherValueType>& other) : std::pmr::polymorphic_allocator<ValueType>(other) {}
+
+    PolymorphicAllocator select_on_container_copy_construction() const{
+        return PolymorphicAllocator();
+    }
+};
 
 
 

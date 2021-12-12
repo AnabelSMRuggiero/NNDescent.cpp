@@ -17,6 +17,7 @@ https://github.com/AnabelSMRuggiero/NNDescent.cpp
 #include <utility>
 #include <ranges>
 #include <functional>
+#include <memory>
 
 #include "GraphStructures.hpp"
 #include "SubGraphQuerying.hpp"
@@ -46,9 +47,9 @@ struct JoinHint{
 //template<typename DataIndexType>
 using JoinHints = std::unordered_map<DataIndex_t, std::vector<DataIndex_t>>;
 
-//template<typename BlockNumberType, typename DataIndexType>                                   // Consider using a fixed size array
+//template<template<typename> typename Alloc = std::allocator>                                 
 using JoinMap = std::unordered_map<BlockNumber_t, std::unordered_map<DataIndex_t, std::vector<DataIndex_t>>>;
-// I could also do a struct where the actual data is vectors, and I use unordered_maps to remap indicies
+
 
 template<typename DistType>
 ComparisonMap InitializeComparisonQueues(const Graph<BlockIndecies, DistType>& currentBlock, BlockNumber_t blockNum){
@@ -81,8 +82,8 @@ std::vector<std::pair<DataIndex_t, std::vector<DataIndex_t>>> FlattenHints(const
 }
 
 
-template<typename DistType>
-using JoinResults = std::vector<std::pair<DataIndex_t, GraphVertex<DataIndex_t, DistType>>>;
+template<typename DistType, template<typename> typename Alloc = PolymorphicAllocator>
+using JoinResults = std::vector<std::pair<DataIndex_t, GraphVertex<DataIndex_t, DistType, Alloc>>, Alloc<std::pair<DataIndex_t, GraphVertex<DataIndex_t, DistType, Alloc>>>>;
 
 //template<typename BlockNumberType, typename DataIndexType, typename DataEntry, typename DistType>
 template<typename DistType, typename QueryFunctor>
@@ -241,7 +242,7 @@ void ReverseBlockJoin(const JoinHints& startJoins,
 }
 
 template<typename DistType, bool checkGraphFragment>
-void NewJoinQueues(const std::vector<std::pair<DataIndex_t, GraphVertex<DataIndex_t, DistType>>>& joinResults,
+void NewJoinQueues(const JoinResults<DistType>& joinResults,
                    const NodeTracker& blocksJoined,
                    const GraphFragment_t targetFragment,
                    const Graph<BlockIndecies, DistType>& targetGraphState,

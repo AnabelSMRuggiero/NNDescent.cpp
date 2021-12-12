@@ -15,6 +15,7 @@ https://github.com/AnabelSMRuggiero/NNDescent.cpp
 #include <algorithm>
 #include <cstring>
 #include <memory>
+#include <type_traits>
 
 #include "../../Utilities/Type.hpp"
 #include "../../Utilities/DataSerialization.hpp"
@@ -26,19 +27,53 @@ struct ReturnRemoved {};
 
 static const ReturnRemoved returnRemovedTag;
 
-template<TriviallyCopyable IndexType, TriviallyCopyable FloatType, typename Alloc = std::allocator<std::pair<IndexType, FloatType>>>
+//This might need to be more precisely constrained, but works for now 
+template<typename Vertex, typename IndexType, typename DistType>
+concept VertexLike = std::same_as<typename Vertex::Index_t, IndexType> && std::same_as<typename Vertex::Distance_t, DistType>;
+
+
+template<TriviallyCopyable IndexType, TriviallyCopyable FloatType, template<typename> typename Alloc = std::allocator>
 struct GraphVertex{
     using EdgeType = std::pair<IndexType, FloatType>;
+    using Index_t = IndexType;
+    using Distance_t = FloatType;
     using iterator = typename std::vector<std::pair<IndexType, FloatType>>::iterator;
     using const_iterator = typename std::vector<std::pair<IndexType, FloatType>>::const_iterator;
-    std::vector<std::pair<IndexType, FloatType>, Alloc> neighbors;
+
+    using allocator_type = Alloc<EdgeType>;
+
+    std::vector<std::pair<IndexType, FloatType>, Alloc<EdgeType>> neighbors;
     //std::vector<size_t> reverseNeighbor;
 
-    GraphVertex(): neighbors(0){};
+    GraphVertex(allocator_type allocator = allocator_type{}): neighbors(0, allocator){};
 
-    GraphVertex(size_t numNeighbors): neighbors(0) {
+    GraphVertex(size_t numNeighbors, allocator_type allocator = allocator_type{}): neighbors(0, allocator) {
         this->neighbors.reserve(numNeighbors + 1);
     };
+    
+    GraphVertex(const GraphVertex&) = default;
+    GraphVertex& operator=(const GraphVertex&) = default;
+    
+    //Explicit copy constructor for when allocators don't match
+    template<VertexLike<IndexType, FloatType> Other>
+        requires (IsNot<GraphVertex, Other>)
+    GraphVertex(const Other& other, allocator_type allocator = allocator_type{}): neighbors(other.size()+1, allocator) {
+        neighbors.resize(other.size());
+        std::ranges::copy(other, this->begin());
+    }
+
+    GraphVertex(const GraphVertex& other, allocator_type allocator): neighbors(other.size()+1, allocator) {
+        neighbors.resize(other.size());
+        std::ranges::copy(other, this->begin());
+    }
+
+    GraphVertex(GraphVertex&& other, allocator_type allocator): neighbors(std::move(other.neighbors), allocator) {
+    }
+
+    GraphVertex(GraphVertex&&) = default;
+    GraphVertex& operator=(GraphVertex&&) = default;
+
+    //GraphVertex()
 
     //GraphVertex(GraphVertex&& rval): neighbors(std::forward<std::vector<std::pair<IndexType, FloatType>>>(rval.neighbors)){};
     //Incorporate size checking in here?
@@ -202,9 +237,15 @@ struct GraphVertex{
     //private:
     
 };
+template<typename Type>
+static constexpr bool isGraphVertex = false;
 
-template<typename IndexType, typename DistType>
-GraphVertex<IndexType, DistType>& EraseRemove(GraphVertex<IndexType, DistType>& vertex, DistType minValue){
+template<TriviallyCopyable IndexType, TriviallyCopyable DistType, template<typename> typename Alloc>
+static constexpr bool isGraphVertex<GraphVertex<IndexType, DistType, Alloc>> = true;
+
+template<typename Vertex>
+    requires isGraphVertex<Vertex>
+Vertex& EraseRemove(Vertex& vertex, typename Vertex::Distance_t minValue){
 
     size_t index = vertex.FindIndexFront(minValue);
     vertex.erase(vertex.begin()+index, vertex.end());
@@ -214,7 +255,7 @@ GraphVertex<IndexType, DistType>& EraseRemove(GraphVertex<IndexType, DistType>& 
 
 //Rewrite as stream operator?
 template<typename DistType>
-unsigned int ConsumeVertex(GraphVertex<BlockIndecies, DistType>& consumer, GraphVertex<BlockIndecies, DistType>& consumee){
+unsigned int ConsumeVertex(VertexLike<BlockIndecies, DistType> auto& consumer, VertexLike<BlockIndecies, DistType> auto&& consumee){
     //std::sort(consumee.begin(), consumee.end(), NeighborDistanceComparison<BlockIndecies, DistType>);
     consumee.UnPrep();
     unsigned int neighborsAdded(0);
@@ -225,7 +266,7 @@ unsigned int ConsumeVertex(GraphVertex<BlockIndecies, DistType>& consumer, Graph
     }
     return neighborsAdded;
 }
-
+/*
 template<typename DistType>
 unsigned int ConsumeVertex(GraphVertex<BlockIndecies, DistType>& consumer, GraphVertex<BlockIndecies, DistType>&& consumee){
     //std::sort(consumee.begin(), consumee.end(), NeighborDistanceComparison<BlockIndecies, DistType>);
@@ -238,10 +279,13 @@ unsigned int ConsumeVertex(GraphVertex<BlockIndecies, DistType>& consumer, Graph
     }
     return neighborsAdded;
 }
+*/
 
-template<TriviallyCopyable OtherIndex, typename OtherDist, typename ConsumerDist>
-unsigned int ConsumeVertex(GraphVertex<BlockIndecies, ConsumerDist>& consumer, GraphVertex<OtherIndex, OtherDist>& consumee, size_t consumeeFragment, size_t consumeeBlock){
+template<typename Consumer, typename OtherVertex>
+    requires isGraphVertex<Consumer> && isGraphVertex<OtherVertex>
+unsigned int ConsumeVertex(Consumer& consumer, OtherVertex& consumee, size_t consumeeFragment, size_t consumeeBlock){
     //std::sort(consumee.begin(), consumee.end(), NeighborDistanceComparison<OtherIndex, OtherDist>);
+    using ConsumerDist = typename Consumer::Distance_t;
     consumee.UnPrep();
     unsigned int neighborsAdded(0);
     for (auto& pair: consumee){
