@@ -22,6 +22,8 @@ https://github.com/AnabelSMRuggiero/NNDescent.cpp
 #include <atomic>
 #include <mutex>
 
+#include "PointerManipulation.hpp"
+
 namespace nnd{
 
 
@@ -305,13 +307,62 @@ struct ChatterResource : std::pmr::memory_resource{
 struct SingleListNode{
     SingleListNode* next;
 };
-
+//Implementation detail of AtomicPool
 struct Pool{
-    size_t chunkSize;
-    std::atomic<SingleListNode*> stackHead;
+    const size_t chunkSize;
+    const size_t restockAmount;
+    
+    Pool(const size_t chunkSize, const size_t restockAmount, std::pmr::memory_resource* upstream):
+        chunkSize{chunkSize},
+        restockAmount{restockAmount},
+        memoryChunks{upstream} {}
 
-    std::mutex allocLock;
+    std::byte* Allocate(const auto& grabFromUpstream){
+        SingleListNode* currentHead = stackHead.load();
+        while(true){
+            if(currentHead == nullptr){
+                Restock();
+            }
 
+            while(currentHead != nullptr){
+                if(stackHead.compare_exchange_strong(currentHead, currentHead->next)){
+                    currentHead->~SingleListNode();
+                    return PtrCast<std::byte*>(currentHead);
+                }
+            }
+        }
+    }
+
+    void Restock(const auto& grabFromUpstream, SingleListNode* currentHead = nullptr){
+        std::unique_lock restockGuard(restockMutex, std::try_to_lock_t{});
+        if (restockGuard){
+            do{
+                std::byte* memoryChunk = grabFromUpstream(restockAmount*chunkSize, memoryChunks);
+                //memoryChunks.push_back(memoryChunk);
+                for (size_t i = 0; i<restockAmount; i+=1){
+                    SingleListNode* newChunk = new (memoryChunk) SingleListNode{stackHead.load()};
+                    while(!stackHead.compare_exchange_strong(newChunk->next, newChunk)){};
+                    memoryChunk += chunkSize;
+                    stackHead.notify_one();
+                }
+            } while((waitingThreads.load() == 0) && (stackHead.load() != nullptr));
+        } else{
+            waitingThreads.fetch_add(1);
+            stackHead.wait(currentHead);
+            waitingThreads.fetch_sub(1);
+        }
+    }
+
+    void Deallocate(std::byte* memoryChunk){
+        SingleListNode* returningChunk = new (memoryChunk) SingleListNode{stackHead.load()};
+        while(!stackHead.compare_exchange_strong(newChunk->next, newChunk)){};
+    }
+
+    private:
+    std::atomic<SingleListNode*> stackHead{nullptr};
+    std::mutex restockMutex;
+    std::atomic<size_t> waitingThreads{0};
+    std::pmr::vector<std::byte*> memoryChunks;
 };
 
 struct Multipool : std::pmr::memory_resource{

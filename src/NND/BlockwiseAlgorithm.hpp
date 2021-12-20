@@ -309,7 +309,7 @@ struct BlockUpdateContext {
         blockJoinTracker(numberOfBlocksToJoin),
         queryContext(std::move(queryContext)),
         currentGraph(ToBlockIndecies(blockGraph, queryContext.graphFragment, queryContext.blockNumber)),
-        joinPropagation(std::forward<Graph<DataIndex_t, DistType>>(blockGraph)){
+        joinPropagation(std::move<Graph<DataIndex_t, DistType>>(blockGraph)){
             blockJoinTracker[queryContext.blockNumber] = true;
     };
 

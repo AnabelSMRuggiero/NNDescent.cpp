@@ -24,18 +24,7 @@ https://github.com/AnabelSMRuggiero/NNDescent.cpp
 
 namespace nnd{
 
-template <typename RetType, typename ArgType>
-std::remove_pointer_t<RetType>* PtrCast(ArgType* ptrToCast){
-    if constexpr (std::is_const_v<RetType> && std::is_volatile_v<RetType>){
-        return static_cast<std::remove_pointer_t<RetType>*>(static_cast<const volatile void*>(ptrToCast));
-    } else if (std::is_const_v<RetType>){
-        return static_cast<std::remove_pointer_t<RetType>*>(static_cast<const void*>(ptrToCast));
-    } else if (std::is_volatile_v<RetType>){
-        return static_cast<std::remove_pointer_t<RetType>*>(static_cast<volatile void*>(ptrToCast));
-    } else{
-        return static_cast<std::remove_pointer_t<RetType>*>(static_cast<volatile void*>(ptrToCast));
-    }
-}
+
 
 
 template<typename ElementType>

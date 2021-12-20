@@ -439,6 +439,11 @@ int main(int argc, char *argv[]){
 
 
     //std::vector<size_t> trainClassifications(mnistFashionTrain.numberOfSamples);
+
+    std::pmr::monotonic_buffer_resource memoryIn(std::pmr::get_default_resource());
+    std::pmr::synchronized_pool_resource nndPool(&memoryIn);
+
+    internal::SetInternalResource(&nndPool);
     
     ThreadPool<void> blockBuilder(numThreads);
 
