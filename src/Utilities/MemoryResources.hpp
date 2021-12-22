@@ -21,10 +21,38 @@ https://github.com/AnabelSMRuggiero/NNDescent.cpp
 #include <algorithm>
 #include <atomic>
 #include <mutex>
+#include <bit>
+#include <memory>
 
 #include "PointerManipulation.hpp"
 
 namespace nnd{
+
+namespace internal{
+    //Can't grab the default here because set_default_resource is usually called in main,
+    //the static and first thread_local one are instantiated before then.
+    thread_local std::pmr::memory_resource* threadDefaultResource = std::pmr::new_delete_resource();
+
+    void SetThreadResource(std::pmr::memory_resource* resourcePtr){
+        threadDefaultResource = resourcePtr;
+    }
+
+    std::pmr::memory_resource* GetThreadResource(){
+        return threadDefaultResource;
+    }
+
+    static std::atomic<std::pmr::memory_resource*> internalDefaultResource = std::pmr::new_delete_resource();
+
+    void SetInternalResource(std::pmr::memory_resource* resourcePtr){
+        internalDefaultResource = resourcePtr;
+    }
+
+    std::pmr::memory_resource* GetInternalResource(){
+        return internalDefaultResource;
+    }
+
+
+}
 
 
 struct FreeListNode{
@@ -307,12 +335,17 @@ struct ChatterResource : std::pmr::memory_resource{
 struct SingleListNode{
     SingleListNode* next;
 };
-//Implementation detail of AtomicPool
-struct Pool{
+struct MemoryChunk{
+    std::byte* start;
+    size_t size;
+};
+//Implementation detail of AtomicMultiPool
+
+struct AtomicPool{
     const size_t chunkSize;
     const size_t restockAmount;
     
-    Pool(const size_t chunkSize, const size_t restockAmount, std::pmr::memory_resource* upstream):
+    AtomicPool(const size_t chunkSize, const size_t restockAmount, std::pmr::memory_resource* upstream):
         chunkSize{chunkSize},
         restockAmount{restockAmount},
         memoryChunks{upstream} {}
@@ -333,15 +366,15 @@ struct Pool{
         }
     }
 
-    void Restock(const auto& grabFromUpstream, SingleListNode* currentHead = nullptr){
+    void Restock(auto& grabFromUpstream, SingleListNode* currentHead = nullptr){
         std::unique_lock restockGuard(restockMutex, std::try_to_lock_t{});
         if (restockGuard){
             do{
                 std::byte* memoryChunk = grabFromUpstream(restockAmount*chunkSize, memoryChunks);
                 //memoryChunks.push_back(memoryChunk);
                 for (size_t i = 0; i<restockAmount; i+=1){
-                    SingleListNode* newChunk = new (memoryChunk) SingleListNode{stackHead.load()};
-                    while(!stackHead.compare_exchange_strong(newChunk->next, newChunk)){};
+                    SingleListNode* newNode = new (memoryChunk) SingleListNode{stackHead.load()};
+                    while(!stackHead.compare_exchange_strong(newChunk->next, newNode)){};
                     memoryChunk += chunkSize;
                     stackHead.notify_one();
                 }
@@ -355,35 +388,116 @@ struct Pool{
 
     void Deallocate(std::byte* memoryChunk){
         SingleListNode* returningChunk = new (memoryChunk) SingleListNode{stackHead.load()};
-        while(!stackHead.compare_exchange_strong(newChunk->next, newChunk)){};
+        while(!stackHead.compare_exchange_strong(newChunk->next, returningChunk)){};
+    }
+
+    void Release(auto& returnToUpstream){
+        returnToUpstream(memoryChunks);
     }
 
     private:
     std::atomic<SingleListNode*> stackHead{nullptr};
     std::mutex restockMutex;
     std::atomic<size_t> waitingThreads{0};
-    std::pmr::vector<std::byte*> memoryChunks;
+    std::pmr::vector<MemoryChunk> memoryChunks;
 };
 
-struct Multipool : std::pmr::memory_resource{
-    
-    Multipool() = default;
+struct AtomicMultipool : std::pmr::memory_resource{
+    static constexpr size_t startSize = 64;
+    static constexpr size_t numberOfPools = 8;
+    static constexpr size_t biggestPoolSize = startSize<<(numberOfPools-1); //4k atm
 
-    Multipool(std::pmr::memory_resource* upstream): upstream(upstream){}
+    static constexpr size_t defaultAlignment = 64;
+    static_assert(defaultAlignment>=sizeof(std::byte*)); //Implementation assumption
+    static constexpr size_t defaultRestock = 10; //can do something smarter later
 
-    Multipool(const ChatterResource&) = delete;
+    AtomicMultipool(std::pmr::memory_resource* upstream): upstreamAlloc{upstream} {
+        memoryPools.reserve(numberOfPools);
 
-    Multipool(ChatterResource&&) = delete;
+        auto pullFromUpstream = [&] (const size_t chunkSize, std::pmr::vector<MemoryChunk>& poolChunks)->std::byte*{
+            std::unique_lock lockMultipool{this->upstreamLock};
+            std::byte* memory = static_cast<std::byte*>(this->upstreamAlloc.allocate_bytes(chunkSize, ));
+            //This may cause the vector to reallocate, that reallocation MUST be guarded.
+            poolChunks.push_back({memory, chunkSize});
+            return memory;
+        };
 
-    Multipool& operator=(const ChatterResource&) = delete;
+        for (size_t i = 0; i<numberOfPools; i+=1){
+            memoryPools.emplace_back(startSize<<i, defaultRestock, upstreamAlloc.resource());
+            memoryPools.back().Restock(pullFromUpstream);
+        }
+    }
 
-    Multipool& operator=(ChatterResource&&) = delete;
+    AtomicMultipool(const AtomicMultipool&) = delete;
+
+    AtomicMultipool(AtomicMultipool&&) = delete;
+
+    AtomicMultipool& operator=(const AtomicMultipool&) = delete;
+
+    AtomicMultipool& operator=(AtomicMultipool&&) = delete;
+
+    ~AtomicMultipool(){
+        Release();
+    }
+
+    private:
 
 
     void* do_allocate( std::size_t bytes, std::size_t alignment ) override{
-        
-        
-        
+
+        if ((bytes+alignment)>biggestPoolSize){
+            return OversizedAlloc(bytes, alignment);
+        }
+
+        auto pullFromUpstream = [&] (const size_t chunkSize, std::pmr::vector<MemoryChunk>& poolChunks)->std::byte*{
+            std::unique_lock lockMultipool{this->upstreamLock};
+            std::byte* memory = static_cast<std::byte*>(this->upstreamAlloc.allocate_bytes(chunkSize, defaultAlignment));
+            //This may cause the vector to reallocate, that reallocation MUST be guarded.
+            poolChunks.push_back({memory, chunkSize});
+            return memory;
+        };
+
+        [[likely]] if (alignment<=defaultAlignment){
+            size_t adjustedSize = std::bit_ceil(bytes);
+            
+            size_t poolIndex = [&]()->size_t{
+                if (adjustedSize <= startSize){
+                    return 0;
+                }
+                constexpr size_t indexOffset = std::countl_zero(startSize);
+                return std::countl_zero(adjustedSize) - indexOffset;
+            }();
+
+            std::byte* chunk = memoryPools[poolIndex].Allocate(pullFromUpstream);
+
+            return static_cast<void*>(chunk);
+            
+        } else { //guh, who are you, me?
+            size_t adjustedSize = std::bit_ceil(bytes+alignment);
+            
+            size_t poolIndex = [&]()->size_t{
+                if (adjustedSize <= startSize){
+                    return 0;
+                }
+                constexpr size_t indexOffset = std::countl_zero(startSize);
+                return std::countl_zero(adjustedSize) - indexOffset;
+            }();
+
+            std::byte* chunkStart = memoryPools[poolIndex].Allocate(pullFromUpstream);
+
+            void* retPointer = static_cast<void*>(chunkStart);
+            std::align(alignment, bytes, retPointer, adjustedSize);
+
+            if ((adjustedSize-bytes) > sizeof(std::byte*)*2){
+                new (retPointer + bytes) std::byte{1}; //pointer to head of chunk is on this side
+                new (retPointer + bytes + sizeof(std::byte*)) std::byte*{chunkStart};
+            } else {
+                new (retPointer + bytes) std::byte{0}; //pointer is near beginning of alloc;
+                new (retPointer - sizeof(std::byte*)) std::byte*{chunkStart};
+            }
+
+            return retPointer;
+        }
     }
 
     void do_deallocate( void* p, std::size_t bytes, std::size_t alignment ) override{
@@ -394,35 +508,21 @@ struct Multipool : std::pmr::memory_resource{
         return this == &other;
     };
 
-    std::pmr::memory_resource* upstream = std::pmr::get_default_resource();
+    void* OversizedAlloc( std::size_t bytes, std::size_t alignment ){
+
+    }
+
+    Release(){
+
+    }
+
+    std::pmr::polymorphic_allocator<> upstreamAlloc = std::pmr::get_default_resource();
+    std::pmr::vector<AtomicPool> memoryPools;
     std::mutex upstreamLock;
+    //Add in some sort of flexible memory cache to handle oversized allocs
 };
 
-namespace internal{
-    //Can't grab the default here because set_default_resource is usually called in main,
-    //the static and first thread_local one are instantiated before then.
-    thread_local std::pmr::memory_resource* threadDefaultResource = std::pmr::new_delete_resource();
 
-    void SetThreadResource(std::pmr::memory_resource* resourcePtr){
-        threadDefaultResource = resourcePtr;
-    }
-
-    std::pmr::memory_resource* GetThreadResource(){
-        return threadDefaultResource;
-    }
-
-    static std::atomic<std::pmr::memory_resource*> internalDefaultResource = std::pmr::new_delete_resource();
-
-    void SetInternalResource(std::pmr::memory_resource* resourcePtr){
-        internalDefaultResource = resourcePtr;
-    }
-
-    std::pmr::memory_resource* GetInternalResource(){
-        return internalDefaultResource;
-    }
-
-
-}
 
 //literally just std::pmr::polymorphic_allocator, but with overwritten default constructor that pulls from the internal resource.
 template<typename ValueType>

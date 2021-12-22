@@ -1,4 +1,3 @@
-
 /*
 NNDescent.cpp: Copyright (c) Anabel Ruggiero
 At the time of writting, this code is unreleased and not published under a license.
