@@ -14,7 +14,7 @@ https://github.com/AnabelSMRuggiero/NNDescent.cpp
 #include <memory>
 #include <atomic>
 
-#include "Utilities/Metrics/FunctorErasure.hpp"
+#include "ann/Metrics/FunctorErasure.hpp"
 #include "../GraphStructures.hpp"
 #include "../BlockwiseAlgorithm.hpp"
 

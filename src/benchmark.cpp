@@ -23,11 +23,11 @@ https://github.com/AnabelSMRuggiero/NNDescent.cpp
 
 #include <immintrin.h>
 
-#include "Utilities/Type.hpp"
+#include "ann/Type.hpp"
 
-#include "Utilities/Metrics/SpaceMetrics.hpp"
-#include "Utilities/Data.hpp"
-#include "Utilities/DataDeserialization.hpp"
+#include "ann/Metrics/SpaceMetrics.hpp"
+#include "ann/Data.hpp"
+#include "ann/DataDeserialization.hpp"
 
 #include "NND/GraphStructures.hpp"
 #include "NND/UtilityFunctions.hpp"

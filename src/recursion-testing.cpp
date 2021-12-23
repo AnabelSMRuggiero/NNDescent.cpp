@@ -19,9 +19,9 @@ https://github.com/AnabelSMRuggiero/NNDescent.cpp
 #include <type_traits>
 #include <algorithm>
 
-#include "Utilities/Type.hpp"
-#include "Utilities/Data.hpp"
-#include "Utilities/Metrics/Euclidean.hpp"
+#include "ann/Type.hpp"
+#include "ann/Data.hpp"
+#include "ann/Metrics/Euclidean.hpp"
 
 #include "Parallelization/ThreadPool.hpp"
 

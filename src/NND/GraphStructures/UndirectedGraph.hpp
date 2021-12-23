@@ -16,10 +16,10 @@ https://github.com/AnabelSMRuggiero/NNDescent.cpp
 #include <fstream>
 
 #include "Graph.hpp"
-#include "../../Utilities/Type.hpp"
-#include "../../Utilities/Data.hpp"
-#include "../../Utilities/DataSerialization.hpp"
-#include "../../Utilities/DataDeserialization.hpp"
+#include "ann/Type.hpp"
+#include "ann/Data.hpp"
+#include "ann/DataSerialization.hpp"
+#include "ann/DataDeserialization.hpp"
 
 namespace nnd{
 

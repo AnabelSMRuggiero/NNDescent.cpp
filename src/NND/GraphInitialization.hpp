@@ -26,8 +26,8 @@ https://github.com/AnabelSMRuggiero/NNDescent.cpp
 #include "./BlockwiseAlgorithm.hpp"
 
 
-#include "../Utilities/Data.hpp"
-#include "../Utilities/Metrics/FunctorErasure.hpp"
+#include "../ann/Data.hpp"
+#include "../ann/Metrics/FunctorErasure.hpp"
 
 namespace nnd{
 

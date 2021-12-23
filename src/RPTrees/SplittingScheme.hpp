@@ -16,8 +16,8 @@ https://github.com/AnabelSMRuggiero/NNDescent.cpp
 #include <thread>
 #include <numeric>
 
-#include "Utilities/Metrics/SpaceMetrics.hpp"
-#include "Utilities/Data.hpp"
+#include "ann/Metrics/SpaceMetrics.hpp"
+#include "ann/Data.hpp"
 
 namespace nnd{
 

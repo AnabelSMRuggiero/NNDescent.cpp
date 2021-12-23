@@ -24,10 +24,10 @@ https://github.com/AnabelSMRuggiero/NNDescent.cpp
 #include <functional>
 #include <concepts>
 
-#include "../Utilities/Data.hpp"
-#include "../Utilities/DataSerialization.hpp"
-#include "../Utilities/DataDeserialization.hpp"
-#include "../Utilities/Metrics/FunctorErasure.hpp"
+#include "../ann/Data.hpp"
+#include "../ann/DataSerialization.hpp"
+#include "../ann/DataDeserialization.hpp"
+#include "../ann/Metrics/FunctorErasure.hpp"
 #include "GraphStructures.hpp"
 
 namespace nnd{

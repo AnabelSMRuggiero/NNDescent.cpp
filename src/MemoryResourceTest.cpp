@@ -10,7 +10,8 @@ https://github.com/AnabelSMRuggiero/NNDescent.cpp
 
 #include <cstddef>
 #include <vector>
-#include "Utilities/MemoryResources.hpp"
+#include "ann/MemoryResources.hpp"
+#include "Parallelization/ThreadPool.hpp"
 
 
 using namespace nnd;
@@ -47,6 +48,13 @@ int main(){
 
     }
 
+    {
+        
+        ThreadPool<void> pool;
+
+
+
+    }
 
     return 0;
 }

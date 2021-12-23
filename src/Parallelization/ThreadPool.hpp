@@ -18,8 +18,8 @@ https://github.com/AnabelSMRuggiero/NNDescent.cpp
 #include <type_traits>
 #include <memory_resource>
 
-#include "../Utilities/UniqueFunction.hpp"
-#include "../Utilities/MemoryResources.hpp"
+#include "../ann/UniqueFunction.hpp"
+#include "../ann/MemoryResources.hpp"
 
 #include "AsyncQueue.hpp"
 

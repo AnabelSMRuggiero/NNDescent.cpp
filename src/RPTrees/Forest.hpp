@@ -26,7 +26,7 @@ https://github.com/AnabelSMRuggiero/NNDescent.cpp
 #include <type_traits>
 #include <thread>
 
-#include "../Utilities/Type.hpp"
+#include "../ann/Type.hpp"
 #include "Parallelization/ThreadPool.hpp"
 #include "../NND/RNG.hpp"
 #include "./SplittingScheme.hpp"

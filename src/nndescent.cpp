@@ -28,11 +28,11 @@ https://github.com/AnabelSMRuggiero/NNDescent.cpp
 
 //#include <type_traits>
 
-#include "Utilities/Type.hpp"
-#include "Utilities/Data.hpp"
-#include "Utilities/Metrics/SpaceMetrics.hpp"
-#include "Utilities/Metrics/FunctorErasure.hpp"
-#include "Utilities/Metrics/Euclidean.hpp"
+#include "ann/Type.hpp"
+#include "ann/Data.hpp"
+#include "ann/Metrics/SpaceMetrics.hpp"
+#include "ann/Metrics/FunctorErasure.hpp"
+#include "ann/Metrics/Euclidean.hpp"
 
 #include "NND/GraphStructures.hpp"
 #include "NND/MetaGraph.hpp"
@@ -46,8 +46,8 @@ https://github.com/AnabelSMRuggiero/NNDescent.cpp
 #include "RPTrees/SplittingScheme.hpp"
 #include "RPTrees/Forest.hpp"
 
-#include "Utilities/DataSerialization.hpp"
-#include "Utilities/DataDeserialization.hpp"
+#include "ann/DataSerialization.hpp"
+#include "ann/DataDeserialization.hpp"
 
 
 using namespace nnd;

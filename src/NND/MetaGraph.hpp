@@ -19,8 +19,8 @@ https://github.com/AnabelSMRuggiero/NNDescent.cpp
 #include <execution>
 #include <algorithm>
 
-#include "../Utilities/Data.hpp"
-#include "../Utilities/DataSerialization.hpp"
+#include "../ann/Data.hpp"
+#include "../ann/DataSerialization.hpp"
 
 #include "Type.hpp"
 #include "GraphStructures.hpp"

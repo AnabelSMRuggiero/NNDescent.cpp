@@ -13,13 +13,13 @@ https://github.com/AnabelSMRuggiero/NNDescent.cpp
 #include <unordered_map>
 #include <unordered_set>
 
-#include "Utilities/DelayConstruct.hpp"
-#include "Utilities/DataDeserialization.hpp"
-#include "Utilities/Type.hpp"
-#include "Utilities/Data.hpp"
-#include "Utilities/Metrics/SpaceMetrics.hpp"
-#include "Utilities/Metrics/FunctorErasure.hpp"
-#include "Utilities/Metrics/Euclidean.hpp"
+#include "ann/DelayConstruct.hpp"
+#include "ann/DataDeserialization.hpp"
+#include "ann/Type.hpp"
+#include "ann/Data.hpp"
+#include "ann/Metrics/SpaceMetrics.hpp"
+#include "ann/Metrics/FunctorErasure.hpp"
+#include "ann/Metrics/Euclidean.hpp"
 
 #include "NND/MetaGraph.hpp"
 #include "NND/Type.hpp"

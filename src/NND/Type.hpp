@@ -3,8 +3,8 @@
 
 #include <vector>
 #include <concepts>
-#include "../Utilities/Type.hpp"
-#include "../Utilities/Data.hpp"
+#include "../ann/Type.hpp"
+#include "../ann/Data.hpp"
 #include <cstdint>
 //#include <memory>
 

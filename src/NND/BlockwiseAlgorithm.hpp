@@ -23,7 +23,7 @@ https://github.com/AnabelSMRuggiero/NNDescent.cpp
 #include "SubGraphQuerying.hpp"
 
 #include "UtilityFunctions.hpp"
-#include "../Utilities/Data.hpp"
+#include "../ann/Data.hpp"
 
 namespace nnd{
 

@@ -13,9 +13,9 @@ https://github.com/AnabelSMRuggiero/NNDescent.cpp
 
 #include <vector>
 
-#include "../../Utilities/Type.hpp"
-#include "../../Utilities/Metrics/FunctorErasure.hpp"
-#include "../../Utilities/Data.hpp"
+#include "ann/Type.hpp"
+#include "ann/Metrics/FunctorErasure.hpp"
+#include "ann/Data.hpp"
 #include "../Type.hpp"
 
 namespace nnd {
