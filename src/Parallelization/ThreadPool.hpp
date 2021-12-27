@@ -59,7 +59,7 @@ struct TaskThread{
 
             std::stop_callback stopQueuer(stopToken, queueTerminator);
 
-            MemoryCache<5> threadCache;
+            ShallowCache<5> threadCache;
             internal::SetThreadResource(&threadCache);
             this->running = true;
             while(running){

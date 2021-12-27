@@ -20,7 +20,7 @@ int main(){
 
     {
         ChatterResource squaker;
-        MemoryCache testCache(&squaker);
+        DynamicCache testCache(&squaker);
 
         {
             std::pmr::vector<double> moreTest(45, &testCache);
