@@ -203,7 +203,7 @@ struct DefaultQueryFunctor{
 };
 
 namespace internal{
-    static constexpr size_t maxBatch = 7;
+    static constexpr size_t maxBatch = 14;
 }
 
 template<std::unsigned_integral IndexType, std::totally_ordered DistType>

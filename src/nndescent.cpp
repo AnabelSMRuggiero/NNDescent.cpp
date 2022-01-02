@@ -249,7 +249,7 @@ int main(int argc, char *argv[]){
     SplittingHeurisitcs splitParams= {16, 140, 60, 180};
     */
 
-    constexpr size_t numThreads = 4;
+    constexpr size_t numThreads = 12;
 
     //IndexParameters indexParams{12, 40, 35, 6};
     IndexParameters indexParams{12, 20, 15, 6};
@@ -267,7 +267,8 @@ int main(int argc, char *argv[]){
     size_t maxNewSearches = 10;
 
     //SplittingHeurisitcs splitParams= {1250, 750, 1750, 0.0f};
-    SplittingHeurisitcs splitParams= {205, 123, 287, 0.0f};
+    SplittingHeurisitcs splitParams= {2500, 1500, 3500, 0.0f};
+    //SplittingHeurisitcs splitParams= {205, 123, 287, 0.0f};
 
     //SplittingHeurisitcs splitParams= {20, 12, 28, 0.0f};
 
@@ -384,12 +385,13 @@ int main(int argc, char *argv[]){
     static const std::endian dataEndianness = std::endian::native;
     //static const std::endian dataEndianness = std::endian::big;
     
-    
+    /*
     std::string trainDataFilePath("./TestData/MNIST-Fashion-Train.bin");
     DataSet<float> mnistFashionTrain(trainDataFilePath, 28*28, 60'000);
 
     std::filesystem::path indexLocation("./Saved-Indecies/MNIST-Fashion");
-    
+    */
+
     /*
     std::string testDataFilePath("./TestData/MNIST-Fashion-Test.bin");
     std::string testNeighborsFilePath("./TestData/MNIST-Fashion-Neighbors.bin");
@@ -397,11 +399,11 @@ int main(int argc, char *argv[]){
     DataSet<uint32_t, alignof(uint32_t)> mnistFashionTestNeighbors(testNeighborsFilePath, 100, 10'000);
     */
 
-    /*
+    
     std::string trainDataFilePath("./TestData/SIFT-Train.bin");
     DataSet<float> mnistFashionTrain(trainDataFilePath, 128, 1'000'000);
     std::filesystem::path indexLocation("./Saved-Indecies/SIFT");
-    */
+    
     /*
     std::string testDataFilePath("./TestData/SIFT-Test.bin");
     std::string testNeighborsFilePath("./TestData/SIFT-Neighbors.bin");
@@ -443,7 +445,7 @@ int main(int argc, char *argv[]){
     std::pmr::monotonic_buffer_resource memoryIn(std::pmr::get_default_resource());
     std::pmr::synchronized_pool_resource nndPool(&memoryIn);
 
-    internal::SetInternalResource(&nndPool);
+    //internal::SetInternalResource(&nndPool);
     
     ThreadPool<void> blockBuilder(numThreads);
 

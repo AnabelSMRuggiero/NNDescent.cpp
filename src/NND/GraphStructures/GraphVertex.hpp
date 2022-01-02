@@ -37,8 +37,8 @@ struct GraphVertex{
     using EdgeType = std::pair<IndexType, FloatType>;
     using Index_t = IndexType;
     using Distance_t = FloatType;
-    using iterator = typename std::vector<std::pair<IndexType, FloatType>>::iterator;
-    using const_iterator = typename std::vector<std::pair<IndexType, FloatType>>::const_iterator;
+    using iterator = typename std::vector<std::pair<IndexType, FloatType>, Alloc<EdgeType>>::iterator;
+    using const_iterator = typename std::vector<std::pair<IndexType, FloatType>, Alloc<EdgeType>>::const_iterator;
 
     using allocator_type = Alloc<EdgeType>;
 

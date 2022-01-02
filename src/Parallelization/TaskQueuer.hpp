@@ -54,29 +54,6 @@ struct TaskQueuer{
     template<>
     static constexpr bool hasValidOnCompletion<void> = false;
     */
-    template<typename NextGenerator, typename NextConsumer>
-    struct OnCompletionTraits
-    {   
-        
-        private:
-        template<bool validGen, bool validCons>
-        struct Arg{
-            using type = void;
-        };
-
-        template<>
-        struct Arg<true, false>{
-            using type = NextGenerator;
-        };
-
-        template<>
-        struct Arg<false, true>{
-            using type = NextConsumer;
-        };
-        
-        public:
-        using type = typename Arg<hasValidOnCompletion<NextGenerator>, hasValidOnCompletion<NextConsumer>>::type;
-    };
 
     template<typename NextTask>
     constexpr static bool consumeWithNext = requires(TaskQueuer cons, NextTask & nextGen) {
@@ -155,6 +132,7 @@ struct TaskQueuer{
     AsyncQueue<TaskResult> incomingResults;
 
 };
+
 
 //For ending a pipeline
 template<typename GenType>
