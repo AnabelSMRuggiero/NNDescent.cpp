@@ -40,6 +40,7 @@ https://github.com/AnabelSMRuggiero/NNDescent.cpp
 #include "NND/BlockwiseAlgorithm.hpp"
 #include "NND/GraphInitialization.hpp"
 #include "NND/Search.hpp"
+#include "NND/MemoryInternals.hpp"
 
 #include "NND/Parallel-Algorithm/FreeFunctions.hpp"
 

@@ -19,11 +19,14 @@ https://github.com/AnabelSMRuggiero/NNDescent.cpp
 #include <functional>
 #include <memory>
 
+#include "../ann/Data.hpp"
+
+#include "MemoryInternals.hpp"
 #include "GraphStructures.hpp"
 #include "SubGraphQuerying.hpp"
 
 #include "UtilityFunctions.hpp"
-#include "../ann/Data.hpp"
+
 
 namespace nnd{
 

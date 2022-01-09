@@ -29,6 +29,7 @@ https://github.com/AnabelSMRuggiero/NNDescent.cpp
 #include "../ann/DataDeserialization.hpp"
 #include "../ann/Metrics/FunctorErasure.hpp"
 #include "GraphStructures.hpp"
+#include "MemoryInternals.hpp"
 
 namespace nnd{
 
