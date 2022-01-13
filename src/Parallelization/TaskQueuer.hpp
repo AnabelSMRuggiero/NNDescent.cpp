@@ -209,8 +209,7 @@ constexpr static bool consumeWithNext = requires (Task cons, NextTask& nextGen) 
 
 template<size_t idx, typename TaskTuple>
 consteval bool ConsumeHelper(){
-    //return CurrentTask<idx, TaskTuple>::template consumeWithNext<typename std::tuple_element<idx + 1, TaskTuple>::type>;
-    
+
     return consumeWithNext<typename std::tuple_element<idx, TaskTuple>::type,
                            typename std::tuple_element<idx+1, TaskTuple>::type>;
     

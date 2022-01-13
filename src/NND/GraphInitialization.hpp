@@ -28,6 +28,7 @@ https://github.com/AnabelSMRuggiero/NNDescent.cpp
 
 #include "../ann/Data.hpp"
 #include "../ann/Metrics/FunctorErasure.hpp"
+#include "MetricHelpers.hpp"
 
 namespace nnd{
 

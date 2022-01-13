@@ -41,6 +41,7 @@ https://github.com/AnabelSMRuggiero/NNDescent.cpp
 #include "NND/GraphInitialization.hpp"
 #include "NND/Search.hpp"
 #include "NND/MemoryInternals.hpp"
+#include "NND/MetricHelpers.hpp"
 
 #include "NND/Parallel-Algorithm/FreeFunctions.hpp"
 
