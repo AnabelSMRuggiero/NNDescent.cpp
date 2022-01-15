@@ -20,19 +20,72 @@ https://github.com/AnabelSMRuggiero/NNDescent.cpp
 #include <memory>
 #include <type_traits>
 #include <cstring>
+#include <iostream>
+#include <cstddef>
 
 #include <immintrin.h>
 
 #include "ann/Type.hpp"
 
 #include "ann/Metrics/SpaceMetrics.hpp"
+#include "ann/Metrics/Euclidean.hpp"
 #include "ann/Data.hpp"
 #include "ann/DataDeserialization.hpp"
+
+#include "ann/SIMD.hpp"
 
 #include "NND/GraphStructures.hpp"
 #include "NND/UtilityFunctions.hpp"
 
 using namespace nnd;
+using namespace ann;
+
+template<size_t numPointsTo>
+void BatchVecSpan(const vector_span<const float> pointFrom,
+                        std::span<const vector_span<const float>, numPointsTo> pointsTo,
+                        std::span<float, numPointsTo> resultLocation) noexcept {
+
+    
+    std::array<DataVector<float>, numPointsTo> accumulators;
+
+
+
+    /* vvv core loop vvv */
+
+    for (size_t i = 0; i<pointFrom.size(); i+=1){
+        for(size_t j = 0; j<numPointsTo; j+=1){
+            DataVector<float> diff = pointsTo[j][i] - pointFrom[i];
+            accumulators[j] += diff*diff;
+        }
+    }
+
+    /* ^^^ core loop ^^^ */
+
+
+
+    for(size_t j = 0; j<numPointsTo; j+=1) resultLocation[j] = simd_ops::reduce(accumulators[j]);
+
+    //Take care of the excess. I might be able to remove this at some point
+    vector_span<const float>::excess_type excessFrom = pointFrom.excess();
+    if (excessFrom.size() > 0){
+        std::array<vector_span<const float>::excess_type, numPointsTo> excessesTo;
+        for(size_t j = 0; j<numPointsTo; j+=1) excessesTo[j] = pointsTo[j].excess();
+
+        for (size_t i = 0; i<excessFrom.size(); i += 1){
+            for (size_t j = 0; j<numPointsTo; j+=1){
+                float diff = excessesTo[j][i] - excessFrom[i];
+                resultLocation[j] += diff*diff;
+            }
+        }
+    }
+
+    
+    
+    //Last I checked, this emits an avx sqrt on clang
+    for (auto& res: resultLocation) res = std::sqrt(res);
+
+
+}
 
 
 template<typename IndexType, typename FloatType>
@@ -205,12 +258,20 @@ static void clobber(){
 
 int main(){
     //std::unique_ptr<float[]>test(new (std::align_val_t(32)) float[8]);
+
+
     static const std::endian dataEndianness = std::endian::big;
     
 
-    std::mt19937_64 rngEngine(0);
-    std::uniform_real_distribution<float> rngDist(0.1, 0.9);
+    std::string trainDataFilePath("./TestData/MNIST-Fashion-Train.bin");
+    DataSet<float> mnistFashionTrain(trainDataFilePath, 28*28, 60'000);
 
+    std::filesystem::path indexLocation("./Saved-Indecies/MNIST-Fashion");
+
+    
+    std::mt19937_64 rngEngine(0);
+    std::uniform_int_distribution<size_t> rngDist(0, 60'000);
+    /*
     SortedVertex<BlockIndecies, float> sorted(10);
 
     SortedVertex<BlockIndecies, float> sortedCopy(10);
@@ -252,7 +313,7 @@ int main(){
     }
     std::chrono::time_point<std::chrono::steady_clock> heapedEnd = std::chrono::steady_clock::now();
     std::cout << std::chrono::duration_cast<std::chrono::duration<float>>(heapedEnd - heapedStart).count() << "s total for heaped pushes" << std::endl;
-
+    */
     
     /*
     runStart = std::chrono::steady_clock::now();
@@ -270,27 +331,59 @@ int main(){
     */
     
     /*
-    runStart = std::chrono::steady_clock::now();
+    auto runStart = std::chrono::steady_clock::now();
     for(size_t i = 0; i<1'000'000; i+=1){
         std::vector<size_t> targetPoints(7);
         //std::vector<std::span<const float>> targetSpans;
         
         std::vector<AlignedSpan<const float>> targetSpans;
+
         for (auto& point: targetPoints){
             point = rngDist(rngEngine);
-            targetSpans.push_back(AlignedSpan<const float>(mnistFashionTrain[point]));
+            targetSpans.push_back(mnistFashionTrain[point]);
+
         }
         escape(targetSpans.data());
 
         size_t startPoint = rngDist(rngEngine);
         escape(&startPoint);
 
-        std::vector<float> dists = BatchEuclideanNorm<7>(targetSpans, AlignedSpan<const float>(mnistFashionTrain[startPoint]));
-        escape(dists.data());
+        std::vector<float> results(7);
+
+        BatchEuclideanNorm<7>(mnistFashionTrain[startPoint], std::span<AlignedSpan<const float, 32>, 7>(targetSpans), std::span<float,7>(results));
+
+
+
+
+        escape(results.data());
     }
-    runEnd = std::chrono::steady_clock::now();
-    std::cout << std::chrono::duration_cast<std::chrono::duration<float>>(runEnd - runStart).count() << "s total for 7 dist at a time (no prefetch)" << std::endl;
-    
+    auto runEnd = std::chrono::steady_clock::now();
+    std::cout << std::chrono::duration_cast<std::chrono::duration<float>>(runEnd - runStart).count() << "s total for 7 dist at a time (handroll)" << std::endl;
+    */
+    auto runStart = std::chrono::steady_clock::now();
+    for(size_t i = 0; i<1'000'000; i+=1){
+        std::vector<size_t> targetPoints(7);
+
+        std::vector<vector_span<const float>> vecSpans;
+        for (auto& point: targetPoints){
+            point = rngDist(rngEngine);
+            vecSpans.push_back(mnistFashionTrain[point]);
+        }
+        escape(vecSpans.data());
+
+        size_t startPoint = rngDist(rngEngine);
+        escape(&startPoint);
+
+
+
+        std::vector<float> vecSpanResults(7);
+        BatchVecSpan<7>(mnistFashionTrain[startPoint], std::span<vector_span<const float>, 7>(vecSpans), std::span<float,7>(vecSpanResults));
+
+        escape(vecSpanResults.data());
+    }
+    auto runEnd = std::chrono::steady_clock::now();
+    std::cout << std::chrono::duration_cast<std::chrono::duration<float>>(runEnd - runStart).count() << "s total for 7 dist at a time (tmp)" << std::endl;
+    /*
     rngEngine.seed(0);
     runStart = std::chrono::steady_clock::now();
     for(size_t i = 0; i<1'000'000; i+=1){
