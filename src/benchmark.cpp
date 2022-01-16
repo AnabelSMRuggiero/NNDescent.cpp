@@ -240,11 +240,11 @@ struct SortedVertex{
 */
 
 static void escape(void* p){
-    asm volatile("" : : "g"(p) : "memory");
+    //asm volatile("" : : "g"(p) : "memory");
 }
 
 static void clobber(){
-    asm volatile("" : : : "memory");
+    //asm volatile("" : : : "memory");
 }
 
 // End benchmarking functions
@@ -270,7 +270,7 @@ int main(){
 
     
     std::mt19937_64 rngEngine(0);
-    std::uniform_int_distribution<size_t> rngDist(0, 60'000);
+    std::uniform_int_distribution<size_t> rngDist(0, 59'999);
     /*
     SortedVertex<BlockIndecies, float> sorted(10);
 

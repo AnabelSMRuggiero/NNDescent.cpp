@@ -14,7 +14,8 @@ using DataIndex_t = uint32_t;
 using BlockNumber_t = uint32_t;
 using GraphFragment_t = uint32_t;
 
-struct Override {} overrideTag;
+struct Override {};
+static inline constexpr Override overrideTag{};
 /*
 template<typename Default = Override>
 struct DefaultDataIndex {
