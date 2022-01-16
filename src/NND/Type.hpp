@@ -16,40 +16,10 @@ using GraphFragment_t = uint32_t;
 
 struct Override {};
 static inline constexpr Override overrideTag{};
-/*
-template<typename Default = Override>
-struct DefaultDataIndex {
-    using type = uint16_t;
-};
-template<>
-struct DefaultDataIndex<Override>;
 
-template<typename Tag>
-using DataIndex_t = typename DefaultDataIndex<Tag>::type;
-
-
-template<typename Default = Override>
-struct DefaultBlockNumber {
-    using type = uint16_t;
-};
-
-using DefaultBlockNumber_t = DefaultBlockNumber<Override>::type;
-
-
-template<typename Default = Override>
-struct DefaultMetaGraphIndex {
-    using type = uint32_t;
-};
-
-using MetaGraphIndex_t = DefaultMetaGraphIndex<Override>::type;
-
-
-//Example override;
-template<>
-struct DefaultDataIndex<Override>{
-    using type = size_t;
-};
-*/
+namespace internal{
+    static constexpr size_t maxBatch = 14;
+}
 
 struct BlockIndecies{
     GraphFragment_t graphFragment;

@@ -219,7 +219,7 @@ struct ThreadPool{
     };
 
     void DelegateTask(ThreadTask&& task){
-        DelegateTask(std::move(task), [](const size_t count){ return count < 10; });
+        DelegateTask(std::move(task), [](const size_t count){ return count < 15; });
     }
 
     template<typename Predicate>

@@ -18,7 +18,6 @@ https://github.com/AnabelSMRuggiero/NNDescent.cpp
 #include "ann/Type.hpp"
 #include "ann/Data.hpp"
 #include "ann/Metrics/SpaceMetrics.hpp"
-#include "ann/Metrics/FunctorErasure.hpp"
 #include "ann/Metrics/Euclidean.hpp"
 
 #include "NND/MetaGraph.hpp"
@@ -26,6 +25,7 @@ https://github.com/AnabelSMRuggiero/NNDescent.cpp
 #include "NND/SubGraphQuerying.hpp"
 #include "NND/Parallel-Algorithm/FreeFunctions.hpp"
 #include "NND/Search.hpp"
+#include "NND/FunctorErasure.hpp"
 
 #include "RPTrees/SplittingScheme.hpp"
 #include "RPTrees/Forest.hpp"

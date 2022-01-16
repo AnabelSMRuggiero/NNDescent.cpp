@@ -14,7 +14,7 @@ https://github.com/AnabelSMRuggiero/NNDescent.cpp
 #include <vector>
 
 #include "ann/Type.hpp"
-#include "ann/Metrics/FunctorErasure.hpp"
+#include "../FunctorErasure.hpp"
 #include "ann/Data.hpp"
 #include "../Type.hpp"
 

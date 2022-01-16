@@ -31,9 +31,10 @@ https://github.com/AnabelSMRuggiero/NNDescent.cpp
 #include "ann/Type.hpp"
 #include "ann/Data.hpp"
 #include "ann/Metrics/SpaceMetrics.hpp"
-#include "ann/Metrics/FunctorErasure.hpp"
+
 #include "ann/Metrics/Euclidean.hpp"
 
+#include "NND/FunctorErasure.hpp"
 #include "NND/GraphStructures.hpp"
 #include "NND/MetaGraph.hpp"
 #include "NND/SubGraphQuerying.hpp"

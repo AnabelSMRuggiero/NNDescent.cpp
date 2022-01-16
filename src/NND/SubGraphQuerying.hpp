@@ -23,11 +23,13 @@ https://github.com/AnabelSMRuggiero/NNDescent.cpp
 #include <ranges>
 #include <functional>
 #include <concepts>
+#include <iterator>
+#include <tuple>
 
 #include "../ann/Data.hpp"
 #include "../ann/DataSerialization.hpp"
 #include "../ann/DataDeserialization.hpp"
-#include "../ann/Metrics/FunctorErasure.hpp"
+#include "FunctorErasure.hpp"
 #include "GraphStructures.hpp"
 #include "MemoryInternals.hpp"
 
@@ -203,9 +205,6 @@ struct DefaultQueryFunctor{
     }
 };
 
-namespace internal{
-    static constexpr size_t maxBatch = 14;
-}
 
 template<std::unsigned_integral IndexType, std::totally_ordered DistType>
 struct QueryContext{
@@ -291,7 +290,7 @@ struct QueryContext{
                       QueryFunctor& queryFunctor,
                       NodeTrackerImpl<TrackerAlloc>& nodesVisited) const{
 
-        constexpr size_t bufferSize = sizeof(size_t)*(internal::maxBatch*3);
+        constexpr size_t bufferSize = sizeof(size_t)*(internal::maxBatch+5);
         char stackBuffer[bufferSize];
         std::pmr::monotonic_buffer_resource stackResource(stackBuffer, bufferSize);
         
@@ -306,27 +305,33 @@ struct QueryContext{
         auto notCompared = [&](const auto index)->bool{ 
             return (nodesCompared[index]) ?
                 false :
-                !(nodesCompared[index] = std::none_of(subGraph[index].begin(), subGraph[index].end(), notVisited));
+                !(nodesCompared[index] = std::none_of(std::make_reverse_iterator(subGraph[index].end()),
+                                                      std::make_reverse_iterator(subGraph[index].begin()), 
+                                                      notVisited));
         };
         auto toNeighborView = [&](const auto index){ return subGraph[index]; }; //returns a view into a data block
         
         
         auto toNeighbor = [&](const auto edge){return edge.first;};
         
+        std::span<const typename Vertex::EdgeType> nodesToCompare{initVertex.begin(), querySearchDepth};
+
         bool breakVar = true;
         while (breakVar){
-            
-            std::ranges::for_each(initVertex | std::views::transform(toNeighbor)
-                                             | std::views::take(querySearchDepth)    
-                                             | std::views::filter(notCompared) 
-                                             | std::views::transform(toNeighborView)            
-                                             | std::views::join
-                                             | std::views::filter(notVisited)
-                                             | std::views::take(maxBatch),
-                [&](const auto joinTarget){
-                    joinQueue.push_back(joinTarget);
+            joinQueue.resize(maxBatch);            
+            auto [ignore, outItr] = 
+                std::ranges::transform(nodesToCompare | std::views::transform(toNeighbor)
+                                                      | std::views::filter(notCompared) 
+                                                      | std::views::transform(toNeighborView)            
+                                                      | std::views::join
+                                                      | std::views::filter(notVisited)
+                                                      | std::views::take(maxBatch),
+                                       joinQueue.begin(),
+                                       [&](const auto joinTarget){
                     nodesVisited[joinTarget] = true;
+                    return joinTarget;
             });
+            joinQueue.resize(outItr - joinQueue.begin());
             
             std::ranges::contiguous_range auto distances = queryFunctor(queryIndex, joinQueue);
 
@@ -337,7 +342,6 @@ struct QueryContext{
                                                  return initVertex.PushNeighbor({static_cast<IndexType>(index), distance});    
             });
 
-            joinQueue.clear();
         }
 
         return initVertex;

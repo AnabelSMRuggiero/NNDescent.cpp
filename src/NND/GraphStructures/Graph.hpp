@@ -12,10 +12,12 @@ https://github.com/AnabelSMRuggiero/NNDescent.cpp
 #define NND_GRAPH_HPP
 
 #include <vector>
+#include <concepts>
 
 #include "ann/Type.hpp"
-#include "ann/Metrics/FunctorErasure.hpp"
+#include "../FunctorErasure.hpp"
 #include "../Type.hpp"
+#include "../MemoryInternals.hpp"
 
 #include "GraphVertex.hpp"
 
@@ -27,6 +29,8 @@ struct Graph{
 
     using iterator = typename std::vector<GraphVertex<IndexType, FloatType>>::iterator;
     using const_iterator = typename std::vector<GraphVertex<IndexType, FloatType>>::const_iterator;
+    using vertex_type = GraphVertex<IndexType, FloatType>;
+    using edge_type = typename GraphVertex<IndexType, FloatType>::EdgeType;
 
     std::vector<GraphVertex<IndexType, FloatType>> verticies;
 
@@ -158,8 +162,39 @@ void VerifySubGraphState(const Graph<BlockIndecies, FloatType>& currentGraph, si
 template<typename DistType>
 //numNeighbors, blockSize, distanceFunctor
 Graph<DataIndex_t, DistType> BruteForceBlock(const size_t numNeighbors, const size_t blockSize, DispatchFunctor<DistType>& distanceFunctor){
+    
+    using edge_type = typename Graph<DataIndex_t, DistType>::edge_type;
+
     Graph<DataIndex_t, DistType> retGraph(blockSize, numNeighbors);
-    // I can make this branchless. Check to see if /O2 or /O3 can make this branchless (I really doubt it)
+
+    auto addResult = [&](auto from, auto to, auto distance)->void{
+        if (retGraph[from].size() < numNeighbors){
+            retGraph[from].push_back(edge_type{static_cast<size_t>(to), distance});
+            if (retGraph[from].size() == numNeighbors){
+                retGraph[from].JoinPrep();
+            }
+        } else {
+            retGraph[from].PushNeighbor(edge_type{static_cast<size_t>(to), distance});
+        }
+    };
+
+    std::pmr::vector<size_t> indecies{blockSize-1, internal::GetThreadResource()};
+    std::iota(indecies.rbegin(), indecies.rend(), size_t{1});
+    
+    for (size_t i = 0; i < blockSize-1; i += 1){
+        std::ranges::contiguous_range auto distances = distanceFunctor(i, indecies);
+
+        for (auto indeciesItr = indecies.begin(); const auto& distance : distances){
+            size_t j = *indeciesItr;
+
+            addResult(i, j, distance);
+            addResult(j, i, distance);
+            
+            indeciesItr++;
+        }
+        indecies.pop_back();
+    }
+    /*
     for (size_t i = 0; i < blockSize; i += 1){
         for (size_t j = i+1; j < blockSize; j += 1){
             DistType distance = distanceFunctor(i, j);
@@ -168,7 +203,7 @@ Graph<DataIndex_t, DistType> BruteForceBlock(const size_t numNeighbors, const si
                 if (retGraph[i].size() == numNeighbors){
                     retGraph[i].JoinPrep();
                 }
-            } else if (distance < retGraph[i].PushThreshold()){
+            } else {
                 retGraph[i].PushNeighbor(std::pair<DataIndex_t, DistType>(static_cast<size_t>(j), distance));
             }
             if (retGraph[j].size() < numNeighbors){
@@ -176,12 +211,12 @@ Graph<DataIndex_t, DistType> BruteForceBlock(const size_t numNeighbors, const si
                 if (retGraph[j].size() == numNeighbors){
                     retGraph[j].JoinPrep();
                 }
-            } else if (distance < retGraph[j].PushThreshold()){
+            } else {
                 retGraph[j].PushNeighbor(std::pair<DataIndex_t, DistType>(static_cast<size_t>(i), distance));
             }
         }
     }
-
+    */
     return retGraph;
 }
 

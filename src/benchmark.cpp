@@ -240,11 +240,11 @@ struct SortedVertex{
 */
 
 static void escape(void* p){
-    //asm volatile("" : : "g"(p) : "memory");
+    asm volatile("" : : "g"(p) : "memory");
 }
 
 static void clobber(){
-    //asm volatile("" : : : "memory");
+    asm volatile("" : : : "memory");
 }
 
 // End benchmarking functions
@@ -259,18 +259,19 @@ static void clobber(){
 int main(){
     //std::unique_ptr<float[]>test(new (std::align_val_t(32)) float[8]);
 
+    auto programStart = std::chrono::steady_clock::now();
 
     static const std::endian dataEndianness = std::endian::big;
     
 
-    std::string trainDataFilePath("./TestData/MNIST-Fashion-Train.bin");
-    DataSet<float> mnistFashionTrain(trainDataFilePath, 28*28, 60'000);
+    std::string trainDataFilePath("./TestData/SIFT-Train.bin");
+    DataSet<float> mnistFashionTrain(trainDataFilePath, 128, 1'000'000);
 
-    std::filesystem::path indexLocation("./Saved-Indecies/MNIST-Fashion");
+
 
     
     std::mt19937_64 rngEngine(0);
-    std::uniform_int_distribution<size_t> rngDist(0, 59'999);
+    std::uniform_int_distribution<size_t> rngDist(0, 300);
     /*
     SortedVertex<BlockIndecies, float> sorted(10);
 
@@ -329,10 +330,12 @@ int main(){
     runEnd = std::chrono::steady_clock::now();
     std::cout << std::chrono::duration_cast<std::chrono::duration<float>>(runEnd - runStart).count() << "s total for 8 dist at a time (no prefetch)" << std::endl;
     */
-    
     /*
+    size_t startPoint = rngDist(rngEngine);
+    escape(&startPoint);
+
     auto runStart = std::chrono::steady_clock::now();
-    for(size_t i = 0; i<1'000'000; i+=1){
+    for(size_t i = 0; i<10'000'000; i+=1){
         std::vector<size_t> targetPoints(7);
         //std::vector<std::span<const float>> targetSpans;
         
@@ -360,29 +363,70 @@ int main(){
     auto runEnd = std::chrono::steady_clock::now();
     std::cout << std::chrono::duration_cast<std::chrono::duration<float>>(runEnd - runStart).count() << "s total for 7 dist at a time (handroll)" << std::endl;
     */
-    auto runStart = std::chrono::steady_clock::now();
-    for(size_t i = 0; i<1'000'000; i+=1){
-        std::vector<size_t> targetPoints(7);
 
-        std::vector<vector_span<const float>> vecSpans;
-        for (auto& point: targetPoints){
-            point = rngDist(rngEngine);
-            vecSpans.push_back(mnistFashionTrain[point]);
+    //constexpr size_t numberPointsTo = 16;
+    auto test = [&]<size_t numberPointsTo>(std::integral_constant<size_t, numberPointsTo>, bool discard = false){
+        auto testStart = std::chrono::steady_clock::now();
+        std::mt19937_64 rngEngine(std::hash<double>{}(std::chrono::duration_cast<std::chrono::duration<double>>(testStart - programStart).count()));
+        std::uniform_int_distribution<size_t> rngDist(0, 300);
+
+
+        auto runStart = std::chrono::steady_clock::now();
+        for(size_t i = 0; i<10'000'000; i+=1){
+            size_t startPoint = rngDist(rngEngine);
+            escape(&startPoint);
+
+            std::vector<size_t> targetPoints(numberPointsTo);
+
+            std::vector<vector_span<const float>> vecSpans;
+            for (auto& point: targetPoints){
+                point = rngDist(rngEngine);
+                vecSpans.push_back(mnistFashionTrain[point]);
+            }
+            escape(vecSpans.data());
+
+            
+
+
+
+            std::vector<float> vecSpanResults(numberPointsTo);
+            BatchVecSpan<numberPointsTo>(mnistFashionTrain[startPoint], std::span<vector_span<const float>, numberPointsTo>(vecSpans), std::span<float,numberPointsTo>(vecSpanResults));
+
+            escape(vecSpanResults.data());
         }
-        escape(vecSpans.data());
+        auto runEnd = std::chrono::steady_clock::now();
+        if (discard) return;
+        std::cout << "Number of points: " << numberPointsTo 
+                  << "\tTotal time: " << std::chrono::duration_cast<std::chrono::duration<float>>(runEnd - runStart).count()
+                  << "\tTime per point: " << std::chrono::duration_cast<std::chrono::duration<float>>(runEnd - runStart).count()/numberPointsTo
+                  << std::endl;
+        //std::cout << std::chrono::duration_cast<std::chrono::duration<float>>(runEnd - runStart).count()/numberPointsTo << "s total per dist at a time (tmp)" << std::endl;
+    };
+    
+    test(std::integral_constant<size_t, 3>{}, true);
+    test(std::integral_constant<size_t, 3>{}, true);
+    test(std::integral_constant<size_t, 3>{}, true);
+    test(std::integral_constant<size_t, 3>{}, true);
 
-        size_t startPoint = rngDist(rngEngine);
-        escape(&startPoint);
-
-
-
-        std::vector<float> vecSpanResults(7);
-        BatchVecSpan<7>(mnistFashionTrain[startPoint], std::span<vector_span<const float>, 7>(vecSpans), std::span<float,7>(vecSpanResults));
-
-        escape(vecSpanResults.data());
-    }
-    auto runEnd = std::chrono::steady_clock::now();
-    std::cout << std::chrono::duration_cast<std::chrono::duration<float>>(runEnd - runStart).count() << "s total for 7 dist at a time (tmp)" << std::endl;
+    test(std::integral_constant<size_t, 3>{});
+    test(std::integral_constant<size_t, 4>{});
+    test(std::integral_constant<size_t, 5>{});
+    test(std::integral_constant<size_t, 6>{});
+    test(std::integral_constant<size_t, 7>{});
+    test(std::integral_constant<size_t, 8>{});
+    test(std::integral_constant<size_t, 9>{});
+    test(std::integral_constant<size_t, 10>{});
+    test(std::integral_constant<size_t, 11>{});
+    test(std::integral_constant<size_t, 12>{});
+    test(std::integral_constant<size_t, 13>{});
+    test(std::integral_constant<size_t, 14>{});
+    test(std::integral_constant<size_t, 15>{});
+    test(std::integral_constant<size_t, 16>{});
+    test(std::integral_constant<size_t, 17>{});
+    test(std::integral_constant<size_t, 18>{});
+    test(std::integral_constant<size_t, 19>{});
+    test(std::integral_constant<size_t, 20>{});
+    
     /*
     rngEngine.seed(0);
     runStart = std::chrono::steady_clock::now();

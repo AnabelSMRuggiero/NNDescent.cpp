@@ -10,43 +10,59 @@ https://github.com/AnabelSMRuggiero/NNDescent.cpp
 
 #ifndef NND_METRICHELPERS_HPP
 #define NND_METRICHELPERS_HPP
+
+#include <type_traits>
+
 #include "../ann/Type.hpp"
 #include "../ann/Metrics/Euclidean.hpp"
 #include "MemoryInternals.hpp"
 
 namespace nnd{
-void EuclideanDispatch(const AlignedSpan<const float> pointFrom,
-                    std::span<const AlignedSpan<const float>> pointsTo,
+//template<template<size_t> typename NormFunctor>
+void BatchDispatcher(const ann::vector_span<const float> pointFrom,
+                    std::span<const ann::vector_span<const float>> pointsTo,
                     std::span<float> resultLocation) noexcept {
 
+    auto dispatch = [&]<size_t numPoints>(std::integral_constant<size_t, numPoints>){
+        return BatchEuclideanNorm(pointFrom,
+                                  std::span<const ann::vector_span<const float>, numPoints>{pointsTo},
+                                  std::span<float, numPoints>{resultLocation});
+    };
+
     switch(pointsTo.size()){
-        [[unlikely]] case 7: 
-            return BatchEuclideanNorm<7>(pointFrom,
-                                        std::span<const AlignedSpan<const float>, 7>{pointsTo},
-                                        std::span<float, 7>{resultLocation});
+        /*
+        case 15: 
+            return dispatch(std::integral_constant<size_t, 15>{});
+        case 14: 
+            return dispatch(std::integral_constant<size_t, 14>{});
+        case 13: 
+            return dispatch(std::integral_constant<size_t, 13>{});
+        case 12: 
+            return dispatch(std::integral_constant<size_t, 12>{});
+        case 11: 
+            return dispatch(std::integral_constant<size_t, 11>{});
+        case 10: 
+            return dispatch(std::integral_constant<size_t, 10>{});
+        case 9: 
+            return dispatch(std::integral_constant<size_t, 9>{});
+        case 8: 
+            return dispatch(std::integral_constant<size_t, 8>{});
+        */
+        case 7: 
+            return dispatch(std::integral_constant<size_t, 7>{});
         case 6: 
-            return BatchEuclideanNorm<6>(pointFrom,
-                                        std::span<const AlignedSpan<const float>, 6>{pointsTo},
-                                        std::span<float, 6>{resultLocation});
+            return dispatch(std::integral_constant<size_t, 6>{});
         case 5: 
-            return BatchEuclideanNorm<5>(pointFrom,
-                                        std::span<const AlignedSpan<const float>, 5>{pointsTo},
-                                        std::span<float, 5>{resultLocation});
+            return dispatch(std::integral_constant<size_t, 5>{});
         case 4: 
-            return BatchEuclideanNorm<4>(pointFrom,
-                                        std::span<const AlignedSpan<const float>, 4>{pointsTo},
-                                        std::span<float, 4>{resultLocation});
+            return dispatch(std::integral_constant<size_t, 4>{});
         case 3: 
-            return BatchEuclideanNorm<3>(pointFrom,
-                                        std::span<const AlignedSpan<const float>, 3>{pointsTo},
-                                        std::span<float, 3>{resultLocation});
+            return dispatch(std::integral_constant<size_t, 3>{});
         case 2: 
-            return BatchEuclideanNorm<2>(pointFrom,
-                                        std::span<const AlignedSpan<const float>, 2>{pointsTo},
-                                        std::span<float, 2>{resultLocation});
+            return dispatch(std::integral_constant<size_t, 2>{});
         case 1: 
             
-            resultLocation[0] = EuclideanNorm(pointsTo[0], pointFrom);
+            resultLocation[0] = EuclideanNorm(AlignedSpan<const float, 32>{pointsTo[0]}, AlignedSpan<const float, 32>{pointFrom});
             return;
         default:
             assert(false);
@@ -54,23 +70,24 @@ void EuclideanDispatch(const AlignedSpan<const float> pointFrom,
     }
 }
 
-std::pmr::vector<float> EuclideanBatcher(const AlignedSpan<const float> pointFrom, std::span<const AlignedSpan<const float>> pointsTo) noexcept {
+std::pmr::vector<float> EuclideanBatcher(const ann::vector_span<const float> pointFrom, std::span<const ann::vector_span<const float>> pointsTo) noexcept {
     
+    constexpr size_t maxBatch = 7;
     std::pmr::vector<float> retVector(pointsTo.size(), internal::GetThreadResource());
     
     size_t index = 0;
 
-    for( ; (index+6)< pointsTo.size(); index += 7){
-        std::span<const AlignedSpan<const float>, 7> partialBatch{pointsTo.begin()+index, 7};
-        std::span<float, 7> batchOutput{retVector.begin()+index, 7};
-        BatchEuclideanNorm<7>(pointFrom, partialBatch, batchOutput);
+    for( ; (index+maxBatch)< pointsTo.size(); index += maxBatch){
+        std::span<const ann::vector_span<const float>, maxBatch> partialBatch{pointsTo.begin()+index, maxBatch};
+        std::span<float, maxBatch> batchOutput{retVector.begin()+index, maxBatch};
+        BatchEuclideanNorm(pointFrom, partialBatch, batchOutput);
     }
     
     if(index<pointsTo.size()){
         size_t remainder = pointsTo.size() - index;
-        std::span<const AlignedSpan<const float>> partialBatch{pointsTo.begin()+index, remainder};
+        std::span<const ann::vector_span<const float>> partialBatch{pointsTo.begin()+index, remainder};
         std::span<float> batchOutput{retVector.begin()+index, remainder};
-        EuclideanDispatch(pointFrom, partialBatch, batchOutput);
+        BatchDispatcher(pointFrom, partialBatch, batchOutput);
     }
 
     return retVector;
@@ -85,7 +102,7 @@ struct EuclideanMetricPair{
         return EuclideanNorm<AlignedSpan<const float>, AlignedSpan<const float>, float>(lhsVector, rhsVector);
     };
     
-    std::pmr::vector<float> operator()(AlignedSpan<const float> lhsVector, std::span<const AlignedSpan<const float>> rhsVectors) const{
+    std::pmr::vector<float> operator()(ann::vector_span<const float> lhsVector, std::span<const ann::vector_span<const float>> rhsVectors) const{
         return EuclideanBatcher(lhsVector, rhsVectors);
     };
 
@@ -98,7 +115,7 @@ struct EuclideanComDistance{
         return EuclideanNorm<AlignedSpan<const float>, AlignedSpan<const float>, float>(comVector, dataVector);
     };
     
-    std::pmr::vector<float> operator()(AlignedSpan<const float> comVector, std::span<const AlignedSpan<const float>> rhsVectors) const{
+    std::pmr::vector<float> operator()(ann::vector_span<const float> comVector, std::span<const ann::vector_span<const float>> rhsVectors) const{
         return EuclideanBatcher(comVector, rhsVectors);
     };
 };
