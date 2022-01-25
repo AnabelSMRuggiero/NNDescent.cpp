@@ -155,10 +155,12 @@ void ReverseBlockJoin(const JoinHints& startJoins,
                    const Graph<BlockIndecies, DistType>& currentGraphState,
                    const DirectedGraph<DataIndex_t>& searchSubgraph,
                    const QueryContext<DataIndex_t, DistType>& targetBlock,
-                   CachingFunctor<DistType>& cache,
+                   CachingFunctor<DistType>& cachingFunctor,
                    DistanceFunctor& queryFunctor){
     
     //std::vector<std::pair<size_t, GraphVertex<size_t, DistType>>> joinHints;
+
+    auto& cache = cachingFunctor.AccessCache();
 
     NodeTracker nodesJoined(searchSubgraph.size());
     std::vector<size_t> successfulJoins;
@@ -201,6 +203,21 @@ void ReverseBlockJoin(const JoinHints& startJoins,
     }
 
     std::vector<size_t> joinQueue;
+    auto toNeighbor = [&](const auto success){ return searchSubgraph[success]; };
+    auto notJoined = [&](const auto leafNeighbor){ return !nodesJoined[leafNeighbor]; };
+
+    auto newJoinView = std::views::transform(toNeighbor)
+                      | std::views::join
+                      | std::views::filter(notJoined);
+
+    auto addNewJoin = [&](const auto& leafNeighbor){
+            joinQueue.push_back(leafNeighbor);
+            nodesJoined[leafNeighbor] = true;
+    };
+    
+
+    std::ranges::for_each(successfulJoins | newJoinView, addNewJoin);
+    /*
     for (auto success: successfulJoins){
         for (const auto& leafNeighbor: searchSubgraph[success]){
             if(!nodesJoined[leafNeighbor]){
@@ -212,6 +229,7 @@ void ReverseBlockJoin(const JoinHints& startJoins,
             }
         }
     }
+    */
     successfulJoins.clear();
 
     //std::vector<std::pair<size_t, GraphVertex<size_t, DistType>>> retResults;
@@ -227,7 +245,10 @@ void ReverseBlockJoin(const JoinHints& startJoins,
             if (cache.reverseGraph[joinee].size()!=0) successfulJoins.push_back(joinee);
         }
         joinQueue.clear();
+
         
+        std::ranges::for_each(successfulJoins | newJoinView, addNewJoin);
+        /*
         for(auto& success: successfulJoins){
             
             for(const auto& leafNeighbor: searchSubgraph[success]){
@@ -239,6 +260,7 @@ void ReverseBlockJoin(const JoinHints& startJoins,
                 }
             }
         }
+        */
         //joinHints = std::move(newJoins);
     }
     return;
@@ -384,15 +406,15 @@ int UpdateBlocks(BlockUpdateContext<DistType>& blockLHS,
                         cachingFunctor,
                         cachingFunctor.metricFunctor);
     
-    for(size_t i = 0; auto& vertex: cachingFunctor.reverseGraph){
+    for(size_t i = 0; auto& vertex: cachingFunctor.AccessCache()){
         EraseRemove(vertex, blockRHS.currentGraph[i].PushThreshold());
         
     }
-    NewJoinQueues<DistType, checkGraphFragment>(cachingFunctor.reverseGraph, blockRHS.blockJoinTracker, blockLHS.queryContext.graphFragment, blockLHS.currentGraph, blockRHS.newJoins);
+    NewJoinQueues<DistType, checkGraphFragment>(cachingFunctor.AccessCache().reverseGraph, blockRHS.blockJoinTracker, blockLHS.queryContext.graphFragment, blockLHS.currentGraph, blockRHS.newJoins);
 
     int graphUpdates{0};
 
-    for (size_t i = 0; auto& result: cachingFunctor.reverseGraph){
+    for (size_t i = 0; auto& result: cachingFunctor.AccessCache()){
         graphUpdates += ConsumeVertex(blockRHS.currentGraph[i], result, blockLHS.queryContext.graphFragment, blockLHS.queryContext.blockNumber);
         i++;
     }

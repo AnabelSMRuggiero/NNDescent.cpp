@@ -12,7 +12,7 @@ https://github.com/AnabelSMRuggiero/NNDescent.cpp
 #define NND_METAGRAPH_HPP
 
 #include <vector>
-#include <valarray>
+#include <iterator>
 #include <ranges>
 #include <span>
 #include <concepts>
@@ -28,15 +28,12 @@ https://github.com/AnabelSMRuggiero/NNDescent.cpp
 
 namespace nnd{
 
-// Todo might need to use something other than valarray if I need to handle truly arbitrary data types.
+
 template<typename DistType>
 struct MetaPoint{
     unsigned int weight;
     AlignedArray<DistType> centerOfMass;
-    //SinglePointFunctor<DistType> distanceFunctor;
 };
-
-
 
 template<typename DataType, typename COMExtent>
 AlignedArray<COMExtent> CalculateCOM(const DataBlock<DataType>& dataBlock){
@@ -107,25 +104,7 @@ struct MetaGraph{
     Graph<BlockNumber_t, COMExtent> verticies;
     QueryContext<BlockNumber_t, COMExtent> queryContext;
     NodeTracker fragmentsJoined = {};
-    /*
-    template<typename DataType, typename Metric, typename COMFunctor>
-    MetaGraph(const std::vector<DataBlock<DataType>>& dataBlocks, const size_t numNeighbors, Metric metricFunctor, COMFunctor COMCalculator):
-        weights(0), 
-        points(dataBlocks.size(), dataBlocks[0].entryLength),
-        verticies(dataBlocks.size(), numNeighbors){
-        //SinglePointFunctor<COMExtent> functor(DataComDistance<DataEntry, COMExtent, MetricPair>(*this, dataBlocks, metricFunctor));
-        weights.reserve(dataBlocks.size());
-        for (size_t i = 0; const auto& dataBlock: dataBlocks){
-            weights.push_back(dataBlock.size());
-            COMCalculator(dataBlock, points[i]);
-            i++;
-        }
-        BruteForceGraph<COMExtent, Metric>(verticies, numNeighbors, points, metricFunctor);
-        for(auto& vertex: verticies){
-            std::sort(vertex.begin(), vertex.end(), NeighborDistanceComparison<size_t, COMExtent>);
-        }
-    }
-    */
+    
 
     size_t size() const{
         return points.numEntries;
@@ -134,11 +113,7 @@ struct MetaGraph{
     size_t FragmentNumber() const{
         return points.blockNumber;
     }
-    /*
-    DataComDistance(const ComView& centerOfMass, const std::vector<DataBlock<DataEntry>>& blocks): centerOfMass(centerOfMass), blocks(blocks), functor(){};
-
-    DataComDistance(const ComView& centerOfMass, const std::vector<DataBlock<DataEntry>>& blocks, MetricPair functor)
-    */
+    
 };
 
 template<typename COMExtent, typename DataType, typename MetricSet, typename COMFunctor>
@@ -160,7 +135,7 @@ MetaGraph<COMExtent> BuildMetaGraphFragment(const std::vector<DataBlock<DataType
 
     BruteForceGraph<COMExtent>(verticies, params.COMNeighbors, points, metricSet.dataToData);
     for(auto& vertex: verticies){
-        std::sort(vertex.begin(), vertex.end(), NeighborDistanceComparison<size_t, COMExtent>);
+        std::sort(vertex.begin(), vertex.end(), edge_ops::lessThan);
     }
 
     auto neighborFunctor = [&](size_t, size_t pointIndex){
@@ -210,21 +185,6 @@ void SerializeCOMS(const std::vector<MetaPoint<DistType>>& COMs, const std::stri
 
 }
 
-/*
-template<typename DataEntry>
-auto GenerateDataBlockingFunc(const DataSet<DataEntry>& dataSource,
-                                  std::vector<DataBlock<DataEntry>>& accumulationVector,
-                                  std::unordered_map<size_t, size_t>& splitToBlockIndex,
-                                  std::vector<BlockIndex>& indexRemapping){
-
-    size_t blockCounter(0);
-    auto retLambda = [&](size_t splittingIndex, std::span<const size_t> indicies){
-        splitToBlockIndex[splittingIndex] = blockCounter;
-        accumulationVector.push_back(DataBlock(dataSource, indicies, blockCounter++, indexRemapping));
-    };
-    return retLambda;
-}
-*/
 
 template<std::integral BlockNumberType>//, std::integral DataIndexType>
 struct IndexMaps{
@@ -308,35 +268,34 @@ struct DataMapper<DataEntry, void, void>{
     };
 };
 
+
+// GeometricMedian
 /*
-template<typename DataEntry, typename DataStructure>
-struct DataMapper<DataEntry, DataStructure>{
 
-    const DataSet<DataEntry>& dataSource;
-    size_t blockCounter;
-    std::vector<DataStructure> dataBlocks;
-    std::unordered_map<size_t, size_t> splitToBlockNum;
-    std::unordered_map<BlockIndecies, size_t> blockIndexToSource;
-    std::vector<BlockIndecies> sourceToBlockIndex;
-    std::vector<size_t> sourceToSplitIndex;
+    y_i+1 = sum(x_j / norm(x_j, y_i)) / sum(1 / norm(x_j, y_i))
 
-    DataMapper(const DataSet<DataEntry>& source):
-        dataSource(source), sourceToBlockIndex(dataSource.numberOfSamples), sourceToSplitIndex(dataSource.numberOfSamples), blockCounter(0) {};
-
-    void operator()(size_t splittingIndex, std::span<const size_t> indicies){
-        //[[unlikely]]if (indicies.size() == 0) return;
-        splitToBlockNum[splittingIndex] = blockCounter;
-        for (size_t i = 0; i<indicies.size(); i += 1){
-            size_t index = indicies[i];
-            sourceToBlockIndex[index] = BlockIndecies{blockCounter, i};
-            sourceToSplitIndex[index] = splittingIndex;
-            blockIndexToSource[BlockIndecies{blockCounter, i}] = index;
-        }
-        dataBlocks.push_back(DataStructure(dataSource, indicies, blockCounter++));
-    };
-};
 */
 
+template<typename DistType, typename Metric>
+auto GeometricMedian(DataBlock<DistType> points, Metric metricFunction){
+    using center_type = typename Metric::center_type;
+
+    AlignedArray<center_type> initMedian = std::accumulate(
+        points.begin(),
+        points.end(),
+        AlignedArray<center_type>{points[0].size()},
+        [](auto&& init, const auto& view)-> auto{
+            for(size_t i = 0; i<init.size(); i+=1){
+                init[i] += view[i];
+            }
+            return std::move(init);
+    });
+
+    std::ranges::for_each( initMedian, [&]( auto& element ){
+        element /= points.size();
+    });
+
+}
 
 
 

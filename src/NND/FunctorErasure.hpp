@@ -26,6 +26,29 @@ https://github.com/AnabelSMRuggiero/NNDescent.cpp
 
 namespace nnd{
 
+/*
+    Lets rethink this nonsense:
+    I want f(span, span)         -> g(blockIdx, blockIdx) -> h(dataIdx, dataIdx)
+           f(span, blockIdx)     -> k(blockIdx)           -> h(dataIdx, dataIdx)
+           f(blockIdx, span)     -> l(blockIdx)           -> h(dataIdx, dataIdx)
+           f(blockIdx, blockIdx) ->                       -> h(dataIdx, dataIdx)
+           
+*/
+template<typename Metric>
+struct MetricFunctorRedo{
+    using center_type = typename Metric::center_type;
+    using data_type = typename Metric::data_type;
+    using distance_type = typename Metric::distance_type;
+    [[no_unique_address]] Metric metric;
+
+    // ?? operator()(std::span<DataBlock<distance_type>> lhsSpan, std::span<DataBlock<distance_type>> rhsSpan)
+    // ?? operator()(DataBlock<distance_type> lhsBlock, std::span<DataBlock<distance_type>> rhsSpan)
+    // ?? operator()(DataBlock<distance_type> lhsBlock, DataBlock<distance_type> rhsBlock)
+};
+
+
+
+
 template<typename MetricPair, typename LHSData, typename RHSData>
 struct BasicFunctor{
     using DistType = typename MetricPair::DistType;
@@ -335,7 +358,7 @@ template<typename DataType, typename DataSet, typename MetricPair>
 struct SearchFunctor{
     using DistType = typename MetricPair::DistType;
     using ConstDataView = typename DataBlock<DataType>::ConstDataView;
-    using const_vector_view = DataBlock<DataType>::const_vector_view;
+    using const_vector_view = typename DataBlock<DataType>::const_vector_view;
 
     const DataBlock<DataType>* targetBlock;
     std::span<const DataBlock<DataType>> blocks;

@@ -18,7 +18,7 @@ struct Override {};
 static inline constexpr Override overrideTag{};
 
 namespace internal{
-    static constexpr size_t maxBatch = 14;
+    static constexpr size_t maxBatch = 200;
 }
 
 struct BlockIndecies{
@@ -52,9 +52,9 @@ struct NodeTrackerImpl{
 
     NodeTrackerImpl() = default;
 
-    NodeTrackerImpl(size_t graphSize): flags(graphSize, false){};
+    explicit NodeTrackerImpl(size_t graphSize): flags(graphSize, false){};
 
-    NodeTrackerImpl(size_t graphSize, Alloc allocator): flags(graphSize, false, allocator){};
+    explicit NodeTrackerImpl(size_t graphSize, Alloc allocator): flags(graphSize, false, allocator){};
 
     reference operator[](size_type i){
         return flags[i];

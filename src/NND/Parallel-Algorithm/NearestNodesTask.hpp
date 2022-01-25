@@ -142,7 +142,7 @@ struct NearestNodesConsumer{
         nnGraph[result.first.first].push_back({result.first.second, std::get<2>(result.second)});
         if (distancesPerBlock[result.first.first] == nnGraph[result.first.first].size()){
             GraphVertex<BlockNumber_t, DistType>& vertex = nnGraph[result.first.first];
-            std::partial_sort(vertex.begin(), vertex.begin()+nnNumNeighbors, vertex.end(), NeighborDistanceComparison<BlockNumber_t, DistType>);
+            std::partial_sort(vertex.begin(), vertex.begin()+nnNumNeighbors, vertex.end(), edge_ops::lessThan);
             vertex.resize(nnNumNeighbors);
 
             for(const auto& neighbor: vertex){
@@ -160,7 +160,7 @@ struct NearestNodesConsumer{
         nnGraph[result.first.second].push_back({result.first.first, std::get<2>(result.second)});
         if (distancesPerBlock[result.first.second] == nnGraph[result.first.second].size()){
             GraphVertex<BlockNumber_t, DistType>& vertex = nnGraph[result.first.second];
-            std::partial_sort(vertex.begin(), vertex.begin()+nnNumNeighbors, vertex.end(), NeighborDistanceComparison<size_t, DistType>);
+            std::partial_sort(vertex.begin(), vertex.begin()+nnNumNeighbors, vertex.end(), edge_ops::lessThan);
             vertex.resize(nnNumNeighbors);
 
 

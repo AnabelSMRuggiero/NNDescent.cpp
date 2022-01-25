@@ -242,7 +242,7 @@ std::pair<Graph<BlockNumber_t, DistType>, InitialJoinHints<DistType>> NearestNod
     }
 
     auto sortFunctor = [=] (GraphVertex<BlockNumber_t, DistType>& vertex){
-        std::sort(std::execution::unseq, vertex.begin(), vertex.end(), NeighborDistanceComparison<BlockNumber_t, DistType>);
+        std::sort(std::execution::unseq, vertex.begin(), vertex.end(), edge_ops::lessThan);
         vertex.resize(maxNearestNodeNeighbors);
     };
     std::for_each(std::execution::unseq, nearestNodeDistances.begin(), nearestNodeDistances.end(), sortFunctor);
@@ -310,11 +310,11 @@ void StitchBlocks(const Graph<BlockNumber_t, DistType>& nearestNodeDistances,
                          cachingFunctor,
                          cachingFunctor.metricFunctor);
         
-        for(size_t i = 0; auto& vertex: cachingFunctor.reverseGraph){
+        for(size_t i = 0; auto& vertex: cachingFunctor.AccessCache()){
             EraseRemove(vertex, blockRHS.currentGraph[i].PushThreshold());
         }
         
-        for(size_t i = 0; const auto& vertex: cachingFunctor.reverseGraph){
+        for(size_t i = 0; const auto& vertex: cachingFunctor.AccessCache()){
             if(vertex.size()>0){
                 retPair.second.push_back({i, vertex});
             }

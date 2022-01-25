@@ -26,6 +26,7 @@ https://github.com/AnabelSMRuggiero/NNDescent.cpp
 #include "NND/Parallel-Algorithm/FreeFunctions.hpp"
 #include "NND/Search.hpp"
 #include "NND/FunctorErasure.hpp"
+#include "NND/MetricHelpers.hpp"
 
 #include "RPTrees/SplittingScheme.hpp"
 #include "RPTrees/Forest.hpp"

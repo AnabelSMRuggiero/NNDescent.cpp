@@ -82,7 +82,7 @@ FragmentGraph<COMExtent> BuildFragmentGraph(std::span<const MetaGraph<COMExtent>
 
     BruteForceGraph<COMExtent>(verticies, neighbors, points, metricSet.dataToData);
     for(auto& vertex: verticies){
-        std::sort(vertex.begin(), vertex.end(), NeighborDistanceComparison<size_t, COMExtent>);
+        std::sort(vertex.begin(), vertex.end(), edge_ops::lessThan);
     }
 
     auto neighborFunctor = [&](size_t, size_t pointIndex){

@@ -65,7 +65,7 @@ struct InitJoinGenerator{
                                 threadFunctors.cache,
                                 threadFunctors.dispatchFunctor);
                 
-                for(size_t i = 0; auto& vertex: threadFunctors.cache.reverseGraph){
+                for(size_t i = 0; auto& vertex: threadFunctors.cache.AccessCache()){
                     EraseRemove(vertex, blockRHS.currentGraph[i].PushThreshold());
                     /*
                     NeighborOverDist<DistType> comparison(blockRHS.currentGraph[i].PushThreshold());
@@ -76,7 +76,7 @@ struct InitJoinGenerator{
                     */
                 }
 
-                for(size_t i = 0; const auto& vertex: threadFunctors.cache.reverseGraph){
+                for(size_t i = 0; const auto& vertex: threadFunctors.cache.AccessCache()){
                     if(vertex.size()>0){
                         retPair.second.push_back({i, vertex});
                     }

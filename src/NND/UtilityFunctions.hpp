@@ -21,6 +21,19 @@ bool constexpr NeighborDistanceComparison(const std::pair<IndexType, FloatType>&
     return neighborA.second < neighborB.second;
 };
 
+struct EdgeLessThan{
+    template<TriviallyCopyable LHSIndexType, TriviallyCopyable RHSIndexType, typename FloatType>
+    constexpr bool operator()(const std::pair<LHSIndexType, FloatType>& neighborA, const std::pair<RHSIndexType, FloatType>& neighborB) const noexcept{
+        return neighborA.second < neighborB.second;
+    }
+};
+
+namespace edge_ops{
+
+constexpr static inline EdgeLessThan lessThan;
+
+}
+
 template<TriviallyCopyable IndexType, typename FloatType>
 bool constexpr NeighborIdentityCheck(const std::pair<IndexType, FloatType>& neighborA, const std::pair<IndexType, FloatType>& neighborB) noexcept{
     return neighborA.first == neighborB.first;

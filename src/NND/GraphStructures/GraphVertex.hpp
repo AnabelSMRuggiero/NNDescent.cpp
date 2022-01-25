@@ -82,7 +82,7 @@ struct GraphVertex{
         
         size_t index = neighbors.size();
         for ( ; index>0; index -= 1){
-            if (NeighborDistanceComparison<IndexType, FloatType>(neighbors[index-1], newNeighbor)) break;
+            if (edge_ops::lessThan(neighbors[index-1], newNeighbor)) break;
         }
         
         neighbors.push_back(newNeighbor);
@@ -98,7 +98,7 @@ struct GraphVertex{
         
         size_t index = neighbors.size();
         for ( ; index>0; index -= 1){
-            if (NeighborDistanceComparison<IndexType, FloatType>(neighbors[index-1], newNeighbor)) break;
+            if (edge_ops::lessThan(neighbors[index-1], newNeighbor)) break;
         }
 
         neighbors.push_back(newNeighbor);
@@ -112,7 +112,7 @@ struct GraphVertex{
     };
 
     void JoinPrep(){
-        std::sort(neighbors.begin(), neighbors.end(), NeighborDistanceComparison<IndexType, FloatType>);
+        std::sort(neighbors.begin(), neighbors.end(), edge_ops::lessThan);
     }
 
     void UnPrep(){

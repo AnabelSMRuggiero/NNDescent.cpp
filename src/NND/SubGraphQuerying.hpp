@@ -299,7 +299,7 @@ struct QueryContext{
         joinQueue.reserve(maxBatch);
 
         NodeTrackerImpl<std::pmr::polymorphic_allocator<bool>> nodesCompared(blockSize, internal::GetThreadResource());
-        
+        /*
         auto notVisited = [&](const auto index){ return !nodesVisited[index]; };
 
         auto notCompared = [&](const auto index)->bool{ 
@@ -313,11 +313,25 @@ struct QueryContext{
         
         
         auto toNeighbor = [&](const auto edge){return edge.first;};
+        */
+
+        auto visited = [&](const auto index){ return !nodesVisited[index]; };
+
+        auto notCompared = [&](const auto index)->bool{ 
+            bool alreadyCompared = nodesCompared[index];
+            nodesCompared[index] = true;
+            return !alreadyCompared;
+        };
+        auto toNeighborView = [&](const auto index){ return subGraph[index]; }; //returns a view into a data block
         
+        
+        auto toNeighbor = [&](const auto edge){return edge.first;};
+
         std::span<const typename Vertex::EdgeType> nodesToCompare{initVertex.begin(), querySearchDepth};
 
         bool breakVar = true;
         while (breakVar){
+            /*
             joinQueue.resize(maxBatch);            
             auto [ignore, outItr] = 
                 std::ranges::transform(nodesToCompare | std::views::transform(toNeighbor)
@@ -332,7 +346,22 @@ struct QueryContext{
                     return joinTarget;
             });
             joinQueue.resize(outItr - joinQueue.begin());
-            
+            */
+            joinQueue.resize(maxBatch);    
+            std::span<const typename Vertex::EdgeType> nodesToCompare{initVertex.begin(), querySearchDepth};        
+            auto [ignore, outItr] = 
+                std::ranges::copy(nodesToCompare | std::views::transform(toNeighbor)
+                                                 | std::views::filter(notCompared) 
+                                                 | std::views::transform(toNeighborView)
+                                                 | std::views::join,
+                                  joinQueue.begin());
+            joinQueue.resize(outItr - joinQueue.begin());
+            std::erase_if(joinQueue, visited);
+
+            for(const auto& joinee : joinQueue){
+                nodesVisited[joinee] = true;
+            }
+
             std::ranges::contiguous_range auto distances = queryFunctor(queryIndex, joinQueue);
 
             breakVar = std::transform_reduce(joinQueue.begin(), joinQueue.end(), distances.begin(),

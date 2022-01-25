@@ -111,7 +111,7 @@ struct SortedVertex{
         //auto insertionPoint = std::upper_bound(neighbors.begin(), neighbors.end()-1, neighbors.back(), NeighborDistanceComparison<IndexType, FloatType>);
         size_t index = neighbors.size();
         for ( ; index>0; index -= 1){
-            if (NeighborDistanceComparison<IndexType, FloatType>(neighbors[index-1], newNeighbor)) break;
+            if (edge_ops::lessThan) break;
         }
         
         neighbors.push_back(newNeighbor);
@@ -133,7 +133,7 @@ struct SortedVertex{
 
         size_t index = neighbors.size();
         for ( ; index>0; index -= 1){
-            if (NeighborDistanceComparison<IndexType, FloatType>(neighbors[index-1], newNeighbor)) break;
+            if (edge_ops::lessThan) break;
         }
 
         neighbors.push_back(newNeighbor);
@@ -147,7 +147,7 @@ struct SortedVertex{
     };
 
     void JoinPrep(){
-        std::sort(neighbors.begin(), neighbors.end(), NeighborDistanceComparison<IndexType, FloatType>);
+        std::sort(neighbors.begin(), neighbors.end(), edge_ops::lessThan);
     }
 
     void UnPrep(){
