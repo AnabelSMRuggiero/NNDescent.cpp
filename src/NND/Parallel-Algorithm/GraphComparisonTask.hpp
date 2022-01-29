@@ -16,6 +16,7 @@ https://github.com/AnabelSMRuggiero/NNDescent.cpp
 
 #include "Parallelization/TaskQueuer.hpp"
 
+#include "Parallelization/ThreadPool.hpp"
 #include "ParallelizationObjects.hpp"
 
 namespace nnd {

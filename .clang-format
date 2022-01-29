@@ -1,0 +1,26 @@
+BasedOnStyle: LLVM
+
+ColumnLimit: 140
+
+ConstructorInitializerIndentWidth: 4
+ContinuationIndentWidth: 4
+IndentWidth: 4
+IndentRequires: true
+IndentPPDirectives: BeforeHash
+IndentCaseLabels: true
+
+
+
+AlwaysBreakTemplateDeclarations: Yes
+SpaceAfterTemplateKeyword: false
+
+AllowShortIfStatementsOnASingleLine: WithoutElse
+
+BinPackArguments: false
+
+Cpp11BracedListStyle: false
+AlignAfterOpenBracket: AlwaysBreak
+
+AlignOperands: AlignAfterOperator
+BreakBeforeBinaryOperators: NonAssignment
+PenaltyIndentedWhitespace: 0

@@ -18,7 +18,7 @@ struct Override {};
 static inline constexpr Override overrideTag{};
 
 namespace internal{
-    static constexpr size_t maxBatch = 200;
+    static constexpr size_t maxBatch = 14;
 }
 
 struct BlockIndecies{

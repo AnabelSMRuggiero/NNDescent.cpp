@@ -16,6 +16,7 @@ https://github.com/AnabelSMRuggiero/NNDescent.cpp
 #include <memory_resource>
 #include <algorithm>
 
+#include "NND/UtilityFunctions.hpp"
 #include "ann/Type.hpp"
 #include "../FunctorErasure.hpp"
 #include "../Type.hpp"
@@ -215,6 +216,9 @@ struct CachingFunctor{
                 
                 results.nodesJoined[target][queryIndex] = true;
 
+
+                //results.reverseGraph[target].push_back({static_cast<DataIndex_t>(queryIndex), distance});
+                
                 int diff = numNeighbors - results.reverseGraph[target].size();
                 switch(diff){
                     case 0:
@@ -227,8 +231,17 @@ struct CachingFunctor{
                     default:
                         results.reverseGraph[target].push_back({static_cast<DataIndex_t>(queryIndex), distance});
                 }
+                
             }
         }
+        /*
+        for(auto& cachedVec : results.reverseGraph){
+            if(cachedVec.size() >= numNeighbors){
+                std::partial_sort(cachedVec.begin(), cachedVec.begin() + numNeighbors, cachedVec.end(), edge_ops::lessThan);
+                cachedVec.resize(numNeighbors);
+            }
+        }
+        */
         accumulatedResults.clear();
         cacheMemory.release();
     }

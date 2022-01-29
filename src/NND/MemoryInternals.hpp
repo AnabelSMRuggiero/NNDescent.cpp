@@ -19,23 +19,23 @@ namespace nnd{
 namespace internal{
 //Can't grab the default here because set_default_resource is usually called in main,
 //the static and first thread_local one are instantiated before then.
-thread_local std::pmr::memory_resource* threadDefaultResource = std::pmr::new_delete_resource();
+inline thread_local std::pmr::memory_resource* threadDefaultResource = std::pmr::new_delete_resource();
 
-void SetThreadResource(std::pmr::memory_resource* resourcePtr){
+inline void SetThreadResource(std::pmr::memory_resource* resourcePtr){
     threadDefaultResource = resourcePtr;
 }
 
-std::pmr::memory_resource* GetThreadResource(){
+inline std::pmr::memory_resource* GetThreadResource(){
     return threadDefaultResource;
 }
 
-static std::atomic<std::pmr::memory_resource*> internalDefaultResource = std::pmr::new_delete_resource();
+inline std::atomic<std::pmr::memory_resource*> internalDefaultResource = std::pmr::new_delete_resource();
 
-void SetInternalResource(std::pmr::memory_resource* resourcePtr){
+inline void SetInternalResource(std::pmr::memory_resource* resourcePtr){
     internalDefaultResource = resourcePtr;
 }
 
-std::pmr::memory_resource* GetInternalResource(){
+inline std::pmr::memory_resource* GetInternalResource(){
     return internalDefaultResource;
 }
 

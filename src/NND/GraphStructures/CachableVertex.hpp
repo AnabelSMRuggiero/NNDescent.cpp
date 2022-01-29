@@ -133,7 +133,7 @@ struct CacherGenerator{
 */
 template<typename Cache>
 struct CacherGenerator{
-    using Derived = typename Cache;
+    using Derived = Cache;
     using ResourceType = typename Cache::CachedType;
 
     //[[no_unique_address]] Reinializer reinit{};
@@ -150,8 +150,8 @@ struct CacherGenerator{
 
 
 template<std::movable ValueType, template<typename> typename HandlerGenerator, typename Reinitalizer, typename Initalizer>
-struct BasicCache : public HandlerGenerator<BasicCache>{
-    using HandlerGenerator<BasicCache>::Handler();
+struct BasicCache : public HandlerGenerator<BasicCache<ValueType, HandlerGenerator, Reinitalizer, Initalizer>>{
+    using HandlerGenerator<BasicCache>::Handler;
     using value_type = ValueType;
     using CachedType = ValueType;
     using Cachable = UniqueResource<ValueType, decltype(Handler(std::declval<Reinitalizer>()))>;
@@ -248,7 +248,7 @@ namespace internal{
 
 template<typename Cache>
 struct ThreadCacherGenerator{
-    using Derived = typename Cache;
+    using Derived = Cache;
     using ResourceType = typename Cache::CachedType;
 
     //[[no_unique_address]] Reinializer reinit{};
@@ -264,7 +264,7 @@ struct ThreadCacherGenerator{
 };
 
 template<typename DistType>
-using CachableVertex = decltype(MakeVertexCache<DistType>())::Cachable;
+using CachableVertex = typename decltype(MakeVertexCache<DistType>())::Cachable;
 
 }
 
