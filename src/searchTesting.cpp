@@ -87,20 +87,25 @@ std::vector<IndexBlock> OpenIndexBlocks(std::filesystem::path fragmentDirectory)
     return queryContexts;
 }
 
-void ParallelSearch(
-    ThreadPool<SinglePointFunctor<float>> &threadPool, const DataSet<float> &searchSet, const RandomProjectionForest &searchForest,
-    const std::unordered_map<unsigned long, unsigned long> &splitToBlockNum, const SearchParameters& searchParams, std::span<nnd::QueryContext<unsigned int, float>> queryContexts,
-    std::span<const nnd::IndexBlock> indexView) {
+struct SearchMapToForestResult{
+    std::vector<ParallelContextBlock<float>> contexts;
+    IndexMaps<size_t> mappings;
+};
+
+void ParallelSearchMapToForest(
+    const DataSet<float>& searchSet, const RandomProjectionForest& searchForest,
+    const std::unordered_map<unsigned long, unsigned long>& splitToBlockNum) {
 
     DataMapper<float, void, void> testMapper(searchSet);
     std::vector<ParallelContextBlock<float>> searchContexts;
 
     auto searcherConstructor = [&, &splitToBlockNum = splitToBlockNum](size_t splittingIndex, std::span<const size_t> indicies) -> void {
-        ParallelContextBlock<float> retBlock{ splitToBlockNum.at(splittingIndex), std::vector<ParallelSearchContext<float>>(indicies.size()) };
+        ParallelContextBlock<float> retBlock{ splitToBlockNum.at(splittingIndex),
+                                              std::vector<ParallelSearchContext<float>>(indicies.size()) };
 
         for (size_t i = 0; size_t index : indicies) {
             // const DataView searchPoint, const std::vector<DataBlock<DataEntry>>& blocks
-            ParallelSearchContext<float> *contextPtr = &retBlock.second[i];
+            ParallelSearchContext<float>* contextPtr = &retBlock.second[i];
             contextPtr->~ParallelSearchContext<float>();
             new (contextPtr) ParallelSearchContext<float>(searchParams.searchNeighbors, indexView.size(), index);
 
@@ -121,9 +126,15 @@ void ParallelSearch(
                                        std::move(testMapper.sourceToBlockIndex),
                                        std::move(testMapper.sourceToSplitIndex) };
 
+    return {std::move(searchContexts), std::move(testMappings)};
+}
+
+void ParallelSearch(
+    ThreadPool<SinglePointFunctor<float>>& threadPool, const SearchParameters& searchParams, std::span<ParallelSearchContext<float>> searchContexts,
+    std::span<nnd::QueryContext<unsigned int, float>> queryContexts, std::span<const nnd::IndexBlock> indexView) {
+
     InitialSearchTask<float> searchGenerator = { queryContexts,
                                                  indexView,
-                                                 // std::move(blocksToSearch),
                                                  searchParams.maxSearchesQueued,
                                                  AsyncQueue<std::pair<BlockIndecies, SearchSet>>() };
 
@@ -132,11 +143,11 @@ void ParallelSearch(
 
     QueueView hintView = { searchHints.data(), searchHints.size() };
 
-    ParaSearchLoop(threadPool, hintView, searchContexts, queryContexts, indexView, searchParams.maxSearchesQueued, searchSet.size());
+    ParaSearchLoop(threadPool, hintView, searchContexts, queryContexts, indexView, searchParams.maxSearchesQueued, searchContexts.size());
     threadPool.StopThreads();
 }
 
-int main(int argc, char *argv[]) {
+int main(int argc, char* argv[]) {
 
     constexpr size_t numThreads = 4;
 
@@ -205,10 +216,10 @@ int main(int argc, char *argv[]) {
         return extract<std::vector<std::vector<size_t>>>(mappingFile);
     }();
     std::unordered_set<size_t> splittingIndicies;
-    for (const auto &[key, value] : splittingVectors)
+    for (const auto& [key, value] : splittingVectors)
         splittingIndicies.insert(key);
 
-    for (const auto &[key, value] : splitToBlockNum)
+    for (const auto& [key, value] : splitToBlockNum)
         splittingIndicies.erase(key);
 
     EuclidianScheme<float, AlignedArray<float>> transformingScheme(mnistFashionTest);
@@ -225,7 +236,7 @@ int main(int argc, char *argv[]) {
 
         size_t numberSearchBlocks = dataBlocks.size();
 
-        for (auto &context : queryContexts) {
+        for (auto& context : queryContexts) {
             context.querySearchDepth = searchQueryDepth;
             context.querySize = numberSearchNeighbors;
         }
@@ -247,13 +258,13 @@ int main(int argc, char *argv[]) {
 
             std::span<std::vector<size_t>> indexMappingView(blockIndexToSource.data(), blockIndexToSource.size());
 
-            for (size_t i = 0; auto &[blockNum, testBlock] : searchContexts) {
-                for (size_t j = 0; auto &context : testBlock) {
-                    GraphVertex<BlockIndecies, float> &result = context.currentNeighbors;
+            for (size_t i = 0; auto& [blockNum, testBlock] : searchContexts) {
+                for (size_t j = 0; auto& context : testBlock) {
+                    GraphVertex<BlockIndecies, float>& result = context.currentNeighbors;
                     // size_t testIndex = testMappings.blockIndexToSource[i][j];
                     size_t testIndex = context.dataIndex;
                     // std::sort_heap(result.begin(), result.end(), NeighborDistanceComparison<BlockIndecies, float>);
-                    for (const auto &neighbor : result) {
+                    for (const auto& neighbor : result) {
                         results[testIndex].push_back(indexMappingView[neighbor.first.blockNumber][neighbor.first.dataIndex]);
                     }
                     j++;
@@ -323,12 +334,12 @@ int main(int argc, char *argv[]) {
 
             std::span<std::vector<size_t>> indexMappingView(blockIndexToSource.data(), blockIndexToSource.size());
 
-            for (size_t i = 0; auto &[ignore, testBlock] : searchContexts) {
-                for (size_t j = 0; auto &context : testBlock) {
-                    GraphVertex<BlockIndecies, float> &result = context.currentNeighbors;
+            for (size_t i = 0; auto& [ignore, testBlock] : searchContexts) {
+                for (size_t j = 0; auto& context : testBlock) {
+                    GraphVertex<BlockIndecies, float>& result = context.currentNeighbors;
                     size_t testIndex = context.dataIndex;
                     // std::sort_heap(result.begin(), result.end(), NeighborDistanceComparison<BlockIndecies, float>);
-                    for (const auto &neighbor : result) {
+                    for (const auto& neighbor : result) {
                         results[testIndex].push_back(indexMappingView[neighbor.first.blockNumber][neighbor.first.dataIndex]);
                     }
                     j++;
@@ -339,8 +350,8 @@ int main(int argc, char *argv[]) {
 
         size_t numNeighborsCorrect(0);
         std::vector<size_t> correctNeighborsPerIndex(results.size());
-        for (size_t i = 0; const auto &result : results) {
-            for (size_t j = 0; const auto &neighbor : result) {
+        for (size_t i = 0; const auto& result : results) {
+            for (size_t j = 0; const auto& neighbor : result) {
                 auto findItr = std::find(std::begin(mnistFashionTestNeighbors[i]), std::begin(mnistFashionTestNeighbors[i]) + 10, neighbor);
                 if (findItr != (std::begin(mnistFashionTestNeighbors[i]) + 10)) {
                     numNeighborsCorrect++;

@@ -24,3 +24,5 @@ AlignAfterOpenBracket: AlwaysBreak
 AlignOperands: AlignAfterOperator
 BreakBeforeBinaryOperators: NonAssignment
 PenaltyIndentedWhitespace: 0
+
+PointerAlignment: Left

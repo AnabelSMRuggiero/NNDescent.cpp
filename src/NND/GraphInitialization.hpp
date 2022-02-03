@@ -60,13 +60,6 @@ std::pair<IndexMaps<size_t>, std::vector<DataBlock<DataType>>> PartitionData(con
 
 template<typename DataType, typename Pool>
 std::pair<IndexMaps<size_t>, std::vector<DataBlock<DataType>>> PartitionData(const RandomProjectionForest& treeToMap, const DataSet<DataType>& sourceData, Pool& threadPool,  const size_t startIndex=0){
-    //There might be a more elegant way to do this with templates. I tried.
-
-    /*
-    auto boundContructor = [](const DataSet<DataEntry>& dataSource, std::span<const size_t> dataPoints, size_t blockNumber){ 
-        return DataBlock<DataEntry>(dataSource, dataPoints, blockNumber);
-    };
-    */
     
     //using DataType = typename DataEntry::value_type;
 

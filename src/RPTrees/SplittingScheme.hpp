@@ -88,7 +88,7 @@ struct EuclidianScheme{
                                     splitter = SplittingView(splittingVectors[splitIndex].first),
                                     offset = splittingVectors[splitIndex].second]
                                     (size_t comparisonIndex) -> bool{
-                    return 0.0 < (Dot(data[comparisonIndex], splitter) + offset);
+                    return 0.0 < (ann::Dot(data[comparisonIndex], splitter) + offset);
             };
             return comparisonFunction;
         } else {
@@ -97,7 +97,7 @@ struct EuclidianScheme{
                                     splitter = SplittingView(splittingVectors[splitIndex].first.begin(), splittingVectors[splitIndex].first.end()),
                                     offset = splittingVectors[splitIndex].second]
                                     (size_t comparisonIndex) -> bool{
-                    return 0.0 < (Dot(data[comparisonIndex], splitter) + offset);
+                    return 0.0 < (ann::Dot(data[comparisonIndex], splitter) + offset);
             };
             return comparisonFunction;
         }
@@ -113,7 +113,7 @@ struct EuclidianScheme{
                                     splitter = SplittingView(splitPair.first),
                                     offset = splitPair.second]
                                     (size_t comparisonIndex) -> bool{
-                    return 0.0 < (Dot(data[comparisonIndex], splitter) + offset);
+                    return 0.0 < (ann::Dot(data[comparisonIndex], splitter) + offset);
             };
             return comparisonFunction;
         } else {
@@ -122,7 +122,7 @@ struct EuclidianScheme{
                                     splitter = SplittingView(splitPair.first.begin(), splitPair.first.size()),
                                     offset = splitPair.second]
                                     (size_t comparisonIndex) -> bool{
-                    return 0.0 < (Dot(data[comparisonIndex], splitter) + offset);
+                    return 0.0 < (ann::Dot(data[comparisonIndex], splitter) + offset);
             };
             return comparisonFunction;
         }
@@ -175,7 +175,7 @@ struct ParallelEuclidianScheme{
                                     splitter = SplittingView(splittingVector),
                                     offset = projectionOffset]
                                     (size_t comparisonIndex) -> bool{
-                    return 0.0 < (Dot(data[comparisonIndex], splitter) + offset);
+                    return 0.0 < (ann::Dot(data[comparisonIndex], splitter) + offset);
             };
 
             generatedVectors.Put({splitIndex, std::move(splittingVector), projectionOffset});
@@ -187,7 +187,7 @@ struct ParallelEuclidianScheme{
                                     splitter = SplittingView(splittingVector.begin(), splittingVector.end()),
                                     offset = projectionOffset]
                                     (size_t comparisonIndex) -> bool{
-                    return 0.0 < (Dot(data[comparisonIndex], splitter) + offset);
+                    return 0.0 < (ann::Dot(data[comparisonIndex], splitter) + offset);
             };
 
             generatedVectors.Put({splitIndex, std::move(splittingVector), projectionOffset});
@@ -205,7 +205,7 @@ struct ParallelEuclidianScheme{
                                     splitter = SplittingView(splitPair.first),
                                     offset = splitPair.second]
                                     (size_t comparisonIndex) -> bool{
-                    return 0.0 < (Dot(data[comparisonIndex], splitter) + offset);
+                    return 0.0 < (ann::Dot(data[comparisonIndex], splitter) + offset);
             };
             return comparisonFunction;
         } else {
@@ -214,7 +214,7 @@ struct ParallelEuclidianScheme{
                                     splitter = SplittingView(splitPair.first.begin(), splitPair.first.size()),
                                     offset = splitPair.second]
                                     (size_t comparisonIndex) -> bool{
-                    return 0.0 < (Dot(data[comparisonIndex], splitter) + offset);
+                    return 0.0 < (ann::Dot(data[comparisonIndex], splitter) + offset);
             };
             return comparisonFunction;
         }
@@ -289,7 +289,7 @@ struct AngularScheme{
                                     &data = std::as_const(this->dataSource), 
                                     splitter = SplittingView(splittingVectors[splitIndex].first)]
                                     (size_t comparisonIndex) -> bool{
-                    return 0.0 < Dot(data[comparisonIndex], splitter);
+                    return 0.0 < ann::Dot(data[comparisonIndex], splitter);
             };
             return comparisonFunction;
         } else {
@@ -297,7 +297,7 @@ struct AngularScheme{
                                     &data = std::as_const(this->dataSource), 
                                     splitter = SplittingView(splittingVectors[splitIndex].first.begin(), splittingVectors[splitIndex].first.end())]
                                     (size_t comparisonIndex) -> bool{
-                    return 0.0 < Dot(data[comparisonIndex], splitter);
+                    return 0.0 < ann::Dot(data[comparisonIndex], splitter);
             };
             return comparisonFunction;
         }
@@ -312,7 +312,7 @@ struct AngularScheme{
                                     &data = std::as_const(this->dataSource), 
                                     splitter = SplittingView(splittingVec)]
                                     (size_t comparisonIndex) -> bool{
-                    return 0.0 < Dot(data[comparisonIndex], splitter);
+                    return 0.0 < ann::Dot(data[comparisonIndex], splitter);
             };
             return comparisonFunction;
         } else {
@@ -320,7 +320,7 @@ struct AngularScheme{
                                     &data = std::as_const(this->dataSource), 
                                     splitter = SplittingView(splittingVec.begin(), splittingVec.size())]
                                     (size_t comparisonIndex) -> bool{
-                    return 0.0 < Dot(data[comparisonIndex], splitter);
+                    return 0.0 < ann::Dot(data[comparisonIndex], splitter);
             };
             return comparisonFunction;
         }
