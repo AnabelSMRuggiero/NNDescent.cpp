@@ -23,6 +23,8 @@ https://github.com/AnabelSMRuggiero/NNDescent.cpp
 
 #include "MemoryInternals.hpp"
 #include "GraphStructures.hpp"
+#include "NND/FunctorErasure.hpp"
+#include "NND/GraphStructures/CachingFunctor.hpp"
 #include "SubGraphQuerying.hpp"
 
 #include "UtilityFunctions.hpp"
@@ -94,7 +96,7 @@ JoinResults<DistType> BlockwiseJoin(const JoinHints& startJoins,
                    const Graph<BlockIndecies, DistType>& currentGraphState,
                    const DirectedGraph<DataIndex_t>& searchSubgraph,
                    const QueryContext<DataIndex_t, DistType>& targetBlock,
-                   QueryFunctor& queryFunctor){
+                   QueryFunctor&& queryFunctor){
     
     std::vector<std::pair<DataIndex_t, std::vector<DataIndex_t>>> joinHints = FlattenHints<DistType>(startJoins);
     
@@ -155,12 +157,12 @@ void ReverseBlockJoin(const JoinHints& startJoins,
                    const Graph<BlockIndecies, DistType>& currentGraphState,
                    const DirectedGraph<DataIndex_t>& searchSubgraph,
                    const QueryContext<DataIndex_t, DistType>& targetBlock,
-                   CachingFunctor<DistType>& cachingFunctor,
-                   DistanceFunctor& queryFunctor){
+                   cache_state<DistType>& result_cache,
+                   DistanceFunctor&& queryFunctor){
     
     //std::vector<std::pair<size_t, GraphVertex<size_t, DistType>>> joinHints;
-
-    auto& cache = cachingFunctor.AccessCache();
+    result_cache.reduce_results();
+    auto& cache = result_cache.results;
 
     NodeTracker nodesJoined(searchSubgraph.size());
     std::vector<size_t> successfulJoins;
@@ -374,17 +376,17 @@ JoinMap InitializeJoinMap(const BlockContainer& blockUpdateContexts,
 template<bool checkGraphFragment = false, typename DistType>
 int UpdateBlocks(BlockUpdateContext<DistType>& blockLHS,
                  BlockUpdateContext<DistType>& blockRHS,
-                 CachingFunctor<DistType>& cachingFunctor){
+                 const erased_binary_binder<DistType>& bound_blocks,
+                 cache_state<DistType>& result_cache){
 
     blockLHS.blockJoinTracker[blockRHS.queryContext.blockNumber] = true;
     
-    cachingFunctor.SetBlocks(blockLHS.queryContext.blockNumber, blockRHS.queryContext.blockNumber);
 
     JoinResults<DistType> blockLHSUpdates = BlockwiseJoin(blockLHS.joinsToDo[blockRHS.queryContext.blockNumber],
                                                                         blockLHS.currentGraph,
                                                                         blockLHS.joinPropagation,
                                                                         blockRHS.queryContext,
-                                                                        cachingFunctor);
+                                                                        caching_functor<DistType>{result_cache, bound_blocks(blockLHS.queryContext.blockNumber, blockRHS.queryContext.blockNumber)});
 
     NewJoinQueues<DistType, checkGraphFragment>(blockLHSUpdates, 
                                                 blockLHS.blockJoinTracker,
@@ -397,24 +399,22 @@ int UpdateBlocks(BlockUpdateContext<DistType>& blockLHS,
     blockRHS.blockJoinTracker[blockLHS.queryContext.blockNumber] = true;
     
     
-    cachingFunctor.metricFunctor.SetBlocks(blockRHS.queryContext.blockNumber, blockLHS.queryContext.blockNumber);
-
     ReverseBlockJoin(blockRHS.joinsToDo[blockLHS.queryContext.blockNumber],
                         blockRHS.currentGraph,
                         blockRHS.joinPropagation,
                         blockLHS.queryContext,
-                        cachingFunctor,
-                        cachingFunctor.metricFunctor);
+                        result_cache,
+                        bound_blocks(blockRHS.queryContext.blockNumber, blockLHS.queryContext.blockNumber));
     
-    for(size_t i = 0; auto& vertex: cachingFunctor.AccessCache()){
+    for(size_t i = 0; auto& vertex: result_cache.results){
         EraseRemove(vertex, blockRHS.currentGraph[i].PushThreshold());
         
     }
-    NewJoinQueues<DistType, checkGraphFragment>(cachingFunctor.AccessCache().reverseGraph, blockRHS.blockJoinTracker, blockLHS.queryContext.graphFragment, blockLHS.currentGraph, blockRHS.newJoins);
+    NewJoinQueues<DistType, checkGraphFragment>(result_cache.results.reverseGraph, blockRHS.blockJoinTracker, blockLHS.queryContext.graphFragment, blockLHS.currentGraph, blockRHS.newJoins);
 
     int graphUpdates{0};
 
-    for (size_t i = 0; auto& result: cachingFunctor.AccessCache()){
+    for (size_t i = 0; auto& result: result_cache.results){
         graphUpdates += ConsumeVertex(blockRHS.currentGraph[i], result, blockLHS.queryContext.graphFragment, blockLHS.queryContext.blockNumber);
         i++;
     }

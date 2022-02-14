@@ -10,6 +10,13 @@
 
 namespace nnd{
 
+struct SplittingHeurisitcs{
+    uint32_t splitThreshold = 80;
+    uint32_t childThreshold = 32;
+    uint32_t maxTreeSize = 130;
+    float maxSplitFraction = 0.0f;
+};
+
 using DataIndex_t = uint32_t;
 using BlockNumber_t = uint32_t;
 using GraphFragment_t = uint32_t;

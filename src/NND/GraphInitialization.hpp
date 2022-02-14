@@ -25,10 +25,11 @@ https://github.com/AnabelSMRuggiero/NNDescent.cpp
 #include "./MetaGraph.hpp"
 #include "./BlockwiseAlgorithm.hpp"
 
-
 #include "../ann/Data.hpp"
 #include "FunctorErasure.hpp"
 #include "MetricHelpers.hpp"
+#include "NND/GraphStructures/CachingFunctor.hpp"
+
 
 namespace nnd{
 
@@ -114,13 +115,12 @@ template<typename DistType>
 std::vector<Graph<DataIndex_t, DistType>> InitializeBlockGraphs(const size_t numBlocks,
                                                            const std::vector<size_t>& blockSizes,
                                                            const size_t numNeighbors,
-                                                           DispatchFunctor<DistType> distanceFunctor){
+                                                           erased_binary_binder<DistType> distanceFunctor){
     
     std::vector<Graph<DataIndex_t, DistType>> blockGraphs(0);
     blockGraphs.reserve(blockSizes.size());
     for (size_t i =0; i<numBlocks; i+=1){
-        distanceFunctor.SetBlocks(i,i);
-        blockGraphs.push_back(BruteForceBlock<DistType>(numNeighbors, blockSizes[i], distanceFunctor));
+        blockGraphs.push_back(BruteForceBlock<DistType>(numNeighbors, blockSizes[i], distanceFunctor(i,i)));
     }
 
     return blockGraphs;
@@ -132,15 +132,14 @@ template <typename DistType, typename COMExtent, typename IndexType>
 Graph<IndexType, DistType> GenerateQueryHints(const std::span<Graph<IndexType, DistType>> blockGraphs,
                                                   const MetaGraph<COMExtent>& metaGraph,
                                                   const size_t numNeighbors,
-                                                  SinglePointFunctor<COMExtent> distanceFunctor){
+                                                  erased_unary_binder<COMExtent> distanceFunctor){
     
     Graph<IndexType, DistType> retGraph;
     for(size_t i = 0; i<metaGraph.size(); i+=1){
-        distanceFunctor.SetBlock(i);
         retGraph.push_back(QueryHintFromCOM<DistType, COMExtent>(i, 
                                                                  blockGraphs[i], 
                                                                  numNeighbors, 
-                                                                 distanceFunctor));
+                                                                 distanceFunctor(i)));
     }
 
     return retGraph;
@@ -188,7 +187,7 @@ template<typename DistType>
 std::pair<Graph<BlockNumber_t, DistType>, InitialJoinHints<DistType>> NearestNodeDistances(std::span<const BlockUpdateContext<DistType>> blockUpdateContexts,
                                                         const MetaGraph<DistType>& metaGraph,
                                                         const size_t maxNearestNodeNeighbors,
-                                                        DispatchFunctor<DistType>& distanceFunctor){
+                                                        const erased_binary_binder<DistType>& distanceFunctor){
 
     std::unordered_set<ComparisonKey<BlockNumber_t>> nearestNodeDistQueue;
     //const size_t startIndex = blockUpdateContexts[0].queryContext.blockNumber;
@@ -209,9 +208,8 @@ std::pair<Graph<BlockNumber_t, DistType>, InitialJoinHints<DistType>> NearestNod
     
     std::vector<std::tuple<DataIndex_t, DataIndex_t, DistType>> nnDistanceResults(nearestNodeDistQueue.size());
     auto nnDistanceFunctor = [&](const ComparisonKey<BlockNumber_t> blockNumbers) -> std::tuple<DataIndex_t, DataIndex_t, DistType>{
-        distanceFunctor.SetBlocks(blockNumbers.first, blockNumbers.second);
         return blockUpdateContexts[blockNumbers.first].queryContext.NearestNodes(blockUpdateContexts[blockNumbers.second].queryContext,
-                                                                                 distanceFunctor);
+                                                                                 distanceFunctor(blockNumbers.first, blockNumbers.second));
     };
 
     std::transform(std::execution::unseq, distancesToCompute.begin(), distancesToCompute.end(), nnDistanceResults.begin(), nnDistanceFunctor);
@@ -249,7 +247,8 @@ void StitchBlocks(const Graph<BlockNumber_t, DistType>& nearestNodeDistances,
                   const InitialJoinHints<DistType>& stitchHints,
                   std::span<BlockUpdateContext<DistType>> blockUpdateContexts,
                   const size_t graphFragment,
-                  CachingFunctor<DistType>& cachingFunctor){
+                  const erased_binary_binder<DistType>& bound_blocks,
+                  cache_state<DistType>& result_cache){
 
 
 
@@ -286,28 +285,27 @@ void StitchBlocks(const Graph<BlockNumber_t, DistType>& nearestNodeDistances,
         JoinHints RHShint;
         RHShint[std::get<1>(stitchHint)] = {std::get<0>(stitchHint)};
 
-        cachingFunctor.SetBlocks(blockNumbers.first, blockNumbers.second);
+        ;
 
         std::pair<JoinResults<DistType>, JoinResults<DistType>> retPair;
         retPair.first = BlockwiseJoin(LHShint,
                                       blockLHS.currentGraph,
                                       blockLHS.joinPropagation,
                                       blockRHS.queryContext,
-                                      cachingFunctor);
+                                      caching_functor<DistType>{result_cache, bound_blocks(blockNumbers.first, blockNumbers.second)});
         
-        cachingFunctor.metricFunctor.SetBlocks(blockNumbers.second, blockNumbers.first);
         ReverseBlockJoin(RHShint,
                          blockRHS.currentGraph,
                          blockRHS.joinPropagation,
                          blockLHS.queryContext,
-                         cachingFunctor,
-                         cachingFunctor.metricFunctor);
+                         result_cache,
+                         bound_blocks(blockNumbers.second, blockNumbers.first));
         
-        for(size_t i = 0; auto& vertex: cachingFunctor.AccessCache()){
+        for(size_t i = 0; auto& vertex: result_cache.results){
             EraseRemove(vertex, blockRHS.currentGraph[i].PushThreshold());
         }
         
-        for(size_t i = 0; const auto& vertex: cachingFunctor.AccessCache()){
+        for(size_t i = 0; const auto& vertex: result_cache.results){
             if(vertex.size()>0){
                 retPair.second.push_back({i, vertex});
             }
@@ -356,17 +354,15 @@ void StitchBlocks(const Graph<BlockNumber_t, DistType>& nearestNodeDistances,
 template<typename DataType, typename DistType, typename COMExtent>
 std::unique_ptr<BlockUpdateContext<DistType>[]> BuildGraph(const std::vector<DataBlock<DataType>>& dataBlocks,
                                                                           const MetaGraph<COMExtent>& metaGraph,
-                                                                          DispatchFunctor<DistType>& dispatch,
+                                                                          erased_binary_binder<DistType> dispatch,
                                                                           //std::vector<size_t>&& sizes,
                                                                           const HyperParameterValues& hyperParams,
-                                                                          std::execution::sequenced_policy){
+                                                                          erased_unary_binder<COMExtent> comFunctor){
 
 
     std::vector<Graph<DataIndex_t, float>> blockGraphs = InitializeBlockGraphs<float>(metaGraph.size(), metaGraph.weights, hyperParams.indexParams.blockGraphNeighbors, dispatch);
 
     std::span<Graph<DataIndex_t, float>> blockGraphView = {blockGraphs.begin(), blockGraphs.size()};
-
-    DataComDistance<DataType, COMExtent, EuclideanMetricPair> comFunctor(metaGraph, dataBlocks);
 
     Graph<DataIndex_t, float> queryHints = GenerateQueryHints<float, float>(blockGraphView, metaGraph, hyperParams.indexParams.blockGraphNeighbors, comFunctor);
 
@@ -378,10 +374,10 @@ std::unique_ptr<BlockUpdateContext<DistType>[]> BuildGraph(const std::vector<Dat
     
     std::span<BlockUpdateContext<DistType>> blockSpan(blockUpdateContexts.get(), blockGraphs.size());
     std::span<const BlockUpdateContext<DistType>> constBlockSpan(blockUpdateContexts.get(), blockGraphs.size());
-    CachingFunctor<float> cacher(dispatch, hyperParams.splitParams.maxTreeSize, hyperParams.indexParams.blockGraphNeighbors);
+    cache_state<float> cache(hyperParams.splitParams.maxTreeSize, hyperParams.indexParams.blockGraphNeighbors);
 
     auto [nearestNodeDistances, stitchHints] = NearestNodeDistances(constBlockSpan, metaGraph, hyperParams.indexParams.nearestNodeNeighbors, dispatch);
-    StitchBlocks(nearestNodeDistances, stitchHints, blockSpan, metaGraph.FragmentNumber(), cacher);
+    StitchBlocks(nearestNodeDistances, stitchHints, blockSpan, metaGraph.FragmentNumber(), dispatch, cache);
     
     
     //int iteration(1);
@@ -390,7 +386,7 @@ std::unique_ptr<BlockUpdateContext<DistType>[]> BuildGraph(const std::vector<Dat
         graphUpdates = 0;
         for(size_t i = 0; i<blockSpan.size(); i+=1){
             for (auto& joinList: blockSpan[i].joinsToDo){
-                graphUpdates += UpdateBlocks(blockSpan[i], blockSpan[joinList.first], cacher);
+                graphUpdates += UpdateBlocks(blockSpan[i], blockSpan[joinList.first], dispatch, cache);
                 blockSpan[joinList.first].joinsToDo.erase(i);
             }
         }

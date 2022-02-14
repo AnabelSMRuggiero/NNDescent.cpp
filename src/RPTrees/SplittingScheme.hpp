@@ -82,7 +82,7 @@ struct EuclidianScheme{
         splittingVectors[splitIndex] = std::pair<SplittingVector, OffSetType>(std::move(splittingVector), projectionOffset);
 
         //};
-        if constexpr(isAlignedArray_v<SplittingVector>){
+        if constexpr(is_aligned_contiguous_range_v<SplittingVector>){
             auto comparisonFunction = [=, 
                                     &data = std::as_const(this->dataSource), 
                                     splitter = SplittingView(splittingVectors[splitIndex].first),
@@ -107,7 +107,7 @@ struct EuclidianScheme{
 
     auto operator()(size_t splitIndex, TransformTag){
         std::pair<SplittingVector, OffSetType>& splitPair = splittingVectors.at(splitIndex);
-        if constexpr(isAlignedArray_v<SplittingVector>){
+        if constexpr(is_aligned_contiguous_range_v<SplittingVector>){
             auto comparisonFunction = [=, 
                                     &data = std::as_const(this->dataSource), 
                                     splitter = SplittingView(splitPair.first),
@@ -169,7 +169,7 @@ struct ParallelEuclidianScheme{
         //splittingVectors[splitIndex] = std::pair<SplittingVector, OffSetType>(std::move(splittingVector), projectionOffset);
 
         //};
-        if constexpr(isAlignedArray_v<SplittingVector>){
+        if constexpr(is_aligned_contiguous_range_v<SplittingVector>){
             auto comparisonFunction = [=, 
                                     &data = std::as_const(this->dataSource), 
                                     splitter = SplittingView(splittingVector),
@@ -199,7 +199,7 @@ struct ParallelEuclidianScheme{
 
     auto operator()(size_t splitIndex, TransformTag){
         std::pair<SplittingVector, OffSetType>& splitPair = splittingVectors.at(splitIndex);
-        if constexpr(isAlignedArray_v<SplittingVector>){
+        if constexpr(is_aligned_contiguous_range_v<SplittingVector>){
             auto comparisonFunction = [=, 
                                     &data = std::as_const(this->dataSource), 
                                     splitter = SplittingView(splitPair.first),
@@ -284,7 +284,7 @@ struct AngularScheme{
         splittingVectors[splitIndex] = std::move(splittingVector);
 
         //};
-        if constexpr(isAlignedArray_v<SplittingVector>){
+        if constexpr(is_aligned_contiguous_range_v<SplittingVector>){
             auto comparisonFunction = [=, 
                                     &data = std::as_const(this->dataSource), 
                                     splitter = SplittingView(splittingVectors[splitIndex].first)]
@@ -307,7 +307,7 @@ struct AngularScheme{
 
     auto operator()(size_t splitIndex, TransformTag){
         SplittingVector& splittingVec = splittingVectors.at(splitIndex);
-        if constexpr(isAlignedArray_v<SplittingVector>){
+        if constexpr(is_aligned_contiguous_range_v<SplittingVector>){
             auto comparisonFunction = [=, 
                                     &data = std::as_const(this->dataSource), 
                                     splitter = SplittingView(splittingVec)]

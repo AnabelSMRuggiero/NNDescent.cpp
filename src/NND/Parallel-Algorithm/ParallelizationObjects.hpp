@@ -21,21 +21,21 @@ https://github.com/AnabelSMRuggiero/NNDescent.cpp
 namespace nnd{
 
 template<typename DistType, typename COMExtent>
-struct ThreadFunctors{
-    DispatchFunctor<DistType> dispatchFunctor;
-    CachingFunctor<DistType> cache;
-    SinglePointFunctor<COMExtent> comDistFunctor;
+struct thread_functors{
+    erased_binary_binder<DistType> dispatchFunctor;
+    cache_state<DistType> cache;
+    erased_unary_binder<COMExtent> comDistFunctor;
 
-    ThreadFunctors() = default;
+    thread_functors() = default;
 
-    ThreadFunctors(const ThreadFunctors&) = default;
+    thread_functors(const thread_functors&) = default;
 
-    ThreadFunctors& operator=(const ThreadFunctors&) = default;
+    thread_functors& operator=(const thread_functors&) = default;
 
     template<typename DistanceFunctor, typename COMFunctor>
-    ThreadFunctors(DistanceFunctor distanceFunctor, COMFunctor comFunctor, size_t maxBlockSize, size_t numNeighbors):
+    thread_functors(DistanceFunctor distanceFunctor, COMFunctor comFunctor, size_t maxBlockSize, size_t numNeighbors):
         dispatchFunctor(distanceFunctor),
-        cache(dispatchFunctor, maxBlockSize, numNeighbors),
+        cache(maxBlockSize, numNeighbors),
         comDistFunctor(comFunctor) {};
 
 };

@@ -19,77 +19,14 @@ https://github.com/AnabelSMRuggiero/NNDescent.cpp
 #include <type_traits>
 #include <vector>
 
-
 #include "../ann/Data.hpp"
 #include "../ann/Metrics/SpaceMetrics.hpp"
 #include "../ann/NestedRanges.hpp"
-#include "../ann/Type.hpp"
 #include "../ann/TemplateManipulation.hpp"
+#include "../ann/Type.hpp"
 #include "Type.hpp"
 
-
 namespace nnd {
-
-/*
-    Lets rethink this nonsense:
-    I want f(span, span)         -> g(blockIdx, blockIdx) -> h(dataIdx, dataIdx)
-           f(span, blockIdx)     -> k(blockIdx)           -> h(dataIdx, dataIdx)
-           f(blockIdx, span)     -> l(blockIdx)           -> h(dataIdx, dataIdx)
-           f(blockIdx, blockIdx) ->                       -> h(dataIdx, dataIdx)
-
-*/
-
-/*
-template<typename Metric>
-struct MetricFunctorRedo {
-    using center_type = typename Metric::center_type;
-    using data_type = typename Metric::data_type;
-    using distance_type = typename Metric::distance_type;
-    [[no_unique_address]] Metric metric;
-
-    // template<std::ranges::random_access_range LHSData, std::ranges::random_access_range RHSData>
-    // operator(const LHSData& lhsData, const RHSData& rhsData){}
-
-    // ?? operator()(std::span<DataBlock<distance_type>> lhsSpan, std::span<DataBlock<distance_type>> rhsSpan)
-    // ?? operator()(DataBlock<distance_type> lhsBlock, std::span<DataBlock<distance_type>> rhsSpan)
-    // ?? operator()(DataBlock<distance_type> lhsBlock, DataBlock<distance_type> rhsBlock)
-};
-*/
-
-template<typename MetricPair, typename LHSData, typename RHSData>
-struct BasicFunctor {
-    using DistType = typename MetricPair::DistType;
-    using ConstDataView = typename RHSData::ConstDataView;
-    using const_vector_view = typename RHSData::const_vector_view;
-
-    [[no_unique_address]] MetricPair metricPair;
-    const LHSData* lhsBlock;
-    const RHSData* rhsBlock;
-    // size_t lhsBlockNum, rhsBlockNum;
-
-    BasicFunctor(const LHSData& lhsData, const RHSData& rhsData) : metricPair(MetricPair()), lhsBlock(&lhsData), rhsBlock(&rhsData){};
-
-    BasicFunctor(MetricPair metricPair, const LHSData& lhsData, const RHSData& rhsData)
-        : metricPair(metricPair), lhsBlock(&lhsData), rhsBlock(&rhsData){};
-
-    DistType operator()(size_t LHSIndex, size_t RHSIndex) const { return metricPair((*lhsBlock)[LHSIndex], (*rhsBlock)[RHSIndex]); };
-
-    std::pmr::vector<DistType> operator()(const size_t lhsIndex, std::span<const size_t> rhsIndecies) const {
-        constexpr size_t numberOfViews = internal::maxBatch + 5;
-        constexpr size_t bufferSize = sizeof(const_vector_view) * numberOfViews + sizeof(std::pmr::vector<const_vector_view>);
-
-        char stackBuffer[bufferSize];
-        std::pmr::monotonic_buffer_resource stackResource(stackBuffer, bufferSize);
-
-        void* vectorStorage = stackResource.allocate(sizeof(std::pmr::vector<const_vector_view>));
-        std::pmr::vector<const_vector_view>& rhsData = *(new (vectorStorage) std::pmr::vector<const_vector_view>(&stackResource));
-
-        rhsData.resize(rhsIndecies.size());
-        std::ranges::transform(rhsIndecies, rhsData.begin(), [&](const auto index) { return (*rhsBlock)[index]; });
-
-        return ComputeBatch((*lhsBlock)[lhsIndex], rhsData, metricPair);
-    };
-};
 
 template<typename Object>
 concept empty_object = std::is_empty_v<Object>;
@@ -120,7 +57,8 @@ struct compressed_pair<FirstType, SecondType> : private FirstType {
 
     constexpr compressed_pair() = default;
 
-    constexpr compressed_pair(FirstType first, SecondType second_member) : FirstType{ std::move(first) }, second_member{ std::move(second_member) } {}
+    constexpr compressed_pair(FirstType first, SecondType second_member)
+        : FirstType{ std::move(first) }, second_member{ std::move(second_member) } {}
 
     FirstType& first() { return static_cast<FirstType&>(*this); }
 
@@ -136,11 +74,12 @@ struct compressed_pair<FirstType, SecondType> : private FirstType {
 
 // It might be worth shelving this. It's a lot of work to implement for something I don't expect to effectively use yet.
 template<typename AbstractObject, typename Allocator, size_t BufferSize>
-struct alignas(std::hardware_destructive_interference_size) abstract_storage {
+struct alignas(64) abstract_storage {
 
     using alloc_traits = std::allocator_traits<Allocator>;
     using allocator = Allocator;
-    static constexpr size_t storage_size = std::hardware_destructive_interference_size - sizeof(compressed_pair<Allocator, AbstractObject*>);
+    static constexpr size_t storage_size =
+        64 - sizeof(compressed_pair<Allocator, AbstractObject*>);
 
     constexpr abstract_storage() = default;
 
@@ -148,7 +87,8 @@ struct alignas(std::hardware_destructive_interference_size) abstract_storage {
 
     template<typename ConcreteType, typename... StoredArgs>
         requires(sizeof...(StoredArgs) > 0)
-    abstract_storage(std::allocator_arg_t, Allocator alloc, ann::type_obj<ConcreteType>, StoredArgs&&... storedArgs) : alloc_ptr_pair{ std::move(alloc), nullptr } {
+    abstract_storage(std::allocator_arg_t, Allocator alloc, ann::type_obj<ConcreteType>, StoredArgs&&... storedArgs)
+        : alloc_ptr_pair{ std::move(alloc), nullptr } {
         construct<ConcreteType>(std::forward<StoredArgs>(storedArgs)...);
     }
 
@@ -158,21 +98,22 @@ struct alignas(std::hardware_destructive_interference_size) abstract_storage {
         construct<ConcreteType>(std::forward<StoredArgs>(storedArgs)...);
     }
 
-    //Copy construct
-    //Copy assign
-    //Move construct
-    //Move Assign
-    //Destructor
+    // Copy construct
+    // Copy assign
+    // Move construct
+    // Move Assign
+    // Destructor
 
     operator bool() const { return alloc_ptr_pair.second() != nullptr; }
 
   private:
     template<typename ConcreteType, typename... StoredArgs>
-    void construct(StoredArgs&&... storedArgs){
+    void construct(StoredArgs&&... storedArgs) {
         if constexpr (sizeof(ConcreteType) > storage_size) {
             alloc_ptr_pair.second() = static_cast<ConcreteType*>(alloc_traits::allocate(alloc_ptr_pair.first(), sizeof(ConcreteType)));
             auto construct = [&]<typename... Args>(Args && ... args) {
-                alloc_traits::construct(static_cast<ConcreteType*>(alloc_ptr_pair.first()), alloc_ptr_pair.second(), std::forward<Args>(args)...);
+                alloc_traits::construct(
+                    static_cast<ConcreteType*>(alloc_ptr_pair.first()), alloc_ptr_pair.second(), std::forward<Args>(args)...);
             };
             std::apply(construct, std::uses_allocator_construction_args(alloc_ptr_pair.first(), std::forward<StoredArgs>(storedArgs)...));
         } else {
@@ -189,11 +130,54 @@ bool operator==(const abstract_storage<AbstractObject, Allocator, BufferSize>& s
     return !storage;
 }
 
-struct swap_binds{};
+struct swap_binds {};
 
 inline constexpr swap_binds swap_binds_tag{};
 
-template<typename DistType>
+template<typename Metric, typename LHSData, typename RHSData>
+struct metric_pair {
+    using distance_type = typename Metric::DistType;
+    using const_data_view = typename RHSData::ConstDataView;
+    using const_vector_view = typename RHSData::const_vector_view;
+    using lhs_const_iterator = typename LHSData::const_iterator;
+    using rhs_const_iterator = typename RHSData::const_iterator;
+
+    [[no_unique_address]] Metric metric;
+    lhs_const_iterator lhsBlock;
+    rhs_const_iterator rhsBlock;
+    // size_t lhsBlockNum, rhsBlockNum;
+
+    metric_pair(const LHSData& lhsData, const RHSData& rhsData)
+        : metric{ Metric{} }, lhsBlock{ lhsData.begin() }, rhsBlock{ rhsData.begin() } {};
+
+    metric_pair(Metric metric, const LHSData& lhsData, const RHSData& rhsData) : metric(metric), lhsBlock(std::ranges::begin(lhsData)), rhsBlock(std::ranges::begin(rhsData)){};
+
+    metric_pair(Metric metric, lhs_const_iterator lhsItr, rhs_const_iterator rhsItr): metric{std::move(metric)}, lhsBlock{std::move(lhsItr)}, rhsBlock{std::move(rhsItr)}{}
+
+    metric_pair<Metric, RHSData, LHSData> operator()(swap_binds) const {
+        return metric_pair<Metric, RHSData, LHSData>{ metric, rhsBlock, lhsBlock };
+    }
+
+    distance_type operator()(size_t LHSIndex, size_t RHSIndex) const { return metric(lhsBlock[LHSIndex], rhsBlock[RHSIndex]); };
+
+    std::pmr::vector<distance_type> operator()(const size_t lhsIndex, std::span<const size_t> rhsIndecies) const {
+        constexpr size_t numberOfViews = internal::maxBatch + 5;
+        constexpr size_t bufferSize = sizeof(const_vector_view) * numberOfViews + sizeof(std::pmr::vector<const_vector_view>);
+
+        char stackBuffer[bufferSize];
+        std::pmr::monotonic_buffer_resource stackResource(stackBuffer, bufferSize);
+
+        void* vectorStorage = stackResource.allocate(sizeof(std::pmr::vector<const_vector_view>));
+        std::pmr::vector<const_vector_view>& rhsData = *(new (vectorStorage) std::pmr::vector<const_vector_view>(&stackResource));
+
+        rhsData.resize(rhsIndecies.size());
+        std::ranges::transform(rhsIndecies, rhsData.begin(), [&](const auto index) { return rhsBlock[index]; });
+
+        return ComputeBatch(lhsBlock[lhsIndex], rhsData, metric);
+    };
+};
+
+template<typename DistanceType>
 struct erased_metric {
 
     erased_metric() = default;
@@ -207,352 +191,202 @@ struct erased_metric {
     erased_metric& operator=(erased_metric&&) = default;
 
     template<IsNot<erased_metric> DistanceFunctor>
-        requires std::is_copy_assignable_v<DistanceFunctor>
-    erased_metric(DistanceFunctor&& distanceFunctor)
-        : ptrToFunc(std::make_unique<concrete_functor<std::remove_cvref_t<DistanceFunctor>>>(std::forward<DistanceFunctor>(distanceFunctor))){};
+        requires std::is_copy_assignable_v<DistanceFunctor> erased_metric(DistanceFunctor&& distanceFunctor)
+            : ptrToFunc(
+                std::make_unique<concrete_functor<std::remove_cvref_t<DistanceFunctor>>>(std::forward<DistanceFunctor>(distanceFunctor))){};
 
-    DistType operator()(const size_t LHSIndex, const size_t RHSIndex) const { return this->ptrToFunc->operator()(LHSIndex, RHSIndex); };
+        erased_metric operator()(swap_binds) const { return std::invoke(*ptrToFunc, swap_binds_tag); }
 
-    std::pmr::vector<DistType> operator()(const size_t lhsIndex, std::span<const size_t> rhsIndecies) const {
-        return this->ptrToFunc->operator()(lhsIndex, rhsIndecies);
-    };
+        DistanceType operator()(const size_t LHSIndex, const size_t RHSIndex) const { return std::invoke(*ptrToFunc, LHSIndex, RHSIndex); };
 
-  private:
-    struct abstract_functor {
-        virtual ~abstract_functor(){};
-        virtual std::unique_ptr<abstract_functor> clone() const = 0;
-        virtual DistType operator()(size_t LHSIndex, size_t RHSIndex) const = 0;
-        virtual std::pmr::vector<DistType> operator()(const size_t lhsIndex, std::span<const size_t> rhsIndecies) const = 0;
-    };
-
-    template<typename DistanceFunctor>
-    struct concrete_functor final : abstract_functor {
-
-        DistanceFunctor underlyingFunctor;
-
-        concrete_functor(DistanceFunctor underlyingFunctor) : underlyingFunctor(underlyingFunctor){};
-        //~ConcreteFunctor() final = default;
-
-        
-        virtual std::unique_ptr<abstract_functor> clone() const {
-            return std::make_unique<concrete_functor>(underlyingFunctor);
-        }
-
-        DistType operator()(size_t LHSIndex, size_t RHSIndex) const final { return this->underlyingFunctor(LHSIndex, RHSIndex); };
-
-        std::pmr::vector<DistType> operator()(const size_t lhsIndex, std::span<const size_t> rhsIndecies) const final {
-            return this->underlyingFunctor(lhsIndex, rhsIndecies);
+        std::pmr::vector<DistanceType> operator()(const size_t lhsIndex, std::span<const size_t> rhsIndecies) const {
+            return std::invoke(*ptrToFunc, lhsIndex, rhsIndecies);
         };
-    };
 
-  private:
-    std::unique_ptr<abstract_functor> ptrToFunc;
+      private:
+        struct abstract_functor {
+            virtual ~abstract_functor(){};
+            virtual std::unique_ptr<abstract_functor> clone() const = 0;
+            virtual erased_metric operator()(swap_binds) const = 0;
+            virtual DistanceType operator()(size_t LHSIndex, size_t RHSIndex) const = 0;
+            virtual std::pmr::vector<DistanceType> operator()(const size_t lhsIndex, std::span<const size_t> rhsIndecies) const = 0;
+        };
+
+        template<typename DistanceFunctor>
+        struct concrete_functor final : abstract_functor {
+
+            DistanceFunctor underlyingFunctor;
+
+            concrete_functor(DistanceFunctor underlyingFunctor) : underlyingFunctor(underlyingFunctor){};
+            //~ConcreteFunctor() final = default;
+
+            std::unique_ptr<abstract_functor> clone() const final { return std::make_unique<concrete_functor>(underlyingFunctor); }
+
+            erased_metric operator()(swap_binds) const { return erased_metric{ this->underlyingFunctor(swap_binds_tag) }; }
+
+            DistanceType operator()(size_t LHSIndex, size_t RHSIndex) const final { return this->underlyingFunctor(LHSIndex, RHSIndex); };
+
+            std::pmr::vector<DistanceType> operator()(const size_t lhsIndex, std::span<const size_t> rhsIndecies) const final {
+                return this->underlyingFunctor(lhsIndex, rhsIndecies);
+            };
+        };
+
+      private:
+        std::unique_ptr<abstract_functor> ptrToFunc;
 };
 
-template<typename DataType, typename MetricPair>
-struct MetricFunctorRefactor {
-    using DistType = typename MetricPair::DistType;
-    using ConstDataView = typename DataBlock<DataType>::ConstDataView;
-    using const_vector_view = typename DataBlock<DataType>::const_vector_view;
+template<typename Metric, typename LHSContainer, typename RHSContainer>
+struct block_binder {
+    using distance_type = typename Metric::DistType;
 
-    [[no_unique_address]] MetricPair metricPair;
-    std::span<const DataBlock<DataType>> lhsBlocks;
-    std::span<const DataBlock<DataType>> rhsBlocks;
+    [[no_unique_address]] Metric metric;
+    std::span<const LHSContainer> lhsBlocks;
+    std::span<const RHSContainer> rhsBlocks;
     // size_t lhsBlockNum, rhsBlockNum;
 
-    MetricFunctorRefactor(std::span<const DataBlock<DataType>> blocks, MetricPair metricPair = {}) : metricPair{std::move(metricPair)}, lhsBlocks{blocks}, rhsBlocks{blocks}{};
+    // MetricFunctorRefactor(std::span<const DataBlock<DataType>> blocks, MetricPair metricPair = {}) : metricPair{std::move(metricPair)},
+    // lhsBlocks{blocks}, rhsBlocks{blocks}{};
 
-    MetricFunctorRefactor(std::span<const DataBlock<DataType>> lhsBlocks, std::span<const DataBlock<DataType>> rhsBlocks, MetricPair metricPair = {}) : metricPair{std::move(metricPair)}, lhsBlocks{lhsBlocks}, rhsBlocks{rhsBlocks}{};
+    block_binder(Metric metric, std::span<const LHSContainer> lhsBlocks, std::span<const RHSContainer> rhsBlocks)
+        : metric{ std::move(metric) }, lhsBlocks{ lhsBlocks }, rhsBlocks{ rhsBlocks } {};
 
-    /*
+    block_binder(std::span<const LHSContainer> lhsBlocks, std::span<const RHSContainer> rhsBlocks)
+        : metric{ Metric{} }, lhsBlocks{ lhsBlocks }, rhsBlocks{ rhsBlocks } {};
 
-    DistType operator()(size_t LHSIndex, size_t RHSIndex) const { return metricPair((*lhsBlock)[LHSIndex], (*rhsBlock)[RHSIndex]); };
-
-    std::pmr::vector<DistType> operator()(const size_t lhsIndex, std::span<const size_t> rhsIndecies) const noexcept {
-        constexpr size_t numberOfViews = internal::maxBatch + 5;
-        constexpr size_t bufferSize = sizeof(const_vector_view) * numberOfViews + sizeof(std::pmr::vector<const_vector_view>);
-
-        char stackBuffer[bufferSize];
-        std::pmr::monotonic_buffer_resource stackResource(stackBuffer, bufferSize);
-
-        void* vectorStorage = stackResource.allocate(sizeof(std::pmr::vector<const_vector_view>));
-        std::pmr::vector<const_vector_view>& rhsData = *(new (vectorStorage) std::pmr::vector<const_vector_view>(&stackResource));
-
-        rhsData.resize(rhsIndecies.size());
-        std::ranges::transform(rhsIndecies, rhsData.begin(), [&](const auto index) { return (*rhsBlock)[index]; });
-
-        return ComputeBatch((*lhsBlock)[lhsIndex], rhsData, metricPair);
-    };
-
-    void SetBlocks(size_t lhsBlockNum, size_t rhsBlockNum) {
-        this->lhsBlock = &(blocks[lhsBlockNum]);
-        this->rhsBlock = &(blocks[rhsBlockNum]);
+    block_binder<Metric, RHSContainer, LHSContainer> operator()(swap_binds) const {
+        return block_binder<Metric, RHSContainer, LHSContainer>{ metric, rhsBlocks, lhsBlocks };
     }
-    */
-};
 
-
-template<typename DataType, typename MetricPair>
-struct MetricFunctor {
-    using DistType = typename MetricPair::DistType;
-    using ConstDataView = typename DataBlock<DataType>::ConstDataView;
-    using const_vector_view = typename DataBlock<DataType>::const_vector_view;
-
-    [[no_unique_address]] MetricPair metricPair;
-    const DataBlock<DataType>* lhsBlock;
-    const DataBlock<DataType>* rhsBlock;
-    std::span<const DataBlock<DataType>> blocks;
-    // size_t lhsBlockNum, rhsBlockNum;
-
-    MetricFunctor(const std::vector<DataBlock<DataType>>& blocks) : metricPair(MetricPair()), blocks(blocks.data(), blocks.size()){};
-
-    MetricFunctor(MetricPair metricPair, const std::vector<DataBlock<DataType>>& blocks)
-        : metricPair(metricPair), blocks(blocks.data(), blocks.size()){};
-
-    DistType operator()(size_t LHSIndex, size_t RHSIndex) const { return metricPair((*lhsBlock)[LHSIndex], (*rhsBlock)[RHSIndex]); };
-
-    std::pmr::vector<DistType> operator()(const size_t lhsIndex, std::span<const size_t> rhsIndecies) const noexcept {
-        constexpr size_t numberOfViews = internal::maxBatch + 5;
-        constexpr size_t bufferSize = sizeof(const_vector_view) * numberOfViews + sizeof(std::pmr::vector<const_vector_view>);
-
-        char stackBuffer[bufferSize];
-        std::pmr::monotonic_buffer_resource stackResource(stackBuffer, bufferSize);
-
-        void* vectorStorage = stackResource.allocate(sizeof(std::pmr::vector<const_vector_view>));
-        std::pmr::vector<const_vector_view>& rhsData = *(new (vectorStorage) std::pmr::vector<const_vector_view>(&stackResource));
-
-        rhsData.resize(rhsIndecies.size());
-        std::ranges::transform(rhsIndecies, rhsData.begin(), [&](const auto index) { return (*rhsBlock)[index]; });
-
-        return ComputeBatch((*lhsBlock)[lhsIndex], rhsData, metricPair);
-    };
-
-    void SetBlocks(size_t lhsBlockNum, size_t rhsBlockNum) {
-        this->lhsBlock = &(blocks[lhsBlockNum]);
-        this->rhsBlock = &(blocks[rhsBlockNum]);
+    metric_pair<Metric, LHSContainer, RHSContainer> operator()(size_t lhsIndex, size_t rhsIndex) const {
+        return metric_pair<Metric, LHSContainer, RHSContainer>{ metric, lhsBlocks[lhsIndex], rhsBlocks[rhsIndex] };
     }
 };
 
-template<typename DataType, typename MetricPair>
-struct CrossFragmentFunctor {
-    using DistType = typename MetricPair::DistType;
-    using ConstDataView = typename DataBlock<DataType>::ConstDataView;
-    using const_vector_view = typename DataBlock<DataType>::const_vector_view;
+template<typename Metric, typename FixedContainer, typename RHSContainer>
+struct fixed_block_binder {
+    using distance_type = typename Metric::DistType;
 
-    [[no_unique_address]] MetricPair metricPair;
-    const DataBlock<DataType>* lhsBlock;
-    const DataBlock<DataType>* rhsBlock;
-    std::span<const DataBlock<DataType>> lhsBlocks;
-    std::span<const DataBlock<DataType>> rhsBlocks;
+    [[no_unique_address]] Metric metric;
+    typename FixedContainer::const_iterator fixedBlock;
+    std::span<const RHSContainer> rhsBlocks;
     // size_t lhsBlockNum, rhsBlockNum;
 
-    CrossFragmentFunctor(const std::vector<DataBlock<DataType>>& lhsBlocks, const std::vector<DataBlock<DataType>>& rhsBlocks)
-        : metricPair(MetricPair()), lhsBlocks(lhsBlocks.data(), lhsBlocks.size()), rhsBlocks(rhsBlocks.data(), rhsBlocks.size()){};
+    // MetricFunctorRefactor(std::span<const DataBlock<DataType>> blocks, MetricPair metricPair = {}) : metricPair{std::move(metricPair)},
+    // lhsBlocks{blocks}, rhsBlocks{blocks}{};
 
-    CrossFragmentFunctor(
-        MetricPair metricPair, const std::vector<DataBlock<DataType>>& lhsBlocks, const std::vector<DataBlock<DataType>>& rhsBlocks)
-        : metricPair(metricPair), lhsBlocks(lhsBlocks.data(), lhsBlocks.size()), rhsBlocks(rhsBlocks.data(), rhsBlocks.size()){};
+    fixed_block_binder(Metric metric, const FixedContainer& fixedBlock, std::span<const RHSContainer> rhsBlocks)
+        : metric{ std::move(metric) }, fixedBlock{ fixedBlock.begin() }, rhsBlocks{ rhsBlocks } {};
 
-    DistType operator()(size_t LHSIndex, size_t RHSIndex) const { return metricPair((*lhsBlock)[LHSIndex], (*rhsBlock)[RHSIndex]); };
+    fixed_block_binder(const FixedContainer& fixedBlock, std::span<const RHSContainer> rhsBlocks)
+        : metric{ Metric{} }, fixedBlock{ &fixedBlock }, rhsBlocks{ rhsBlocks } {};
 
-    std::pmr::vector<DistType> operator()(const size_t lhsIndex, std::span<const size_t> rhsIndecies) const {
-        constexpr size_t numberOfViews = internal::maxBatch + 5;
-        constexpr size_t bufferSize = sizeof(const_vector_view) * numberOfViews + sizeof(std::pmr::vector<const_vector_view>);
-
-        char stackBuffer[bufferSize];
-        std::pmr::monotonic_buffer_resource stackResource(stackBuffer, bufferSize);
-
-        void* vectorStorage = stackResource.allocate(sizeof(std::pmr::vector<const_vector_view>));
-        std::pmr::vector<const_vector_view>& rhsData = *(new (vectorStorage) std::pmr::vector<const_vector_view>(&stackResource));
-
-        rhsData.resize(rhsIndecies.size());
-        std::ranges::transform(rhsIndecies, rhsData.begin(), [&](const auto index) { return (*rhsBlock)[index]; });
-
-        return ComputeBatch((*lhsBlock)[lhsIndex], rhsData, metricPair);
-    };
-
-    void SetBlocks(size_t lhsBlockNum, size_t rhsBlockNum) {
-        this->lhsBlock = &(lhsBlocks[lhsBlockNum]);
-        this->rhsBlock = &(rhsBlocks[rhsBlockNum]);
+    metric_pair<Metric, FixedContainer, RHSContainer> operator()(size_t targetBlock) const {
+        return metric_pair<Metric, FixedContainer, RHSContainer>{ metric, fixedBlock, rhsBlocks[targetBlock].begin() };
     }
 };
 
-template<typename DistType>
-struct DispatchFunctor {
 
-    DispatchFunctor() = default;
+template<typename DistanceType>
+struct erased_unary_binder {
 
-    DispatchFunctor(const DispatchFunctor& other) : ptrToFunc(other.ptrToFunc){};
+    erased_unary_binder() = default;
 
-    DispatchFunctor& operator=(const DispatchFunctor&) = default;
+    erased_unary_binder(const erased_unary_binder& other) : ptrToFunc(other.ptrToFunc->clone()){};
 
-    template<IsNot<DispatchFunctor> DistanceFunctor>
-    DispatchFunctor(DistanceFunctor& distanceFunctor) : ptrToFunc(std::make_shared<ConcreteFunctor<DistanceFunctor>>(distanceFunctor)){};
+    erased_unary_binder& operator=(const erased_unary_binder& other){
+        ptrToFunc = other.ptrToFunc.clone();
+    }
 
-    DistType operator()(const size_t LHSIndex, const size_t RHSIndex) const { return this->ptrToFunc->operator()(LHSIndex, RHSIndex); };
+    erased_unary_binder(erased_unary_binder&&) = default;
 
-    std::pmr::vector<DistType> operator()(const size_t lhsIndex, std::span<const size_t> rhsIndecies) const {
-        return this->ptrToFunc->operator()(lhsIndex, rhsIndecies);
-    };
+    erased_unary_binder& operator=(erased_unary_binder&&) = default;
 
-    void SetBlocks(size_t lhsBlockNum, size_t rhsBlockNum) { this->ptrToFunc->SetBlocks(lhsBlockNum, rhsBlockNum); }
+    template<IsNot<erased_unary_binder> DistanceFunctor>
+        requires std::is_copy_assignable_v<DistanceFunctor> 
+        erased_unary_binder(DistanceFunctor&& distanceFunctor)
+            : ptrToFunc(
+                std::make_unique<concrete_functor<std::remove_cvref_t<DistanceFunctor>>>(std::forward<DistanceFunctor>(distanceFunctor))){};
 
-  private:
-    struct AbstractFunctor {
-        virtual ~AbstractFunctor(){};
-        virtual DistType operator()(size_t LHSIndex, size_t RHSIndex) const = 0;
-        virtual std::pmr::vector<DistType> operator()(const size_t lhsIndex, std::span<const size_t> rhsIndecies) const = 0;
-        virtual void SetBlocks(size_t lhsBlockNum, size_t rhsBlockNum) = 0;
-    };
 
-    template<typename DistanceFunctor>
-    struct ConcreteFunctor final : AbstractFunctor {
+        erased_metric<DistanceType> operator()(size_t bindIndex) const { return std::invoke(*ptrToFunc, bindIndex); };
 
-        DistanceFunctor underlyingFunctor;
 
-        ConcreteFunctor(DistanceFunctor underlyingFunctor) : underlyingFunctor(underlyingFunctor){};
-        //~ConcreteFunctor() final = default;
-
-        DistType operator()(size_t LHSIndex, size_t RHSIndex) const final { return this->underlyingFunctor(LHSIndex, RHSIndex); };
-
-        std::pmr::vector<DistType> operator()(const size_t lhsIndex, std::span<const size_t> rhsIndecies) const final {
-            return this->underlyingFunctor(lhsIndex, rhsIndecies);
+      private:
+        struct abstract_functor {
+            virtual ~abstract_functor(){};
+            virtual std::unique_ptr<abstract_functor> clone() const = 0;
+            virtual erased_metric<DistanceType> operator()(size_t bindIndex) const = 0;
         };
 
-        void SetBlocks(size_t lhsBlockNum, size_t rhsBlockNum) final { this->underlyingFunctor.SetBlocks(lhsBlockNum, rhsBlockNum); }
-    };
+        template<typename DistanceFunctor>
+        struct concrete_functor final : abstract_functor {
 
-  private:
-    std::shared_ptr<AbstractFunctor> ptrToFunc;
-};
+            DistanceFunctor underlyingFunctor;
 
-template<typename COMExtent>
-struct MetaGraph;
+            concrete_functor(DistanceFunctor underlyingFunctor) : underlyingFunctor(underlyingFunctor){};
+            //~ConcreteFunctor() final = default;
 
-template<typename DataType, typename COMExtent, typename MetricPair>
-struct DataComDistance {
-    using DistType = typename MetricPair::DistType;
-    using ConstDataView = typename DataBlock<DataType>::ConstDataView;
-    using const_vector_view = typename DataBlock<DataType>::const_vector_view;
-    // Reference to Com?
-    const MetaGraph<COMExtent>& centersOfMass;
-    const DataBlock<DataType>* targetBlock;
-    std::span<const DataBlock<DataType>> blocks;
-    [[no_unique_address]] MetricPair functor;
+            std::unique_ptr<abstract_functor> clone() const final { return std::make_unique<concrete_functor>(underlyingFunctor); }
 
-    DataComDistance(const MetaGraph<COMExtent>& centersOfMass, const std::vector<DataBlock<DataType>>& blocks)
-        : centersOfMass(centersOfMass), blocks(blocks.data(), blocks.size()), functor(){};
 
-    DataComDistance(const MetaGraph<COMExtent>& centersOfMass, const std::vector<DataBlock<DataType>>& blocks, MetricPair functor)
-        : centersOfMass(centersOfMass), blocks(blocks.data(), blocks.size(), blocks[0].blockNumber), functor(functor){};
+            erased_metric<DistanceType> operator()(size_t bindIndex) const final { return this->underlyingFunctor(bindIndex); };
 
-    float operator()(const size_t metagraphIndex, const size_t dataIndex) const {
-        return functor(centersOfMass.points[metagraphIndex], (*targetBlock)[dataIndex]);
-    };
-
-    std::pmr::vector<float> operator()(const size_t metagraphIndex, std::span<const size_t> rhsIndecies) const {
-        std::vector<const_vector_view> rhsData;
-        for (const auto& index : rhsIndecies) {
-            rhsData.push_back((*targetBlock)[index]);
-        }
-        return ComputeBatch(centersOfMass.points[metagraphIndex], rhsData, functor);
-    };
-
-    void SetBlock(size_t targetBlockNum) { this->targetBlock = &(blocks[targetBlockNum]); }
-};
-
-template<typename DataType, typename DataSet, typename MetricPair>
-struct SearchFunctor {
-    using DistType = typename MetricPair::DistType;
-    using ConstDataView = typename DataBlock<DataType>::ConstDataView;
-    using const_vector_view = typename DataBlock<DataType>::const_vector_view;
-
-    const DataBlock<DataType>* targetBlock;
-    std::span<const DataBlock<DataType>> blocks;
-    const DataSet& points;
-    [[no_unique_address]] MetricPair functor;
-
-    SearchFunctor(const std::vector<DataBlock<DataType>>& blocks, const DataSet& points)
-        : blocks(blocks.data(), blocks.size()), points(points), functor(){};
-
-    SearchFunctor(const std::vector<DataBlock<DataType>>& blocks, const DataSet& points, MetricPair functor)
-        : blocks(blocks.data(), blocks.size()), points(points), functor(functor){};
-
-    float operator()(const size_t searchIndex, const size_t targetIndex) const {
-        return functor(points[searchIndex], (*targetBlock)[targetIndex]);
-    };
-
-    std::pmr::vector<typename MetricPair::DistType> operator()(const size_t searchIndex, std::span<const size_t> targetIndecies) const {
-
-        constexpr size_t numberOfViews = internal::maxBatch + 5;
-        constexpr size_t bufferSize = sizeof(const_vector_view) * numberOfViews + sizeof(std::pmr::vector<const_vector_view>);
-
-        char stackBuffer[bufferSize];
-        std::pmr::monotonic_buffer_resource stackResource(stackBuffer, bufferSize);
-
-        void* vectorStorage = stackResource.allocate(sizeof(std::pmr::vector<const_vector_view>));
-        std::pmr::vector<const_vector_view>& targetData = *(new (vectorStorage) std::pmr::vector<const_vector_view>(&stackResource));
-
-        targetData.resize(targetIndecies.size());
-        std::ranges::transform(targetIndecies, targetData.begin(), [&](const auto index) { return (*targetBlock)[index]; });
-
-        return ComputeBatch(points[searchIndex], targetData, functor);
-    };
-
-    void SetBlock(size_t targetBlockNum) { this->targetBlock = &(blocks[targetBlockNum]); }
-};
-
-template<typename DistType>
-struct SinglePointFunctor {
-
-    SinglePointFunctor() = default;
-
-    SinglePointFunctor(const SinglePointFunctor& other) : ptrToFunc(other.ptrToFunc){};
-
-    SinglePointFunctor& operator=(const SinglePointFunctor&) = default;
-
-    template<IsNot<SinglePointFunctor> DistanceFunctor>
-    SinglePointFunctor(DistanceFunctor& distanceFunctor) : ptrToFunc(std::make_shared<ConcreteFunctor<DistanceFunctor>>(distanceFunctor)){};
-
-    DistType operator()(const size_t functorParam, const size_t targetIndex) const {
-        return this->ptrToFunc->operator()(functorParam, targetIndex);
-    };
-
-    std::pmr::vector<DistType> operator()(const size_t functorParam, std::span<const size_t> targetIndecies) const {
-        return this->ptrToFunc->operator()(functorParam, targetIndecies);
-    };
-
-    void SetBlock(size_t targetBlockNum) { this->ptrToFunc->SetBlock(targetBlockNum); };
-
-  private:
-    struct AbstractFunctor {
-        virtual ~AbstractFunctor(){};
-        virtual DistType operator()(const size_t functorParam, const size_t targetIndex) const = 0;
-        virtual std::pmr::vector<DistType> operator()(const size_t functorParam, std::span<const size_t> targetIndecies) const = 0;
-        virtual void SetBlock(size_t targetBlockNum) = 0;
-    };
-
-    template<typename DistanceFunctor>
-    struct ConcreteFunctor final : AbstractFunctor {
-
-        DistanceFunctor underlyingFunctor;
-
-        ConcreteFunctor(DistanceFunctor underlyingFunctor) : underlyingFunctor(underlyingFunctor){};
-        //~ConcreteFunctor() final = default;
-
-        DistType operator()(const size_t functorParam, size_t targetIndex) const final {
-            return this->underlyingFunctor(functorParam, targetIndex);
         };
 
-        std::pmr::vector<DistType> operator()(const size_t functorParam, std::span<const size_t> targetIndecies) const final {
-            return this->underlyingFunctor(functorParam, targetIndecies);
+      private:
+        std::unique_ptr<abstract_functor> ptrToFunc;
+};
+
+
+template<typename DistanceType>
+struct erased_binary_binder {
+
+    erased_binary_binder() = default;
+
+    erased_binary_binder(const erased_binary_binder& other) : ptrToFunc(other.ptrToFunc->clone()){};
+
+    erased_binary_binder& operator=(const erased_binary_binder& other){
+        ptrToFunc = other.ptrToFunc.clone();
+    }
+
+    erased_binary_binder(erased_binary_binder&&) = default;
+
+    erased_binary_binder& operator=(erased_binary_binder&&) = default;
+
+    template<IsNot<erased_binary_binder> DistanceFunctor>
+        requires std::is_copy_assignable_v<DistanceFunctor> 
+        erased_binary_binder(DistanceFunctor&& distanceFunctor)
+            : ptrToFunc(
+                std::make_unique<concrete_functor<std::remove_cvref_t<DistanceFunctor>>>(std::forward<DistanceFunctor>(distanceFunctor))){};
+
+
+        erased_metric<DistanceType> operator()(size_t lhsBind, size_t rhsBind) const { return std::invoke(*ptrToFunc, lhsBind, rhsBind); };
+
+
+      private:
+        struct abstract_functor {
+            virtual ~abstract_functor(){};
+            virtual std::unique_ptr<abstract_functor> clone() const = 0;
+            virtual erased_metric<DistanceType> operator()(size_t lhsBind, size_t rhsBind) const = 0;
         };
 
-        void SetBlock(size_t targetBlockNum) final { this->underlyingFunctor.SetBlock(targetBlockNum); };
-    };
+        template<typename DistanceFunctor>
+        struct concrete_functor final : abstract_functor {
 
-  private:
-    std::shared_ptr<AbstractFunctor> ptrToFunc;
+            DistanceFunctor underlyingFunctor;
+
+            concrete_functor(DistanceFunctor underlyingFunctor) : underlyingFunctor(underlyingFunctor){};
+            //~ConcreteFunctor() final = default;
+
+            std::unique_ptr<abstract_functor> clone() const final { return std::make_unique<concrete_functor>(underlyingFunctor); }
+
+
+            erased_metric<DistanceType> operator()(size_t lhsBind, size_t rhsBind) const final { return this->underlyingFunctor(lhsBind, rhsBind); };
+
+        };
+
+      private:
+        std::unique_ptr<abstract_functor> ptrToFunc;
 };
 
 } // namespace nnd

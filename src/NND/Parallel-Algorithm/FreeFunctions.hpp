@@ -33,8 +33,8 @@ namespace nnd {
 
 template<typename DistType, typename COMExtent>
 BlocksAndState<DistType> InitializeBlockContexts(
-    const size_t numBlocks, const size_t graphFragment, const std::vector<size_t> &blockSizes, const HyperParameterValues &params,
-    ThreadPool<ThreadFunctors<DistType, COMExtent>> &threadPool) {
+    const size_t numBlocks, const size_t graphFragment, const std::vector<size_t>& blockSizes, const HyperParameterValues& params,
+    ThreadPool<thread_functors<DistType, COMExtent>>& threadPool) {
 
     std::unique_ptr<BlockUpdateContext<DistType>[]> blockArr = std::make_unique<BlockUpdateContext<DistType>[]>(blockSizes.size());
     std::unique_ptr<std::atomic<bool>[]> blockStates = std::make_unique<std::atomic<bool>[]>(blockSizes.size());
@@ -44,14 +44,12 @@ BlocksAndState<DistType> InitializeBlockContexts(
     auto taskGenerator = [&](size_t blockNum, size_t blockSize) -> auto {
 
         auto task = [=, blockLocation = &(blockView[blockNum]), blockState = &(stateView[blockNum])](
-                        ThreadFunctors<DistType, COMExtent> &functors) mutable {
-            functors.dispatchFunctor.SetBlocks(blockNum, blockNum);
-            functors.comDistFunctor.SetBlock(blockNum);
+                        thread_functors<DistType, COMExtent>& functors) mutable {
             Graph<DataIndex_t, DistType> blockGraph =
-                BruteForceBlock(params.indexParams.blockGraphNeighbors, blockSize, functors.dispatchFunctor);
+                BruteForceBlock(params.indexParams.blockGraphNeighbors, blockSize, functors.dispatchFunctor(blockNum, blockNum));
 
             GraphVertex<DataIndex_t, DistType> queryHint =
-                QueryHintFromCOM(blockNum, blockGraph, params.indexParams.blockGraphNeighbors, functors.comDistFunctor);
+                QueryHintFromCOM(blockNum, blockGraph, params.indexParams.blockGraphNeighbors, functors.comDistFunctor(blockNum));
             QueryContext<DataIndex_t, DistType> queryContext(
                 blockGraph, std::move(queryHint), params.indexParams.queryDepth, graphFragment, blockNum, blockSizes[blockNum]);
             blockLocation->~BlockUpdateContext<DistType>();
@@ -77,13 +75,13 @@ using AsyncNNResults = std::pair<std::vector<std::optional<ComparisonKey<BlockNu
 
 template<typename DistType, typename COMExtent>
 std::future<AsyncNNResults>
-NearestNodesToDo(const MetaGraph<COMExtent> &metaGraph, ThreadPool<ThreadFunctors<DistType, COMExtent>> &threadPool) {
+NearestNodesToDo(const MetaGraph<COMExtent>& metaGraph, ThreadPool<thread_functors<DistType, COMExtent>>& threadPool) {
 
     std::shared_ptr<std::promise<AsyncNNResults>> promise = std::make_shared<std::promise<AsyncNNResults>>();
 
     std::future<AsyncNNResults> retFuture = promise->get_future();
 
-    auto task = [&, resPromise = std::move(promise)](ThreadFunctors<DistType, COMExtent> &) {
+    auto task = [&, resPromise = std::move(promise)](thread_functors<DistType, COMExtent>&) {
         std::unordered_set<ComparisonKey<BlockNumber_t>> nearestNodeDistQueue;
         std::unique_ptr<size_t[]> distancesPerBlock = std::make_unique<size_t[]>(metaGraph.points.size());
 
@@ -91,8 +89,8 @@ NearestNodesToDo(const MetaGraph<COMExtent> &metaGraph, ThreadPool<ThreadFunctor
 
         std::span<size_t> distancesView(distancesPerBlock.get(), metaGraph.size());
 
-        for (size_t i = 0; const auto &vertex : metaGraph.verticies) {
-            for (const auto &neighbor : vertex) {
+        for (size_t i = 0; const auto& vertex : metaGraph.verticies) {
+            for (const auto& neighbor : vertex) {
                 if (nearestNodeDistQueue.insert({ static_cast<BlockNumber_t>(i), neighbor.first }).second) {
                     distancesView[i] += 1;
                     distancesView[neighbor.first] += 1;
@@ -103,7 +101,7 @@ NearestNodesToDo(const MetaGraph<COMExtent> &metaGraph, ThreadPool<ThreadFunctor
 
         std::vector<std::optional<ComparisonKey<BlockNumber_t>>> distancesToCompute;
         distancesToCompute.reserve(nearestNodeDistQueue.size());
-        for (const auto &pair : nearestNodeDistQueue) {
+        for (const auto& pair : nearestNodeDistQueue) {
             distancesToCompute.push_back(std::make_optional(pair));
         }
 
@@ -118,12 +116,12 @@ NearestNodesToDo(const MetaGraph<COMExtent> &metaGraph, ThreadPool<ThreadFunctor
 template<typename DistType, typename COMExtent>
 void ParallelBlockJoins(
     std::span<BlockUpdateContext<DistType>> blocks, std::span<std::atomic<bool>> blockStates,
-    ThreadPool<ThreadFunctors<DistType, COMExtent>> &pool) {
+    ThreadPool<thread_functors<DistType, COMExtent>>& pool) {
 
     std::atomic<size_t> doneBlocks = 0;
     auto updateGenerator = [&](const size_t lhsNum, const size_t rhsNum) -> auto {
-        auto updateTask = [&, lhsPtr = &(blocks[lhsNum]), rhsPtr = &(blocks[rhsNum])](ThreadFunctors<DistType, COMExtent> &functors) {
-            UpdateBlocks(*lhsPtr, *rhsPtr, functors.cache);
+        auto updateTask = [&, lhsPtr = &(blocks[lhsNum]), rhsPtr = &(blocks[rhsNum])](thread_functors<DistType, COMExtent>& functors) {
+            UpdateBlocks(*lhsPtr, *rhsPtr, functors.dispatchFunctor, functors.cache);
             lhsPtr->joinsToDo.erase(rhsPtr->queryContext.blockNumber);
             size_t doneInc{ 0 };
             if (lhsPtr->joinsToDo.size() == 0) {
@@ -169,7 +167,7 @@ mainLoop:
                 }
                 blocks[i].SetNextJoins();
             }
-            for (auto &joinList : blocks[i].joinsToDo) {
+            for (auto& joinList : blocks[i].joinsToDo) {
                 expectTrue = true;
                 if (!blockStates[joinList.first].compare_exchange_strong(expectTrue, false)) {
 
@@ -198,20 +196,20 @@ mainLoop:
 template<typename DistType, typename COMExtent>
 void ParallelBlockJoinsTweak(
     std::span<BlockUpdateContext<DistType>> blocks, std::span<std::atomic<bool>> blockStates,
-    ThreadPool<ThreadFunctors<DistType, COMExtent>> &pool) {
+    ThreadPool<thread_functors<DistType, COMExtent>>& pool) {
 
     std::atomic<size_t> doneBlocks = 0;
     auto updateGenerator = [&](const size_t lhsNum, std::vector<size_t> rhsNums) -> auto {
 
-        std::vector<BlockUpdateContext<DistType> *> rhsPtrs;
+        std::vector<BlockUpdateContext<DistType>*> rhsPtrs;
         rhsPtrs.reserve(rhsNums.size());
-        for (const auto &idx : rhsNums) {
+        for (const auto& idx : rhsNums) {
             rhsPtrs.push_back(&blocks[idx]);
         }
 
-        auto updateTask = [&, lhsPtr = &blocks[lhsNum], rhsPtrs = std::move(rhsPtrs)](ThreadFunctors<DistType, COMExtent> &functors) {
+        auto updateTask = [&, lhsPtr = &blocks[lhsNum], rhsPtrs = std::move(rhsPtrs)](thread_functors<DistType, COMExtent>& functors) {
             size_t doneInc{ 0 };
-            for (const auto &rhsPtr : rhsPtrs) {
+            for (const auto& rhsPtr : rhsPtrs) {
                 UpdateBlocks(*lhsPtr, *rhsPtr, functors.cache);
                 lhsPtr->joinsToDo.erase(rhsPtr->queryContext.blockNumber);
 
@@ -261,7 +259,7 @@ mainLoop:
                 blocks[i].SetNextJoins();
             }
             std::vector<size_t> rhsNums;
-            for (auto &joinList : blocks[i].joinsToDo) {
+            for (auto& joinList : blocks[i].joinsToDo) {
                 expectTrue = true;
                 if (!blockStates[joinList.first].compare_exchange_strong(expectTrue, false)) {
 
@@ -292,7 +290,7 @@ mainLoop:
 }
 
 template<typename DistType, typename COMExtent>
-using NNDPool = ThreadPool<ThreadFunctors<DistType, COMExtent>>;
+using NNDPool = ThreadPool<thread_functors<DistType, COMExtent>>;
 
 template<typename DistType, typename COMExtent>
 using GraphInitTasks = std::tuple<
@@ -300,8 +298,8 @@ using GraphInitTasks = std::tuple<
 
 template<typename DistType, typename COMExtent>
 std::unique_ptr<BlockUpdateContext<DistType>[]> BuildGraph( // std::vector<size_t>&& blockSizes,
-    const MetaGraph<COMExtent> &metaGraph, HyperParameterValues &parameters, NNDPool<DistType, COMExtent> &pool) {
-    // ThreadPool<ThreadFunctors<float, float>> pool(12, euclideanFunctor, comFunctor, splitParams.maxTreeSize, 10);
+    const MetaGraph<COMExtent>& metaGraph, HyperParameterValues& parameters, NNDPool<DistType, COMExtent>& pool) {
+    // ThreadPool<thread_functors<float, float>> pool(12, euclideanFunctor, comFunctor, splitParams.maxTreeSize, 10);
     /*
     std::vector<size_t> sizes;
     sizes.reserve(dataBlocks.size());

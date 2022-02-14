@@ -87,14 +87,14 @@ std::vector<IndexBlock> OpenIndexBlocks(std::filesystem::path fragmentDirectory)
     return queryContexts;
 }
 
-struct SearchMapToForestResult{
+struct SearchMapToForestResult {
     std::vector<ParallelContextBlock<float>> contexts;
     IndexMaps<size_t> mappings;
 };
 
 void ParallelSearchMapToForest(
-    const DataSet<float>& searchSet, const RandomProjectionForest& searchForest,
-    const std::unordered_map<unsigned long, unsigned long>& splitToBlockNum) {
+    const DataSet<float>& searchSet, const RandomProjectionForest& searchForest, const SearchParameters& searchParams,
+    std::span<const nnd::IndexBlock> indexView, const std::unordered_map<unsigned long, unsigned long>& splitToBlockNum) {
 
     DataMapper<float, void, void> testMapper(searchSet);
     std::vector<ParallelContextBlock<float>> searchContexts;
@@ -126,17 +126,17 @@ void ParallelSearchMapToForest(
                                        std::move(testMapper.sourceToBlockIndex),
                                        std::move(testMapper.sourceToSplitIndex) };
 
-    return {std::move(searchContexts), std::move(testMappings)};
+    return { std::move(searchContexts), std::move(testMappings) };
 }
 
 void ParallelSearch(
-    ThreadPool<SinglePointFunctor<float>>& threadPool, const SearchParameters& searchParams, std::span<ParallelSearchContext<float>> searchContexts,
-    std::span<nnd::QueryContext<unsigned int, float>> queryContexts, std::span<const nnd::IndexBlock> indexView) {
+    ThreadPool<SinglePointFunctor<float>>& threadPool, const SearchParameters& searchParams,
+    std::span<ParallelSearchContext<float>> searchContexts, std::span<nnd::QueryContext<unsigned int, float>> queryContexts,
+    std::span<const nnd::IndexBlock> indexView) {
 
-    InitialSearchTask<float> searchGenerator = { queryContexts,
-                                                 indexView,
-                                                 searchParams.maxSearchesQueued,
-                                                 AsyncQueue<std::pair<BlockIndecies, SearchSet>>() };
+    InitialSearchTask<float> searchGenerator = {
+        queryContexts, indexView, searchParams.maxSearchesQueued, AsyncQueue<std::pair<BlockIndecies, SearchSet>>()
+    };
 
     threadPool.StartThreads();
     SearchQueue searchHints = ParaFirstBlockSearch(searchGenerator, searchContexts, threadPool);

@@ -11,6 +11,7 @@ https://github.com/AnabelSMRuggiero/NNDescent.cpp
 //This is primarily for testing an debugging
 
 #include <string>
+#include <utility>
 #include <vector>
 #include <random>
 #include <chrono>
@@ -466,8 +467,8 @@ int main(int argc, char *argv[]){
         std::ofstream mappingFile{indexLocation/"BlockIndexToSourceIndex.bin", std::ios_base::binary | std::ios_base::trunc};
         serialize(indexMappings.blockIndexToSource, mappingFile);
     }();
-    MetricFunctor<float, EuclideanMetricPair> euclideanFunctor(dataBlocks);
-    DispatchFunctor<float> testDispatch(euclideanFunctor);
+    block_binder euclideanBinder(EuclideanMetricPair{}, std::span{std::as_const(dataBlocks)}, std::span{std::as_const(dataBlocks)});
+    erased_binary_binder<float> testDispatch(euclideanBinder);
 
     /*
     std::vector<size_t> sizes;
@@ -483,15 +484,15 @@ int main(int argc, char *argv[]){
     
     
     MetaGraph<float> metaGraph = BuildMetaGraphFragment<float>(dataBlocks, parameters.indexParams, 0, EuclideanMetricSet(), EuclideanCOM<float, float>);
-    DataComDistance<float, float, EuclideanMetricPair> comFunctor(metaGraph, dataBlocks);
-    
+    fixed_block_binder comFunctor(EuclideanMetricPair{}, metaGraph.points, std::span{std::as_const(dataBlocks)});
+
     //hacky but not a long term thing
     //std::vector<BlockUpdateContext<float>> blockContextVec;
     std::unique_ptr<BlockUpdateContext<float>[]> blockContextArr;
     std::span<BlockUpdateContext<float>> blockUpdateContexts;
 
     if (parallelIndexBuild){
-        ThreadPool<ThreadFunctors<float, float>> pool(numThreads, euclideanFunctor, comFunctor, splitParams.maxTreeSize, parameters.indexParams.blockGraphNeighbors);
+        ThreadPool<thread_functors<float, float>> pool(numThreads, euclideanBinder, comFunctor, splitParams.maxTreeSize, parameters.indexParams.blockGraphNeighbors);
         pool.StartThreads();
         //blockContextArr = BuildGraph(std::move(sizes), metaGraph, parameters, pool);
         blockContextArr = BuildGraph(metaGraph, parameters, pool);
@@ -499,7 +500,7 @@ int main(int argc, char *argv[]){
         pool.StopThreads();
     } else {
         //blockContextArr = BuildGraph<float, float, float>(dataBlocks, metaGraph, testDispatch, std::move(sizes), parameters, std::execution::seq);
-        blockContextArr = BuildGraph<float, float, float>(dataBlocks, metaGraph, testDispatch, parameters, std::execution::seq);
+        blockContextArr = BuildGraph<float, float, float>(dataBlocks, metaGraph, testDispatch, parameters, comFunctor);
         blockUpdateContexts = {blockContextArr.get(), dataBlocks.size()};
     }
     //

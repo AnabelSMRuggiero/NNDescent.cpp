@@ -161,7 +161,7 @@ void VerifySubGraphState(const Graph<BlockIndecies, FloatType>& currentGraph, si
 
 template<typename DistType>
 //numNeighbors, blockSize, distanceFunctor
-Graph<DataIndex_t, DistType> BruteForceBlock(const size_t numNeighbors, const size_t blockSize, DispatchFunctor<DistType>& distanceFunctor){
+Graph<DataIndex_t, DistType> BruteForceBlock(const size_t numNeighbors, const size_t blockSize, erased_metric<DistType> distanceFunctor){
     
     using edge_type = typename Graph<DataIndex_t, DistType>::edge_type;
 

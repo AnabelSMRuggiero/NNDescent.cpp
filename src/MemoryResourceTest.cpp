@@ -10,7 +10,9 @@ https://github.com/AnabelSMRuggiero/NNDescent.cpp
 
 #include <cstddef>
 #include <vector>
+#include <numeric>
 #include "ann/MemoryResources.hpp"
+#include "ann/AlignedMemory/AlignedAllocator.hpp"
 #include "Parallelization/ThreadPool.hpp"
 
 
@@ -49,8 +51,13 @@ int main(){
     }
 
     {
+        using namespace ann::udl;
+        std::vector<double, ann::aligned_allocator<double, 32_a>> test1(32);
+        std::vector<double, ann::aligned_allocator<double, 32_a>> test2(32);
+
+        std::iota(test1.begin(), test1.end(), double{0.0});
+
         
-        ThreadPool<void> pool;
 
 
 

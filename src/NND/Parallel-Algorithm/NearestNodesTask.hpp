@@ -18,7 +18,9 @@ https://github.com/AnabelSMRuggiero/NNDescent.cpp
 #include <optional>
 #include <atomic>
 
+#include "NND/Parallel-Algorithm/ParallelizationObjects.hpp"
 #include "Parallelization/TaskQueuer.hpp"
+#include "Parallelization/ThreadPool.hpp"
 
 
 namespace nnd {
@@ -45,17 +47,17 @@ struct NearestNodesGenerator{
     std::vector<std::optional<ComparisonKey<size_t>>>& distancesToCompute;
     size_t nullCounter;
     */
-    bool operator()(ThreadPool<ThreadFunctors<DistType, COMExtent>>& pool,
+    bool operator()(ThreadPool<thread_functors<DistType, COMExtent>>& pool,
                     AsyncQueue<std::pair<ComparisonKey<BlockNumber_t>, std::tuple<DataIndex_t, DataIndex_t, DistType>>>& resultsQueue,
                     std::vector<std::optional<ComparisonKey<BlockNumber_t>>>& distancesToCompute){
         auto nnDistanceTaskGenerator = [&](BlockPtrPair blockPtrs)->auto{
 
-            auto task = [&, ptrs = blockPtrs](ThreadFunctors<DistType, COMExtent>& functors) mutable->void{
+            auto task = [&, ptrs = blockPtrs](thread_functors<DistType, COMExtent>& functors) mutable->void{
                 const QueryContext<DataIndex_t, DistType>& lhsQueryContext = ptrs.first->queryContext;
                 const QueryContext<DataIndex_t, DistType>& rhsQueryContext = ptrs.second->queryContext;
-                functors.dispatchFunctor.SetBlocks(lhsQueryContext.blockNumber, rhsQueryContext.blockNumber);
+                
                 std::tuple<DataIndex_t, DataIndex_t, DistType> nnDistResult = lhsQueryContext.NearestNodes(rhsQueryContext,
-                                                                                                functors.dispatchFunctor);
+                                                                                                functors.dispatchFunctor(lhsQueryContext.blockNumber, rhsQueryContext.blockNumber));
                 /*
                 nnDistanceResults[resultIndex].second = {{blockNumbers.first, std::get<0>(nnDistResult)},
                                                 {blockNumbers.second, std::get<1>(nnDistResult)},

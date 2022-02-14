@@ -11,7 +11,10 @@ https://github.com/AnabelSMRuggiero/NNDescent.cpp
 #ifndef NND_INITJOINTASK_HPP
 #define NND_INITJOINTASK_HPP
 
+#include "NND/BlockwiseAlgorithm.hpp"
+#include "NND/Parallel-Algorithm/ParallelizationObjects.hpp"
 #include "Parallelization/TaskQueuer.hpp"
+#include "Parallelization/ThreadPool.hpp"
 
 namespace nnd {
 
@@ -33,12 +36,12 @@ struct InitJoinGenerator{
         readyBlocks(readyBlocks) {};
     
 
-    bool operator()(ThreadPool<ThreadFunctors<DistType, COMExtent>>& pool,
+    bool operator()(ThreadPool<thread_functors<DistType, COMExtent>>& pool,
                     AsyncQueue<TaskResult>& resultsQueue,
                     std::vector<std::optional<StitchHint>>& initJoinsToDo){
         auto joinGenerator = [&](const BlockPtrPair blockPtrs, const std::tuple<DataIndex_t, DataIndex_t, DistType> stitchHint) -> auto{
         
-            auto initJoin = [&, blockPtrs, stitchHint](ThreadFunctors<DistType, COMExtent>& threadFunctors)->void{
+            auto initJoin = [&, blockPtrs, stitchHint](thread_functors<DistType, COMExtent>& threadFunctors)->void{
                 //auto [blockNums, stitchHint] = *(stitchHints.find(blockNumbers));
                 //if (blockNums.first != blockNumbers.first) stitchHint = {std::get<1>(stitchHint), std::get<0>(stitchHint), std::get<2>(stitchHint)};
                 auto& blockLHS = *(blockPtrs.first);
@@ -48,24 +51,23 @@ struct InitJoinGenerator{
                 JoinHints RHShint;
                 RHShint[std::get<1>(stitchHint)] = {std::get<0>(stitchHint)};
                 
-                threadFunctors.cache.SetBlocks(blockLHS.queryContext.blockNumber, blockRHS.queryContext.blockNumber);
 
                 std::pair<JoinResults<DistType>, JoinResults<DistType>> retPair;
                 retPair.first = BlockwiseJoin(LHShint,
                                             blockLHS.currentGraph,
                                             blockLHS.joinPropagation,
                                             blockRHS.queryContext,
-                                            threadFunctors.cache);
+                                            caching_functor<DistType>{threadFunctors.cache, threadFunctors.dispatchFunctor(blockLHS.queryContext.blockNumber, blockRHS.queryContext.blockNumber)});
                 
-                threadFunctors.dispatchFunctor.SetBlocks(blockRHS.queryContext.blockNumber, blockLHS.queryContext.blockNumber);
+                
                 ReverseBlockJoin(RHShint,
                                 blockRHS.currentGraph,
                                 blockRHS.joinPropagation,
                                 blockLHS.queryContext,
                                 threadFunctors.cache,
-                                threadFunctors.dispatchFunctor);
+                                threadFunctors.dispatchFunctor(blockRHS.queryContext.blockNumber, blockLHS.queryContext.blockNumber));
                 
-                for(size_t i = 0; auto& vertex: threadFunctors.cache.AccessCache()){
+                for(size_t i = 0; auto& vertex: threadFunctors.cache.results){
                     EraseRemove(vertex, blockRHS.currentGraph[i].PushThreshold());
                     /*
                     NeighborOverDist<DistType> comparison(blockRHS.currentGraph[i].PushThreshold());
@@ -76,7 +78,7 @@ struct InitJoinGenerator{
                     */
                 }
 
-                for(size_t i = 0; const auto& vertex: threadFunctors.cache.AccessCache()){
+                for(size_t i = 0; const auto& vertex: threadFunctors.cache.results){
                     if(vertex.size()>0){
                         retPair.second.push_back({i, vertex});
                     }

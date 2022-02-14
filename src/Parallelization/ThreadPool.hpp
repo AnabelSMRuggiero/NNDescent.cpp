@@ -11,6 +11,7 @@ https://github.com/AnabelSMRuggiero/NNDescent.cpp
 #ifndef NND_THREADPOOL_HPP
 #define NND_THREADPOOL_HPP
 
+#include <new>
 #include <thread>
 #include <functional>
 #include <memory>
@@ -39,7 +40,7 @@ struct TaskThread{
 
     AsyncQueue<ThreadTask> workQueue;
 
-    TaskThread() = default;
+    TaskThread() requires std::is_default_constructible_v<ThreadState> = default;
 
     
 
@@ -165,26 +166,38 @@ struct ThreadPool{
 
     using ThreadTask = std::function<void(ThreadState&)>;
 
-    ThreadPool(): numThreads(std::jthread::hardware_concurrency()),
+    ThreadPool() requires std::is_default_constructible_v<ThreadState>: numThreads(std::jthread::hardware_concurrency()),
                   delegationCounter(0),
                   threadStates(std::make_unique<TaskThread<ThreadState>[]>(numThreads)), 
                   threadHandles(std::make_unique<std::jthread[]>(numThreads)) {};
 
-    ThreadPool(const size_t numThreads): numThreads(numThreads),
+    ThreadPool(const size_t numThreads) requires std::is_default_constructible_v<ThreadState>: numThreads(numThreads),
                                          delegationCounter(0),
                                          threadStates(std::make_unique<TaskThread<ThreadState>[]>(numThreads)), 
                                          threadHandles(std::make_unique<std::jthread[]>(numThreads)) {};
     
-    template<typename ...ThreadStateArgs>
+    template<typename... ThreadStateArgs>
     ThreadPool(const size_t numThreads, ThreadStateArgs... args): numThreads(numThreads),
                                          delegationCounter(0),
-                                         threadStates(std::make_unique<TaskThread<ThreadState>[]>(numThreads)), 
+                                         threadStates(nullptr), 
                                          threadHandles(std::make_unique<std::jthread[]>(numThreads)){
-        for (size_t i = 0; i<numThreads; i += 1){
-            ThreadState* statePtr = &(threadStates[i].state);
-            statePtr->~ThreadState();
-            new (statePtr) ThreadState(args...);
+        TaskThread<ThreadState>* arrayPtr = static_cast<TaskThread<ThreadState>*>(::operator new[](numThreads * sizeof(TaskThread<ThreadState>)));
+
+        size_t index = 0;
+        try{
+            for (; index<numThreads; index += 1){
+                std::construct_at(arrayPtr+index, args...);
+            }
+        } catch(...){
+            index -= 1;
+            for ( ;index >=0;index -=1){
+                std::destroy_at(arrayPtr + index);
+            }
+            ::operator delete[](arrayPtr);
+            throw;
+            static_assert(false);
         }
+        threadStates.reset(arrayPtr);
     }
 
     template<typename ...ThreadStateArgs>
