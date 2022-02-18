@@ -57,7 +57,7 @@ struct GraphVertex{
     
     //Explicit copy constructor for when allocators don't match
     template<VertexLike<IndexType, FloatType> Other>
-        requires (IsNot<GraphVertex, Other>)
+        requires (is_not<GraphVertex, Other>)
     GraphVertex(const Other& other, allocator_type allocator = allocator_type{}): neighbors(other.size()+1, allocator) {
         neighbors.resize(other.size());
         std::ranges::copy(other, this->begin());
@@ -312,7 +312,7 @@ unsigned int ConsumeVertex(GraphVertex<std::pair<BlockIndecies, bool>, ConsumerD
     return neighborsAdded;
 }
 
-template<IsNot<BlockIndecies> DataIndexType, typename DistType>
+template<is_not<BlockIndecies> DataIndexType, typename DistType>
 GraphVertex<BlockIndecies, DistType> ToBlockIndecies(const GraphVertex<DataIndexType, DistType>& vertexToConvert, const size_t fragmentNum, const size_t blockNum){
     GraphVertex<BlockIndecies, DistType> newVertex(vertexToConvert.size());
     for(const auto& neighbor: vertexToConvert){

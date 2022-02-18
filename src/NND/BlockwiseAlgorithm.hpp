@@ -357,7 +357,7 @@ template<typename DistType, typename BlockContainer>
 JoinMap InitializeJoinMap(const BlockContainer& blockUpdateContexts,
                                           const ComparisonMap& comparisonMap,
                                           const NodeTracker& nodesJoined){
-    JoinMap joinMap;
+    JoinMap joinMap{};
     for (auto& [targetBlock, queue]: comparisonMap){
         //std::unordered_map<size_t, std::pair<size_t, std::vector<size_t>>> joinHints;
         for (const auto& [sourceIndex, targetIndex]: queue){

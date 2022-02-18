@@ -11,16 +11,20 @@ https://github.com/AnabelSMRuggiero/NNDescent.cpp
 #ifndef NND_THREADPOOL_HPP
 #define NND_THREADPOOL_HPP
 
-#include <new>
-#include <thread>
+#include <cassert>
+#include <concepts>
 #include <functional>
 #include <memory>
-#include <cassert>
-#include <type_traits>
 #include <memory_resource>
+#include <new>
+#include <ranges>
+#include <thread>
+#include <type_traits>
 
 #include "ann/UniqueFunction.hpp"
 #include "ann/MemoryResources.hpp"
+#include "ann/AlignedMemory/DynamicArray.hpp"
+#include "ann/DelayConstruct.hpp"
 
 #include "NND/MemoryInternals.hpp"
 
@@ -168,37 +172,22 @@ struct ThreadPool{
 
     ThreadPool() requires std::is_default_constructible_v<ThreadState>: numThreads(std::jthread::hardware_concurrency()),
                   delegationCounter(0),
-                  threadStates(std::make_unique<TaskThread<ThreadState>[]>(numThreads)), 
-                  threadHandles(std::make_unique<std::jthread[]>(numThreads)) {};
+                  threadStates(numThreads), 
+                  threadHandles(numThreads) {};
 
-    ThreadPool(const size_t numThreads) requires std::is_default_constructible_v<ThreadState>: numThreads(numThreads),
-                                         delegationCounter(0),
-                                         threadStates(std::make_unique<TaskThread<ThreadState>[]>(numThreads)), 
-                                         threadHandles(std::make_unique<std::jthread[]>(numThreads)) {};
+    ThreadPool(const size_t numThreads) requires std::is_default_constructible_v<ThreadState>: numThreads{numThreads},
+                                         delegationCounter{0},
+                                         threadStates{numThreads}, 
+                                         threadHandles{numThreads} {};
     
     template<typename... ThreadStateArgs>
-    ThreadPool(const size_t numThreads, ThreadStateArgs... args): numThreads(numThreads),
-                                         delegationCounter(0),
-                                         threadStates(nullptr), 
-                                         threadHandles(std::make_unique<std::jthread[]>(numThreads)){
-        TaskThread<ThreadState>* arrayPtr = static_cast<TaskThread<ThreadState>*>(::operator new[](numThreads * sizeof(TaskThread<ThreadState>)));
-
-        size_t index = 0;
-        try{
-            for (; index<numThreads; index += 1){
-                std::construct_at(arrayPtr+index, args...);
-            }
-        } catch(...){
-            index -= 1;
-            for ( ;index >=0;index -=1){
-                std::destroy_at(arrayPtr + index);
-            }
-            ::operator delete[](arrayPtr);
-            throw;
-            static_assert(false);
-        }
-        threadStates.reset(arrayPtr);
-    }
+        requires std::constructible_from<TaskThread<ThreadState>, ThreadStateArgs...>
+    ThreadPool(const size_t numThreads, ThreadStateArgs... args): numThreads{numThreads},
+                                         delegationCounter{0},
+                                         threadStates([&](){
+                                            return TaskThread<ThreadState>{args...};
+                                         }, numThreads), 
+                                         threadHandles{numThreads}{}
 
     template<typename ...ThreadStateArgs>
     void RebuildStates(ThreadStateArgs... args){
@@ -288,8 +277,8 @@ struct ThreadPool{
     
     const size_t numThreads;
     size_t delegationCounter;
-    std::unique_ptr<TaskThread<ThreadState>[]> threadStates; 
-    std::unique_ptr<std::jthread[]> threadHandles;
+    ann::dynamic_array<TaskThread<ThreadState>> threadStates; 
+    ann::dynamic_array<std::jthread> threadHandles;
     
 };
 

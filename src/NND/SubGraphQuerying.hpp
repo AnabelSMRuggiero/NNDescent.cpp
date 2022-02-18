@@ -47,7 +47,7 @@ struct SubProblemData {
 template<TriviallyCopyable IndexType, typename DataEntry, std::floating_point FloatType>
 std::tuple<size_t, size_t, FloatType> BruteNearestNodes(
     const Graph<IndexType, FloatType>& subGraphA, const DataBlock<DataEntry>& dataBlockA, const Graph<IndexType, FloatType>& subGraphB,
-    const DataBlock<DataEntry>& dataBlockB, SpaceMetric<DataEntry, DataEntry, FloatType> distanceFunctor) {
+    const DataBlock<DataEntry>& dataBlockB, erased_metric<FloatType> distanceFunctor) {
 
     std::pair<size_t, size_t> bestPair;
     FloatType bestDistance(std::numeric_limits<FloatType>::max());

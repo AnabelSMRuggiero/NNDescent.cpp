@@ -53,7 +53,7 @@ struct UndirectedGraph{
     //NewUndirectedGraph(size_t numVerticies, size_t numNeighbors): 
     //    verticies(numVerticies, std::vector<IndexType>(numNeighbors)){};
 
-    UndirectedGraph(const size_t numVerticies, const size_t numIndecies, std::pmr::memory_resource* resource): graphBlock(UninitUnevenBlock<IndexType>(numVerticies, numIndecies, resource)){
+    UndirectedGraph(const size_t numVerticies, const size_t numIndecies): graphBlock(UninitUnevenBlock<IndexType>(numVerticies, numIndecies)){
     }
 
     reference operator[](size_t i){
@@ -104,7 +104,7 @@ struct UndirectedGraph{
 };
 
 template<typename IndexType, typename DistType>
-UndirectedGraph<IndexType> BuildUndirectedGraph(Graph<IndexType, DistType> directedGraph, std::pmr::memory_resource* resource = std::pmr::get_default_resource()){
+UndirectedGraph<IndexType> BuildUndirectedGraph(Graph<IndexType, DistType> directedGraph){
     for (size_t i = 0; auto& vertex: directedGraph){
         vertex.neighbors.reserve(vertex.size()*2);
         for (const auto& neighbor: vertex){
@@ -124,8 +124,8 @@ UndirectedGraph<IndexType> BuildUndirectedGraph(Graph<IndexType, DistType> direc
 
     //Okay, now I have enough information to call the constructor.
 
-    UndirectedGraph<IndexType> retGraph(numberOfVerticies, totalIndecies, resource);
-    size_t* headerStart = static_cast<size_t*>(static_cast<void*>(retGraph.graphBlock.get()));
+    UndirectedGraph<IndexType> retGraph(numberOfVerticies, totalIndecies);
+    size_t* headerStart = std::launder(static_cast<size_t*>(static_cast<void*>(retGraph.graphBlock.data())));
     std::transform_inclusive_scan(directedGraph.begin(), directedGraph.end(), headerStart+1, std::plus<size_t>{},[](const auto& vertex){
         return vertex.size();
     }, 0);

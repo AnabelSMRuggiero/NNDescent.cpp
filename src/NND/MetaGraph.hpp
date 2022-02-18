@@ -21,6 +21,7 @@ https://github.com/AnabelSMRuggiero/NNDescent.cpp
 
 #include "../ann/Data.hpp"
 #include "../ann/DataSerialization.hpp"
+#include "../ann/AlignedMemory/DynamicArray.hpp"
 
 #include "Type.hpp"
 #include "GraphStructures.hpp"
@@ -32,15 +33,15 @@ namespace nnd{
 template<typename DistType>
 struct MetaPoint{
     unsigned int weight;
-    AlignedArray<DistType> centerOfMass;
+    ann::aligned_array<DistType> centerOfMass;
 };
 
 template<typename DataType, typename COMExtent>
-AlignedArray<COMExtent> CalculateCOM(const DataBlock<DataType>& dataBlock){
+ann::aligned_array<COMExtent> CalculateCOM(const DataBlock<DataType>& dataBlock){
 
     
     //retPoint.weight = dataBlock.size();
-    AlignedArray<COMExtent> retPoint(std::ranges::size(dataBlock[0]));
+    ann::aligned_array<COMExtent> retPoint(std::ranges::size(dataBlock[0]));
     //retPoint.distanceFunctor = distanceFunctor;
     
     for (size_t i = 0; i<dataBlock.size(); i += 1){
@@ -130,7 +131,7 @@ MetaGraph<COMExtent> BuildMetaGraphFragment(const std::vector<DataBlock<DataType
         i++;
     }
 
-    AlignedArray<COMExtent> centerOfMass(dataBlocks[0].entryLength);
+    ann::aligned_array<COMExtent> centerOfMass(dataBlocks[0].entryLength);
     COMCalculator(points, {MakeAlignedPtr(centerOfMass.begin(), centerOfMass), centerOfMass.size()});
 
     BruteForceGraph<COMExtent>(verticies, params.COMNeighbors, points, metricSet.dataToData);
@@ -280,10 +281,10 @@ template<typename DistType, typename Metric>
 auto GeometricMedian(DataBlock<DistType> points, Metric metricFunction){
     using center_type = typename Metric::center_type;
 
-    AlignedArray<center_type> initMedian = std::accumulate(
+    ann::aligned_array<center_type> initMedian = std::accumulate(
         points.begin(),
         points.end(),
-        AlignedArray<center_type>{points[0].size()},
+        ann::aligned_array<center_type>{points[0].size()},
         [](auto&& init, const auto& view)-> auto{
             for(size_t i = 0; i<init.size(); i+=1){
                 init[i] += view[i];

@@ -11,11 +11,13 @@ https://github.com/AnabelSMRuggiero/NNDescent.cpp
 #ifndef NND_METRICHELPERS_HPP
 #define NND_METRICHELPERS_HPP
 
+#include <algorithm>
 #include <type_traits>
 
 #include "../ann/Metrics/Euclidean.hpp"
 #include "../ann/Type.hpp"
 #include "MemoryInternals.hpp"
+#include "NND/Type.hpp"
 
 namespace nnd {
 
@@ -80,6 +82,13 @@ std::pmr::vector<float> ComputeBatch(
     std::pmr::vector<float> retVector(pointsTo.size(), internal::GetThreadResource());
 
     size_t index = 0;
+
+    if constexpr (debugNND){
+        std::transform(pointsTo.begin(), pointsTo.end(), retVector.begin(), [&](const auto& view){
+            return batchNorm(AlignedSpan<const float, 32>{pointFrom}, AlignedSpan<const float, 32>{view});
+        });
+        return retVector;
+    }
 
     for (; (index + maxBatch) < pointsTo.size(); index += maxBatch) {
         std::span<const ann::vector_span<const float>, maxBatch> partialBatch{ pointsTo.begin() + index, maxBatch };

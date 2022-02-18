@@ -190,9 +190,9 @@ struct erased_metric {
 
     erased_metric& operator=(erased_metric&&) = default;
 
-    template<IsNot<erased_metric> DistanceFunctor>
-        requires std::is_copy_assignable_v<DistanceFunctor> erased_metric(DistanceFunctor&& distanceFunctor)
-            : ptrToFunc(
+    template<is_not<erased_metric> DistanceFunctor>
+        requires std::is_copy_assignable_v<DistanceFunctor> 
+    erased_metric(DistanceFunctor&& distanceFunctor): ptrToFunc(
                 std::make_unique<concrete_functor<std::remove_cvref_t<DistanceFunctor>>>(std::forward<DistanceFunctor>(distanceFunctor))){};
 
         erased_metric operator()(swap_binds) const { return std::invoke(*ptrToFunc, swap_binds_tag); }
@@ -301,7 +301,7 @@ struct erased_unary_binder {
 
     erased_unary_binder& operator=(erased_unary_binder&&) = default;
 
-    template<IsNot<erased_unary_binder> DistanceFunctor>
+    template<is_not<erased_unary_binder> DistanceFunctor>
         requires std::is_copy_assignable_v<DistanceFunctor> 
         erased_unary_binder(DistanceFunctor&& distanceFunctor)
             : ptrToFunc(
@@ -353,7 +353,7 @@ struct erased_binary_binder {
 
     erased_binary_binder& operator=(erased_binary_binder&&) = default;
 
-    template<IsNot<erased_binary_binder> DistanceFunctor>
+    template<is_not<erased_binary_binder> DistanceFunctor>
         requires std::is_copy_assignable_v<DistanceFunctor> 
         erased_binary_binder(DistanceFunctor&& distanceFunctor)
             : ptrToFunc(

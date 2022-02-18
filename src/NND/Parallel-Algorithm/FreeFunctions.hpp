@@ -138,8 +138,8 @@ void ParallelBlockJoins(
                     // else rhsPtr->SetNextJoins();
                 }
             }
-            if constexpr (debugNND) VerifySubGraphState(lhsPtr->currentGraph, lhsPtr->queryContext.blockNumber);
-            if constexpr (debugNND) VerifySubGraphState(rhsPtr->currentGraph, rhsPtr->queryContext.blockNumber);
+            //if constexpr (debugNND) VerifySubGraphState(lhsPtr->currentGraph, lhsPtr->queryContext.blockNumber);
+            //if constexpr (debugNND) VerifySubGraphState(rhsPtr->currentGraph, rhsPtr->queryContext.blockNumber);
             blockStates[lhsPtr->queryContext.blockNumber] = true;
             blockStates[rhsPtr->queryContext.blockNumber] = true;
             if (doneInc > 0) doneBlocks += doneInc;

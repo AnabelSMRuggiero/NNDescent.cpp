@@ -32,8 +32,8 @@ https://github.com/AnabelSMRuggiero/NNDescent.cpp
 #include "ann/Type.hpp"
 #include "ann/Data.hpp"
 #include "ann/Metrics/SpaceMetrics.hpp"
-
 #include "ann/Metrics/Euclidean.hpp"
+#include "ann/AlignedMemory/DynamicArray.hpp"
 
 #include "NND/FunctorErasure.hpp"
 #include "NND/GraphStructures.hpp"
@@ -130,9 +130,9 @@ std::vector<IndexBlock> IndexFinalization(std::span<BlockUpdateContext<DistType>
         size_t totalSize = std::accumulate(filteredSizes.begin(), filteredSizes.end(), size_t{0});
 
         //std::vector<std::vector<BlockIndecies>> graphFragment(block.currentGraph.size());
-        UnevenBlock<BlockIndecies> graphFragment = UninitUnevenBlock<BlockIndecies>(filteredSizes.size(), totalSize, resource);
+        UnevenBlock<BlockIndecies> graphFragment = UninitUnevenBlock<BlockIndecies>(filteredSizes.size(), totalSize);
         
-        size_t* headerStart = static_cast<size_t*>(static_cast<void*>(graphFragment.get()));
+        size_t* headerStart = static_cast<size_t*>(static_cast<void*>(graphFragment.data()));
         std::inclusive_scan(filteredSizes.begin(), filteredSizes.end(), headerStart+1, std::plus<size_t>{}, 0);
         
         BlockIndecies* indexStart = graphFragment.firstIndex;
@@ -190,7 +190,7 @@ void SerializeFragmentIndex(std::span<const DataBlock<DistType>> dataBlocks, std
     }
 }
 
-using SplittingVectors = std::unordered_map<size_t, std::pair<AlignedArray<float>, float>>;
+using SplittingVectors = std::unordered_map<size_t, std::pair<ann::aligned_array<float>, float>>;
 
 void SerializeSplittingVectors(const SplittingVectors& splittingVectors, std::filesystem::path filePath){
     std::ofstream vectorFile{filePath, std::ios_base::binary | std::ios_base::trunc};
@@ -253,7 +253,7 @@ int main(int argc, char *argv[]){
     SplittingHeurisitcs splitParams= {16, 140, 60, 180};
     */
 
-    constexpr size_t numThreads = 8;
+    constexpr size_t numThreads = 12;
 
     //IndexParameters indexParams{12, 40, 35, 6};
     IndexParameters indexParams{12, 20, 15, 6};
@@ -271,8 +271,8 @@ int main(int argc, char *argv[]){
     size_t maxNewSearches = 10;
 
     //SplittingHeurisitcs splitParams= {1250, 750, 1750, 0.0f};
-    //SplittingHeurisitcs splitParams= {2500, 1500, 3500, 0.0f};
-    SplittingHeurisitcs splitParams= {205, 123, 287, 0.0f};
+    SplittingHeurisitcs splitParams= {2500, 1500, 3500, 0.0f};
+    //SplittingHeurisitcs splitParams= {205, 123, 287, 0.0f};
 
     //SplittingHeurisitcs splitParams= {20, 12, 28, 0.0f};
 
@@ -389,12 +389,12 @@ int main(int argc, char *argv[]){
     static const std::endian dataEndianness = std::endian::native;
     //static const std::endian dataEndianness = std::endian::big;
     
-    
+    /*
     std::string trainDataFilePath("./TestData/MNIST-Fashion-Train.bin");
     DataSet<float> mnistFashionTrain(trainDataFilePath, 28*28, 60'000);
 
     std::filesystem::path indexLocation("./Saved-Indecies/MNIST-Fashion");
-    
+    */
 
     /*
     std::string testDataFilePath("./TestData/MNIST-Fashion-Test.bin");
@@ -403,11 +403,11 @@ int main(int argc, char *argv[]){
     DataSet<uint32_t, alignof(uint32_t)> mnistFashionTestNeighbors(testNeighborsFilePath, 100, 10'000);
     */
 
-    /*
+    
     std::string trainDataFilePath("./TestData/SIFT-Train.bin");
     DataSet<float> mnistFashionTrain(trainDataFilePath, 128, 1'000'000);
     std::filesystem::path indexLocation("./Saved-Indecies/SIFT");
-    */
+    
     /*
     std::string testDataFilePath("./TestData/SIFT-Test.bin");
     std::string testNeighborsFilePath("./TestData/SIFT-Neighbors.bin");
@@ -436,8 +436,8 @@ int main(int argc, char *argv[]){
     
 
     auto [rpTrees, splittingVectors] = (parallelIndexBuild) ? 
-                                        BuildRPForest<ParallelEuclidianScheme<float, AlignedArray<float>>>(std::execution::par_unseq, mnistFashionTrain, parameters.splitParams, numThreads) :
-                                        BuildRPForest<EuclidianScheme<float, AlignedArray<float>>>(std::execution::seq, mnistFashionTrain, parameters.splitParams);
+                                        BuildRPForest<ParallelEuclidianScheme<float, ann::aligned_array<float>>>(std::execution::par_unseq, mnistFashionTrain, parameters.splitParams, numThreads) :
+                                        BuildRPForest<EuclidianScheme<float, ann::aligned_array<float>>>(std::execution::seq, mnistFashionTrain, parameters.splitParams);
                                         
     SerializeSplittingVectors(splittingVectors, indexLocation / "SplittingVectors.bin");
     //std::chrono::time_point<std::chrono::steady_clock> rpTrainEnd = std::chrono::steady_clock::now();

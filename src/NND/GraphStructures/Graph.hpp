@@ -116,7 +116,7 @@ struct Graph{
     }
 };
 
-template<IsNot<BlockIndecies> DataIndexType, typename DistType>
+template<is_not<BlockIndecies> DataIndexType, typename DistType>
 Graph<BlockIndecies, DistType> ToBlockIndecies(const Graph<DataIndexType, DistType>& blockGraph, const size_t fragmentNum, const size_t blockNum){
     Graph<BlockIndecies, DistType> newGraph(blockGraph.size(), blockGraph[0].size());
     for (size_t j = 0; const auto& vertex: blockGraph){

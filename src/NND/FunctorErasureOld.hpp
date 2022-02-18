@@ -187,7 +187,7 @@ struct DispatchFunctor {
 
     DispatchFunctor& operator=(const DispatchFunctor&) = default;
 
-    template<IsNot<DispatchFunctor> DistanceFunctor>
+    template<is_not<DispatchFunctor> DistanceFunctor>
     DispatchFunctor(DistanceFunctor& distanceFunctor) : ptrToFunc(std::make_shared<ConcreteFunctor<DistanceFunctor>>(distanceFunctor)){};
 
     DistType operator()(const size_t LHSIndex, const size_t RHSIndex) const { return this->ptrToFunc->operator()(LHSIndex, RHSIndex); };
@@ -314,7 +314,7 @@ struct SinglePointFunctor {
 
     SinglePointFunctor& operator=(const SinglePointFunctor&) = default;
 
-    template<IsNot<SinglePointFunctor> DistanceFunctor>
+    template<is_not<SinglePointFunctor> DistanceFunctor>
     SinglePointFunctor(DistanceFunctor& distanceFunctor) : ptrToFunc(std::make_shared<ConcreteFunctor<DistanceFunctor>>(distanceFunctor)){};
 
     DistType operator()(const size_t functorParam, const size_t targetIndex) const {

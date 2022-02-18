@@ -16,14 +16,16 @@ https://github.com/AnabelSMRuggiero/NNDescent.cpp
 #include <thread>
 #include <numeric>
 
+#include "Parallelization/AsyncQueue.hpp"
 #include "ann/Metrics/SpaceMetrics.hpp"
+#include "ann/AlignedMemory/DynamicArray.hpp"
 #include "ann/Data.hpp"
 
 namespace nnd{
 
 template<typename DataEntry, typename DistType>
-AlignedArray<DistType> EuclidianSplittingPlaneNormal(const DataEntry& pointA, const DataEntry& pointB){
-    AlignedArray<DistType> splittingLine(pointA.size());
+ann::aligned_array<DistType> EuclidianSplittingPlaneNormal(const DataEntry& pointA, const DataEntry& pointB){
+    ann::aligned_array<DistType> splittingLine(pointA.size());
     for (size_t i = 0; i < pointA.size(); i += 1){
         splittingLine[i] = DistType(pointA[i]) - DistType(pointB[i]);
     }
@@ -240,8 +242,8 @@ struct ParallelEuclidianScheme{
 };
 
 template<typename DataEntry, typename DistType>
-AlignedArray<DistType> AngularSplittingPlane(const DataEntry& pointA, const DataEntry& pointB){
-    AlignedArray<DistType> splittingLine(pointA.size());
+ann::aligned_array<DistType> AngularSplittingPlane(const DataEntry& pointA, const DataEntry& pointB){
+    ann::aligned_array<DistType> splittingLine(pointA.size());
 
 
     double normA = PNorm<2>(pointA);
