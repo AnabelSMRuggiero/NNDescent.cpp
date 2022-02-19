@@ -78,7 +78,7 @@ struct cache_state {
 
     cache_state& reset_results(){
 
-        for (auto& vertex : results){
+        for (auto& vertex : results.reverseGraph){
             vertex.resize(0);
         }
         for (auto& tracker : results.nodesJoined){
@@ -86,6 +86,7 @@ struct cache_state {
             tracker.resize(maxBlockSize);
         }
 
+        results.cachedGraphSize = 0;
         return *this;
     }
 

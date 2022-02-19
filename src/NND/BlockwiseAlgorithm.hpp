@@ -250,6 +250,8 @@ void ReverseBlockJoin(const JoinHints& startJoins,
 
         
         std::ranges::for_each(successfulJoins | newJoinView, addNewJoin);
+        
+        successfulJoins.clear();
         /*
         for(auto& success: successfulJoins){
             

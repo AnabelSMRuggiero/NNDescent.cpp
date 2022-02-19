@@ -46,7 +46,7 @@ inline bool operator==(const BlockIndecies lhs, const BlockIndecies& rhs){
     return (lhs.graphFragment == rhs.graphFragment) && (lhs.blockNumber == rhs.blockNumber) && (lhs.dataIndex == rhs.dataIndex);
 }
 
-inline constexpr bool debugNND = true;
+inline constexpr bool debugNND = false;
 //Maybe a block specific one that reads i.blockNumber from a BlockIndecies
 template<typename Alloc = std::allocator<bool>>
 struct NodeTrackerImpl{
