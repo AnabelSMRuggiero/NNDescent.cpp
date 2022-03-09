@@ -16,6 +16,7 @@ https://github.com/AnabelSMRuggiero/NNDescent.cpp
 #include <memory>
 #include <memory_resource>
 #include <new>
+#include <ranges>
 #include <type_traits>
 #include <vector>
 
@@ -78,8 +79,7 @@ struct alignas(64) abstract_storage {
 
     using alloc_traits = std::allocator_traits<Allocator>;
     using allocator = Allocator;
-    static constexpr size_t storage_size =
-        64 - sizeof(compressed_pair<Allocator, AbstractObject*>);
+    static constexpr size_t storage_size = 64 - sizeof(compressed_pair<Allocator, AbstractObject*>);
 
     constexpr abstract_storage() = default;
 
@@ -150,9 +150,11 @@ struct metric_pair {
     metric_pair(const LHSData& lhsData, const RHSData& rhsData)
         : metric{ Metric{} }, lhsBlock{ lhsData.begin() }, rhsBlock{ rhsData.begin() } {};
 
-    metric_pair(Metric metric, const LHSData& lhsData, const RHSData& rhsData) : metric(metric), lhsBlock(std::ranges::begin(lhsData)), rhsBlock(std::ranges::begin(rhsData)){};
+    metric_pair(Metric metric, const LHSData& lhsData, const RHSData& rhsData)
+        : metric(metric), lhsBlock(std::ranges::begin(lhsData)), rhsBlock(std::ranges::begin(rhsData)){};
 
-    metric_pair(Metric metric, lhs_const_iterator lhsItr, rhs_const_iterator rhsItr): metric{std::move(metric)}, lhsBlock{std::move(lhsItr)}, rhsBlock{std::move(rhsItr)}{}
+    metric_pair(Metric metric, lhs_const_iterator lhsItr, rhs_const_iterator rhsItr)
+        : metric{ std::move(metric) }, lhsBlock{ std::move(lhsItr) }, rhsBlock{ std::move(rhsItr) } {}
 
     metric_pair<Metric, RHSData, LHSData> operator()(swap_binds) const {
         return metric_pair<Metric, RHSData, LHSData>{ metric, rhsBlock, lhsBlock };
@@ -161,19 +163,12 @@ struct metric_pair {
     distance_type operator()(size_t LHSIndex, size_t RHSIndex) const { return metric(lhsBlock[LHSIndex], rhsBlock[RHSIndex]); };
 
     std::pmr::vector<distance_type> operator()(const size_t lhsIndex, std::span<const size_t> rhsIndecies) const {
-        constexpr size_t numberOfViews = internal::maxBatch + 5;
-        constexpr size_t bufferSize = sizeof(const_vector_view) * numberOfViews + sizeof(std::pmr::vector<const_vector_view>);
-
-        char stackBuffer[bufferSize];
-        std::pmr::monotonic_buffer_resource stackResource(stackBuffer, bufferSize);
-
-        void* vectorStorage = stackResource.allocate(sizeof(std::pmr::vector<const_vector_view>));
-        std::pmr::vector<const_vector_view>& rhsData = *(new (vectorStorage) std::pmr::vector<const_vector_view>(&stackResource));
-
-        rhsData.resize(rhsIndecies.size());
-        std::ranges::transform(rhsIndecies, rhsData.begin(), [&](const auto index) { return rhsBlock[index]; });
-
-        return ComputeBatch(lhsBlock[lhsIndex], rhsData, metric);
+        
+        return ComputeBatch(
+            lhsBlock[lhsIndex],
+            rhsIndecies | std::views::transform([rhsBlock = this->rhsBlock](const auto index)->const_vector_view { return rhsBlock[index];
+        }), metric);
+        
     };
 };
 
@@ -191,8 +186,8 @@ struct erased_metric {
     erased_metric& operator=(erased_metric&&) = default;
 
     template<is_not<erased_metric> DistanceFunctor>
-        requires std::is_copy_assignable_v<DistanceFunctor> 
-    erased_metric(DistanceFunctor&& distanceFunctor): ptrToFunc(
+        requires std::is_copy_assignable_v<DistanceFunctor> erased_metric(DistanceFunctor&& distanceFunctor)
+            : ptrToFunc(
                 std::make_unique<concrete_functor<std::remove_cvref_t<DistanceFunctor>>>(std::forward<DistanceFunctor>(distanceFunctor))){};
 
         erased_metric operator()(swap_binds) const { return std::invoke(*ptrToFunc, swap_binds_tag); }
@@ -278,13 +273,12 @@ struct fixed_block_binder {
         : metric{ std::move(metric) }, fixedBlock{ fixedBlock.begin() }, rhsBlocks{ rhsBlocks } {};
 
     fixed_block_binder(const FixedContainer& fixedBlock, std::span<const RHSContainer> rhsBlocks)
-        : metric{ Metric{} }, fixedBlock{ &fixedBlock }, rhsBlocks{ rhsBlocks } {};
+        : metric{ Metric{} }, fixedBlock{ fixedBlock.begin() }, rhsBlocks{ rhsBlocks } {};
 
     metric_pair<Metric, FixedContainer, RHSContainer> operator()(size_t targetBlock) const {
         return metric_pair<Metric, FixedContainer, RHSContainer>{ metric, fixedBlock, rhsBlocks[targetBlock].begin() };
     }
 };
-
 
 template<typename DistanceType>
 struct erased_unary_binder {
@@ -293,23 +287,18 @@ struct erased_unary_binder {
 
     erased_unary_binder(const erased_unary_binder& other) : ptrToFunc(other.ptrToFunc->clone()){};
 
-    erased_unary_binder& operator=(const erased_unary_binder& other){
-        ptrToFunc = other.ptrToFunc.clone();
-    }
+    erased_unary_binder& operator=(const erased_unary_binder& other) { ptrToFunc = other.ptrToFunc.clone(); }
 
     erased_unary_binder(erased_unary_binder&&) = default;
 
     erased_unary_binder& operator=(erased_unary_binder&&) = default;
 
     template<is_not<erased_unary_binder> DistanceFunctor>
-        requires std::is_copy_assignable_v<DistanceFunctor> 
-        erased_unary_binder(DistanceFunctor&& distanceFunctor)
+        requires std::is_copy_assignable_v<DistanceFunctor> erased_unary_binder(DistanceFunctor&& distanceFunctor)
             : ptrToFunc(
                 std::make_unique<concrete_functor<std::remove_cvref_t<DistanceFunctor>>>(std::forward<DistanceFunctor>(distanceFunctor))){};
 
-
         erased_metric<DistanceType> operator()(size_t bindIndex) const { return std::invoke(*ptrToFunc, bindIndex); };
-
 
       private:
         struct abstract_functor {
@@ -328,15 +317,12 @@ struct erased_unary_binder {
 
             std::unique_ptr<abstract_functor> clone() const final { return std::make_unique<concrete_functor>(underlyingFunctor); }
 
-
             erased_metric<DistanceType> operator()(size_t bindIndex) const final { return this->underlyingFunctor(bindIndex); };
-
         };
 
       private:
         std::unique_ptr<abstract_functor> ptrToFunc;
 };
-
 
 template<typename DistanceType>
 struct erased_binary_binder {
@@ -345,23 +331,18 @@ struct erased_binary_binder {
 
     erased_binary_binder(const erased_binary_binder& other) : ptrToFunc(other.ptrToFunc->clone()){};
 
-    erased_binary_binder& operator=(const erased_binary_binder& other){
-        ptrToFunc = other.ptrToFunc.clone();
-    }
+    erased_binary_binder& operator=(const erased_binary_binder& other) { ptrToFunc = other.ptrToFunc.clone(); }
 
     erased_binary_binder(erased_binary_binder&&) = default;
 
     erased_binary_binder& operator=(erased_binary_binder&&) = default;
 
     template<is_not<erased_binary_binder> DistanceFunctor>
-        requires std::is_copy_assignable_v<DistanceFunctor> 
-        erased_binary_binder(DistanceFunctor&& distanceFunctor)
+        requires std::is_copy_assignable_v<DistanceFunctor> erased_binary_binder(DistanceFunctor&& distanceFunctor)
             : ptrToFunc(
                 std::make_unique<concrete_functor<std::remove_cvref_t<DistanceFunctor>>>(std::forward<DistanceFunctor>(distanceFunctor))){};
 
-
         erased_metric<DistanceType> operator()(size_t lhsBind, size_t rhsBind) const { return std::invoke(*ptrToFunc, lhsBind, rhsBind); };
-
 
       private:
         struct abstract_functor {
@@ -380,9 +361,9 @@ struct erased_binary_binder {
 
             std::unique_ptr<abstract_functor> clone() const final { return std::make_unique<concrete_functor>(underlyingFunctor); }
 
-
-            erased_metric<DistanceType> operator()(size_t lhsBind, size_t rhsBind) const final { return this->underlyingFunctor(lhsBind, rhsBind); };
-
+            erased_metric<DistanceType> operator()(size_t lhsBind, size_t rhsBind) const final {
+                return this->underlyingFunctor(lhsBind, rhsBind);
+            };
         };
 
       private:

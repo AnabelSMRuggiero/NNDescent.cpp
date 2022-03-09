@@ -266,12 +266,12 @@ inline SplitQuality EvaluateSplit(const SplittingHeurisitcs& heuristics, const s
     }
 
 }
-
+inline constexpr bool debugRPTrees = false;
 //SplittingHeurisitcs test = {8, 64, 8};
 template<typename SplittingScheme>
 struct ForestBuilder{
 
-    constexpr static bool debugRPTrees = false;
+    
 
     //std::vector<size_t> indexArray;
     RngFunctor rngFunctor;
@@ -285,38 +285,18 @@ struct ForestBuilder{
         getSplitComponents(scheme) {};
 
     // Training operator()
-    /*
-    RandomProjectionForest operator()(std::unique_ptr<size_t[]>&& indecies, 
-                                      const size_t numIndecies, 
-                                      std::pmr::memory_resource* upstream = std::pmr::get_default_resource());
 
-    RandomProjectionForest operator()(std::unique_ptr<size_t[]>&& indecies, 
-                                      const size_t numIndecies,
-                                      ThreadPool<TreeRef>& threadPool,
-                                      std::pmr::memory_resource* upstream = std::pmr::get_default_resource());
-    
-    RandomProjectionForest operator()(std::unique_ptr<size_t[]>&& indecies, 
-                                      const size_t numIndecies, 
-                                      const std::unordered_set<size_t>& splitIndicies, 
-                                      std::pmr::memory_resource* upstream = std::pmr::get_default_resource());
-
-    RandomProjectionForest operator()(std::unique_ptr<size_t[]>&& indecies,
-                                      const size_t numIndecies,
-                                      const std::unordered_set<size_t>& splitIndicies,
-                                      ThreadPool<TreeRef>& threadPool, 
-                                      std::pmr::memory_resource* upstream = std::pmr::get_default_resource());
-    */
     RandomProjectionForest operator()(ann::dynamic_array<size_t>&& indecies);
 
     RandomProjectionForest operator()(ann::dynamic_array<size_t>&& indecies, 
                                       ThreadPool<TreeRef>& threadPool);
     
-    RandomProjectionForest operator()(ann::dynamic_array<size_t>&& indecies,
-                                      const std::unordered_set<size_t>& splitIndicies);
+    //RandomProjectionForest operator()(ann::dynamic_array<size_t>&& indecies,
+    //                                  const std::unordered_set<size_t>& splitIndicies);
 
-    RandomProjectionForest operator()(ann::dynamic_array<size_t>&& indecies,
-                                      const std::unordered_set<size_t>& splitIndicies,
-                                      ThreadPool<TreeRef>& threadPool);  
+    //RandomProjectionForest operator()(ann::dynamic_array<size_t>&& indecies,
+    //                                  const std::unordered_set<size_t>& splitIndicies,
+    //                                  ThreadPool<TreeRef>& threadPool);  
 
     private:
     /*
@@ -731,7 +711,7 @@ RandomProjectionForest ForestBuilder<SplittingScheme>::operator()(ann::dynamic_a
 
 //Transforming Constructor
 template<typename SplittingScheme>
-RandomProjectionForest ForestBuilder<SplittingScheme>::operator()(ann::dynamic_array<size_t>&& indecies, const std::unordered_set<size_t>& splitIndicies){
+RandomProjectionForest transform(ann::dynamic_array<size_t>&& indecies, const std::unordered_set<size_t>& split_indicies, const SplittingScheme& splitting_scheme){
 
 
     RandomProjectionForest forest(std::move(indecies));
@@ -752,15 +732,15 @@ RandomProjectionForest ForestBuilder<SplittingScheme>::operator()(ann::dynamic_a
         
         std::unordered_set<size_t>::const_iterator result;
         do{
-            auto splittingFunction = getSplitComponents(nodeToFinish->splittingIndex, transformTag);
+            auto splittingFunction = splitting_scheme(nodeToFinish->splittingIndex, transformTag);
             bool dropLeft = splittingFunction(*(samples.begin() + nodeToFinish->splitRange.first));
             nodeToFinish->splittingIndex = nodeToFinish->splittingIndex * 2 + 1 + !dropLeft;
-            result = splitIndicies.find(nodeToFinish->splittingIndex);
-        } while (result != splitIndicies.end());
+            result = split_indicies.find(nodeToFinish->splittingIndex);
+        } while (result != split_indicies.end());
     };
 
     size_t sum(0);
-    if constexpr(debugRPTrees) sum = std::accumulate(samples.begin(), samples.end(), 0);
+    //if constexpr(debugRPTrees) sum = std::accumulate(samples.begin(), samples.end(), 0);
 
     //size_t beginIndex(0), endIndex(samples.size() - 1);
 
@@ -774,7 +754,7 @@ RandomProjectionForest ForestBuilder<SplittingScheme>::operator()(ann::dynamic_a
 
 
             // Get the splitting vector, this can be fed into this function in the parallel/distributed case.
-            auto splittingFunction = getSplitComponents(builder.refNode->splittingIndex, transformTag);
+            auto splittingFunction = splitting_scheme(builder.refNode->splittingIndex, transformTag);
 
 
             auto beginIt = samples.begin() + builder.refNode->splitRange.first;
@@ -787,7 +767,7 @@ RandomProjectionForest ForestBuilder<SplittingScheme>::operator()(ann::dynamic_a
 
 
 
-            std::pair<TreeLeaf*, TreeLeaf*> ptrsToFinish = AddLeaves(builder, samples, workSpace, numSplit, splitQueue2, splitIndicies);
+            std::pair<TreeLeaf*, TreeLeaf*> ptrsToFinish = AddLeaves(builder, samples, workSpace, numSplit, splitQueue2, split_indicies);
 
             if (ptrsToFinish.first != nullptr) finishSplit(ptrsToFinish.first);
             if (ptrsToFinish.second != nullptr) finishSplit(ptrsToFinish.second);
@@ -797,33 +777,35 @@ RandomProjectionForest ForestBuilder<SplittingScheme>::operator()(ann::dynamic_a
         } //end while
         
         std::swap(samples, workSpace);
-        
+        /*
         if constexpr(debugRPTrees){
             size_t tmpSum = std::accumulate(samples.begin(), samples.end(), 0);
             if (sum != tmpSum){
                 throw std::logic_error("Sum of indicies should be invariant.");
             };
         }
-        
-        //if (splitQueue2.size() == 0) break;
+        */
+
         std::swap(splitQueue1, splitQueue2);
     } //end while
     if (samples.data() == workSpaceArr.data()){
         std::swap(forest.indecies, workSpaceArr);
     }
+    /*
     if constexpr(debugRPTrees){
         size_t tmpSum = std::accumulate(samples.begin(), samples.end(), 0);
         if (sum != tmpSum){
             throw std::logic_error("Sum of indicies should be invariant.");
         };
     }
+    */
     return forest;
-    //indexArray = std::move(indexVector1);
 } //end operator()
 
 template<typename SplittingScheme>
-RandomProjectionForest ForestBuilder<SplittingScheme>::operator()(ann::dynamic_array<size_t>&& indecies,
+RandomProjectionForest transform(ann::dynamic_array<size_t>&& indecies,
                                                                   const std::unordered_set<size_t>& splitIndicies,
+                                                                  const SplittingScheme& splitting_scheme,
                                                                   ThreadPool<TreeRef>& threadPool){
 
 
@@ -844,7 +826,7 @@ RandomProjectionForest ForestBuilder<SplittingScheme>::operator()(ann::dynamic_a
         auto finishSplit = [&, nodeToFinish](auto&) mutable ->void{
             std::unordered_set<size_t>::const_iterator result;
             do{
-                auto splittingFunction = getSplitComponents(nodeToFinish->splittingIndex, transformTag);
+                auto splittingFunction = splitting_scheme(nodeToFinish->splittingIndex, transformTag);
                 bool dropLeft = splittingFunction(*(samples.begin() + nodeToFinish->splitRange.first));
                 nodeToFinish->splittingIndex = nodeToFinish->splittingIndex * 2 + 1 + !dropLeft;
                 result = splitIndicies.find(nodeToFinish->splittingIndex);
@@ -870,7 +852,7 @@ RandomProjectionForest ForestBuilder<SplittingScheme>::operator()(ann::dynamic_a
 
 
             // Get the splitting vector, this can be fed into this function in the parallel/distributed case.
-            auto splittingFunction = getSplitComponents(builder.refNode->splittingIndex, transformTag);
+            auto splittingFunction = splitting_scheme(builder.refNode->splittingIndex, transformTag);
 
 
             auto beginIt = samples.data() + builder.refNode->splitRange.first;
@@ -911,7 +893,7 @@ RandomProjectionForest ForestBuilder<SplittingScheme>::operator()(ann::dynamic_a
 
     AsyncQueue<TreeLeaf*> incomingNodes;
     auto splitTaskGenerator = [&](TreeLeaf* nodeToSplit)->auto{
-        auto splitTask = [&getSplitComponents =this->getSplitComponents,
+        auto splitTask = [&splitting_scheme,
                           &incomingNodes, 
                           nodeToSplit, 
                           samples, 
@@ -922,7 +904,7 @@ RandomProjectionForest ForestBuilder<SplittingScheme>::operator()(ann::dynamic_a
         
                 std::unordered_set<size_t>::const_iterator result;
                 do{
-                    auto splittingFunction = getSplitComponents(nodeToFinish->splittingIndex, transformTag);
+                    auto splittingFunction = splitting_scheme(nodeToFinish->splittingIndex, transformTag);
                     bool dropLeft = splittingFunction(*(samples.begin() + nodeToFinish->splitRange.first));
                     nodeToFinish->splittingIndex = nodeToFinish->splittingIndex * 2 + 1 + !dropLeft;
                     result = splitIndicies.find(nodeToFinish->splittingIndex);
@@ -937,7 +919,7 @@ RandomProjectionForest ForestBuilder<SplittingScheme>::operator()(ann::dynamic_a
                     nodeBuilder.refNode = splitQueue1.back();
 
 
-                    auto splittingFunction = getSplitComponents(nodeBuilder.refNode->splittingIndex, transformTag);
+                    auto splittingFunction = splitting_scheme(nodeBuilder.refNode->splittingIndex, transformTag);
 
 
                     auto beginIt = samples.begin() + nodeBuilder.refNode->splitRange.first;
@@ -1190,87 +1172,77 @@ std::pair<RandomProjectionForest, typename SplittingScheme::SplittingVectors> Bu
 
 inline RandomProjectionForest RPTransformData(const DataSet<float>& testSet,
                      const std::unordered_set<size_t>& splittingIndecies,
-                     std::unordered_map<size_t, std::pair<ann::aligned_array<float>, ann::aligned_array<float>::value_type>>&& splittingVectors){
+                     std::unordered_map<size_t, std::pair<ann::aligned_array<float>, ann::aligned_array<float>::value_type>>&& splitting_vectors){
 
-    EuclidianScheme<float, ann::aligned_array<float>> transformingScheme(testSet);
+    EuclidianScheme<float, ann::aligned_array<float>> transforming_scheme(testSet);
 
-    transformingScheme.splittingVectors = std::move(splittingVectors);
+    transforming_scheme.splittingVectors = std::move(splitting_vectors);
 
-    //std::unique_ptr<size_t[]> testIndecies = std::make_unique<size_t[]>(testSet.size());
     ann::dynamic_array<size_t> testIndecies(testSet.size());
     std::iota(testIndecies.data(), testIndecies.data()+testSet.size(), 0);
 
-    RngFunctor testFunctor(size_t(0), testSet.size() - 1);
-
-    ForestBuilder testBuilder{std::move(testFunctor), SplittingHeurisitcs{}, transformingScheme};
 
 
-    return testBuilder(std::move(testIndecies), splittingIndecies);
+    return transform(std::move(testIndecies), splittingIndecies, transforming_scheme);
 
 }
 
 inline RandomProjectionForest RPTransformData(const DataSet<float>& testSet,
     const std::unordered_set<size_t>& splittingIndecies,
-    EuclidianScheme<float, ann::aligned_array<float>>& transformingScheme) {
+    const EuclidianScheme<float, ann::aligned_array<float>>& transforming_scheme) {
 
 
-
-    //std::unique_ptr<size_t[]> testIndecies = std::make_unique<size_t[]>(testSet.size());
     ann::dynamic_array<size_t> testIndecies(testSet.size());
     std::iota(testIndecies.data(), testIndecies.data() + testSet.size(), 0);
 
-    RngFunctor testFunctor(size_t(0), testSet.size() - 1);
+    
 
-    ForestBuilder testBuilder{ std::move(testFunctor), SplittingHeurisitcs{}, transformingScheme };
+    
 
 
-    return testBuilder(std::move(testIndecies), splittingIndecies);
+    return transform(std::move(testIndecies), splittingIndecies, transforming_scheme);
 
 }
 
-inline RandomProjectionForest RPTransformData(std::execution::parallel_unsequenced_policy,
-                     const DataSet<float>& testSet,
+inline RandomProjectionForest RPTransformData(const DataSet<float>& testSet,
                      const std::unordered_set<size_t>& splittingIndecies,
                      std::unordered_map<size_t, std::pair<ann::aligned_array<float>, ann::aligned_array<float>::value_type>>&& splittingVectors,
                      const size_t numThreads){
 
-    EuclidianScheme<float, ann::aligned_array<float>> transformingScheme(testSet);
+    EuclidianScheme<float, ann::aligned_array<float>> transforming_scheme(testSet);
 
-    transformingScheme.splittingVectors = std::move(splittingVectors);
+    transforming_scheme.splittingVectors = std::move(splittingVectors);
 
     ann::dynamic_array<size_t> testIndecies(testSet.size());
     std::iota(testIndecies.data(), testIndecies.data()+testSet.size(), 0);
 
     RngFunctor testFunctor(size_t(0), testSet.size() - 1);
 
-    ForestBuilder testBuilder{std::move(testFunctor), SplittingHeurisitcs{}, transformingScheme};
+    ForestBuilder testBuilder{std::move(testFunctor), SplittingHeurisitcs{}, transforming_scheme};
 
     ThreadPool<TreeRef> pool(numThreads);
     pool.StartThreads();
-    RandomProjectionForest retForest = testBuilder(std::move(testIndecies), splittingIndecies, pool);
+    RandomProjectionForest retForest = transform(std::move(testIndecies), splittingIndecies, transforming_scheme, pool);
     pool.StopThreads();
 
     return retForest;
 
 }
 
-inline RandomProjectionForest RPTransformData(std::execution::parallel_unsequenced_policy,
+inline RandomProjectionForest RPTransformData(
     const DataSet<float>& testSet,
     const std::unordered_set<size_t>& splittingIndecies,
-    EuclidianScheme<float, ann::aligned_array<float>>& transformingScheme,
+    const EuclidianScheme<float, ann::aligned_array<float>>& transformingScheme,
     const size_t numThreads) {
 
 
     ann::dynamic_array<size_t> testIndecies(testSet.size());
     std::iota(testIndecies.data(), testIndecies.data() + testSet.size(), 0);
 
-    RngFunctor testFunctor(size_t(0), testSet.size() - 1);
-
-    ForestBuilder testBuilder{ std::move(testFunctor), SplittingHeurisitcs{}, transformingScheme };
 
     ThreadPool<TreeRef> pool(numThreads);
     pool.StartThreads();
-    RandomProjectionForest retForest = testBuilder(std::move(testIndecies), splittingIndecies, pool);
+    RandomProjectionForest retForest = transform(std::move(testIndecies), splittingIndecies, transformingScheme, pool);
     pool.StopThreads();
 
     return retForest;

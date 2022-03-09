@@ -253,17 +253,17 @@ int main(int argc, char *argv[]){
     SplittingHeurisitcs splitParams= {16, 140, 60, 180};
     */
 
-    constexpr size_t numThreads = 12;
+    constexpr size_t numThreads = 24;
 
-    //IndexParameters indexParams{12, 40, 35, 6};
-    IndexParameters indexParams{12, 20, 15, 6};
+    IndexParameters indexParams{12, 40, 35, 8};
+    //IndexParameters indexParams{12, 20, 15, 6};
 
     size_t numBlockGraphNeighbors = 12;
-    //size_t numCOMNeighbors = 40;
-    //size_t maxNearestNodes = 35;
-    size_t numCOMNeighbors = 20;
-    size_t maxNearestNodes = 15;
-    size_t queryDepth = 6;
+    size_t numCOMNeighbors = 40;
+    size_t maxNearestNodes = 35;
+    //size_t numCOMNeighbors = 20;
+    //size_t maxNearestNodes = 15;
+    size_t queryDepth = 8;
 
     SearchParameters searchParams{10, 6, 5};
     size_t numberSearchNeighbors = 10;
@@ -487,7 +487,6 @@ int main(int argc, char *argv[]){
     fixed_block_binder comFunctor(EuclideanMetricPair{}, metaGraph.points, std::span{std::as_const(dataBlocks)});
 
     //hacky but not a long term thing
-    //std::vector<BlockUpdateContext<float>> blockContextVec;
     std::unique_ptr<BlockUpdateContext<float>[]> blockContextArr;
     std::span<BlockUpdateContext<float>> blockUpdateContexts;
 
@@ -519,235 +518,7 @@ int main(int argc, char *argv[]){
                            std::span<const BlockUpdateContext<float>>{blockUpdateContexts},
                            indexView,
                            indexLocation);
-    /*
-    std::chrono::time_point<std::chrono::steady_clock> runStart2 = std::chrono::steady_clock::now();
-
-    std::unordered_set<size_t> splittingIndicies;
-    auto accumulateSplits = [&](const TreeLeaf& node, std::span<const size_t> indicies){
-        if(node.children.first != nullptr && node.children.second != nullptr) splittingIndicies.insert(node.splittingIndex);
-    };
-    CrawlLeaves(rpTrees, accumulateSplits);
-
     
-
-    RandomProjectionForest rpTreesTest = (parallelSearch) ?
-                                         RPTransformData(std::execution::par_unseq ,mnistFashionTest, splittingIndicies, std::move(splittingVectors), numThreads):
-                                         RPTransformData(mnistFashionTest, splittingIndicies, std::move(splittingVectors)) ;
-                                         
-    
-
-    size_t numberSearchBlocks = dataBlocks.size();
-
-
-    for (auto& context: blockUpdateContexts){
-        context.queryContext.querySearchDepth = searchQueryDepth;
-        context.queryContext.querySize = numberSearchNeighbors;
-    }
-
-    SearchFunctor<float, DataSet<float>, EuclideanMetricPair> searchDist(dataBlocks, mnistFashionTest);
-    SinglePointFunctor<float> searchFunctor(searchDist);
-
-    
-    //auto blocksToSearch = BlocksToSearch(metaGraph, additionalInitSearches);
-    std::vector<std::vector<size_t>> results(mnistFashionTest.size());
-    IndexMaps<size_t> testMappings;
-
-    //OffsetSpan<std::vector<size_t>> resultsView(results.data(), results.size(), metaGraph.GetBlockOffset());
-
-    if(parallelSearch){
-
-        //RandomProjectionForest rpTreesTest = RPTransformData(std::execution::par_unseq ,mnistFashionTest, splittingIndicies, std::move(splittingVectors), numThreads);
-
-        ThreadPool<SinglePointFunctor<float>> searchPool(numThreads, searchDist);
-
-        DataMapper<float, void, void> testMapper(mnistFashionTest);
-        std::vector<ParallelContextBlock<float>> searchContexts;
-
-        auto searcherConstructor = [&, &splitToBlockNum=indexMappings.splitToBlockNum](size_t splittingIndex, std::span<const size_t> indicies)->void{
-            
-            ParallelContextBlock<float> retBlock{splitToBlockNum[splittingIndex], std::vector<ParallelSearchContext<float>>(indicies.size())};
-            //std::vector<ParallelSearchContext<float>> retVec(indicies.size());
-            //retVec.reserve(indicies.size());
-            for(size_t i = 0; size_t index: indicies){
-                //const DataView searchPoint, const std::vector<DataBlock<DataEntry>>& blocks
-                ParallelSearchContext<float>* contextPtr = &retBlock.second[i];
-                contextPtr->~ParallelSearchContext<float>();
-                new (contextPtr) ParallelSearchContext<float>(numberSearchNeighbors, numberSearchBlocks, index);
-
-                //retVec.emplace_back(numberSearchNeighbors, numberSearchBlocks, index);
-                i++;
-            }
-            searchContexts.push_back(std::move(retBlock));
-            testMapper(splittingIndex, indicies);
-        };
-        //DataMapper<AlignedArray<float>, std::vector<ParallelSearchContext<float>>, decltype(searcherConstructor)> testMapper(mnistFashionTest, searcherConstructor);
-        CrawlTerminalLeaves(rpTreesTest, searcherConstructor);
-
-        //auto searchContexts = std::move(testMapper.dataBlocks);
-
-        testMappings = {
-            std::move(testMapper.splitToBlockNum),
-            std::move(testMapper.blockIndexToSource),
-            std::move(testMapper.sourceToBlockIndex),
-            std::move(testMapper.sourceToSplitIndex)
-        };
-    
-    
-        //auto blocksToSearch = BlocksToSearch(searchContexts, metaGraph, additionalInitSearches);
-        //auto blocksToSearch = BlocksToSearch(metaGraph, additionalInitSearches);
-
-
-        InitialSearchTask<float> searchGenerator = { blockUpdateContexts,
-            indexView,
-            //std::move(blocksToSearch),
-            maxNewSearches,
-            AsyncQueue<std::pair<BlockIndecies, SearchSet>>()};
-
-        searchPool.StartThreads();
-        SearchQueue searchHints = ParaFirstBlockSearch(searchGenerator, searchContexts, searchPool);
-    
-        QueueView hintView = {searchHints.data(), searchHints.size()};
-        
-        ParaSearchLoop(searchPool, hintView, searchContexts, blockUpdateContexts, indexView, maxNewSearches, mnistFashionTest.size());
-        searchPool.StopThreads();
-        std::chrono::time_point<std::chrono::steady_clock> runEnd2 = std::chrono::steady_clock::now();
-        //std::cout << std::chrono::duration_cast<std::chrono::duration<float>>(runEnd2 - runStart2).count() << "s test set search " << std::endl;
-        std::cout << std::chrono::duration_cast<std::chrono::duration<float>>(runEnd2 - runStart2).count() << std::endl;
-
-        std::span<std::vector<size_t>> indexMappingView(indexMappings.blockIndexToSource.data(), indexMappings.blockIndexToSource.size());
-
-        for (size_t i = 0; auto& [blockNum, testBlock]: searchContexts){
-            for (size_t j = 0; auto& context: testBlock){
-                GraphVertex<BlockIndecies, float>& result = context.currentNeighbors;
-                //size_t testIndex = testMappings.blockIndexToSource[i][j];
-                size_t testIndex = context.dataIndex;
-                //std::sort_heap(result.begin(), result.end(), NeighborDistanceComparison<BlockIndecies, float>);
-                for (const auto& neighbor: result){
-                    results[testIndex].push_back(indexMappingView[neighbor.first.blockNumber][neighbor.first.dataIndex]);
-                }
-                j++;
-            }
-            i++;
-        }
-    } else{
-        
-        DataMapper<float, void, void> testMapper(mnistFashionTest);
-        std::vector<ContextBlock<float>> searchContexts;
-        auto searcherConstructor = [&, &splitToBlockNum=indexMappings.splitToBlockNum](size_t splittingIndex, std::span<const size_t> indicies)->void{
-            
-            ContextBlock<float> retBlock;
-            retBlock.first = splitToBlockNum[splittingIndex];
-            retBlock.second.reserve(indicies.size());
-            for(size_t index: indicies){
-                //const DataView searchPoint, const std::vector<DataBlock<DataEntry>>& blocks
-                
-                retBlock.second.push_back({numberSearchNeighbors, numberSearchBlocks, index});
-            }
-            searchContexts.push_back(std::move(retBlock));
-            testMapper(splittingIndex, indicies);
-        };
-
-
-        
-        CrawlTerminalLeaves(rpTreesTest, searcherConstructor);
-
-        //auto searchContexts = std::move(testMapper.dataBlocks);
-
-        testMappings = {
-            std::move(testMapper.splitToBlockNum),
-            std::move(testMapper.blockIndexToSource),
-            std::move(testMapper.sourceToBlockIndex),
-            std::move(testMapper.sourceToSplitIndex)
-        };
-        
-        
-        //auto blocksToSearch = BlocksToSearch(searchContexts, metaGraph, additionalInitSearches);
-        
-        //OffsetSpan<const IndexBlock> indexSpan(index.data(), index.size(), metaGraph.GetBlockOffset());
-
-        SearchQueue searchHints = FirstBlockSearch(searchContexts, searchFunctor, blockUpdateContexts, indexView, maxNewSearches);
-        //std::vector<IndexBlock> index = IndexFinalization(blockUpdateContexts)
-
-        QueueView hintView = {searchHints.data(), searchHints.size()};
-
-        SearchLoop(searchFunctor, hintView, searchContexts, blockUpdateContexts, indexView, maxNewSearches, mnistFashionTest.size());
-        
-
-        
-
-        std::chrono::time_point<std::chrono::steady_clock> runEnd2 = std::chrono::steady_clock::now();
-        //std::cout << std::chrono::duration_cast<std::chrono::duration<float>>(runEnd2 - runStart2).count() << "s test set search " << std::endl;
-        std::cout << std::chrono::duration_cast<std::chrono::duration<float>>(runEnd2 - runStart2).count() << std::endl;
-
-        std::span<std::vector<size_t>> indexMappingView(indexMappings.blockIndexToSource.data(), indexMappings.blockIndexToSource.size());
-        
-        for (size_t i = 0; auto& [ignore, testBlock]: searchContexts){
-            for (size_t j = 0; auto& context: testBlock){
-                GraphVertex<BlockIndecies, float>& result = context.currentNeighbors;
-                size_t testIndex = context.dataIndex;
-                //std::sort_heap(result.begin(), result.end(), NeighborDistanceComparison<BlockIndecies, float>);
-                for (const auto& neighbor: result){
-                    results[testIndex].push_back(indexMappingView[neighbor.first.blockNumber][neighbor.first.dataIndex]);
-                }
-                j++;
-            }
-            i++;
-        }
-        
-    }
-    
-
-    */
-    
-    
-    
-
-
-    
-
-    //std::vector<std::vector<size_t>> results(mnistFashionTest.samples.size());
-    /*
-    for (size_t i = 0; auto& testBlock: searchContexts){
-        for (size_t j = 0; auto& context: testBlock){
-            GraphVertex<BlockIndecies, float>& result = context.currentNeighbors;
-            size_t testIndex = testMappings.blockIndexToSource[{i, j}];
-            std::sort_heap(result.begin(), result.end(), NeighborDistanceComparison<BlockIndecies, float>);
-            for (const auto& neighbor: result){
-                results[testIndex].push_back(indexMappings.blockIndexToSource[neighbor.first]);
-            }
-            j++;
-        }
-        i++;
-    }
-    */
-    /*
-    size_t numNeighborsCorrect(0);
-    std::vector<size_t> correctNeighborsPerIndex(results.size());
-    for(size_t i = 0; const auto& result: results){
-        for(size_t j = 0; const auto& neighbor: result){
-            auto findItr = std::find(std::begin(mnistFashionTestNeighbors[i]), std::begin(mnistFashionTestNeighbors[i]) + 10, neighbor);
-            if (findItr != (std::begin(mnistFashionTestNeighbors[i]) + 10)){
-                numNeighborsCorrect++;
-                correctNeighborsPerIndex[i]++;
-            }
-            j++;
-        }
-        i++;
-    }
-    */
-    /*
-    std::vector<size_t> correctNeighborsPerBlock(searchContexts.size());
-    for (size_t i = 0; i< correctNeighborsPerIndex.size(); i+=1){
-        correctNeighborsPerBlock[testMappings.sourceToBlockIndex[i].blockNumber] += correctNeighborsPerIndex[i];
-    }
-    std::vector<float> correctPerBlockFloat(searchContexts.size());
-    for (size_t i =0; i<correctNeighborsPerBlock.size(); i+=1){
-        correctPerBlockFloat[i] = float(correctNeighborsPerBlock[i]*10)/float(searchContexts[i].size());
-    }
-    */
-    //double recall = double(numNeighborsCorrect)/ double(10*mnistFashionTestNeighbors.size());
-    //std::cout << (recall * 100) << std::endl;
-    //std::cout << "Recall: " << (recall * 100) << "%" << std::endl;
     
     return 0;
 }

@@ -11,7 +11,10 @@ https://github.com/AnabelSMRuggiero/NNDescent.cpp
 #include <filesystem>
 #include <unordered_map>
 #include <unordered_set>
+#include <utility>
+#include <vector>
 
+#include "ann/AlignedMemory/DynamicArray.hpp"
 #include "ann/Data.hpp"
 #include "ann/DataDeserialization.hpp"
 #include "ann/DelayConstruct.hpp"
@@ -87,14 +90,91 @@ std::vector<IndexBlock> OpenIndexBlocks(std::filesystem::path fragmentDirectory)
     return queryContexts;
 }
 
-struct SearchMapToForestResult {
+auto chain_steps(auto&&... funcs) {
+    return [&](auto&&... args) { (funcs(args...), ...); };
+}
+
+namespace nnd {
+template<typename DistanceType>
+struct index {
+    std::vector<DataBlock<DistanceType>> data_points;
+    std::vector<QueryContext<DataIndex_t, DistanceType>> query_contexts;
+    std::vector<IndexBlock> graph_neighbors;
+    std::vector<std::vector<size_t>> block_idx_to_source_idx;
+
+    std::unordered_set<size_t> splits_to_do;
+    std::unordered_map<size_t, std::pair<ann::aligned_array<float>, float>> splitting_vectors;
+    std::unordered_map<size_t, size_t> split_idx_to_block_idx;
+
+    erased_unary_binder<DistanceType> distance_metric;
+};
+
+template<typename DistanceType>
+struct index_view {
+    // std::vector<DataBlock<DistanceType>> data_points;
+    std::span<const QueryContext<DataIndex_t, DistanceType>> query_contexts;
+    std::span<const IndexBlock> graph_neighbors;
+};
+
+template<typename DistanceType>
+std::vector<std::vector<std::size_t>> search(const DataSet<DistanceType>& search_data, const index<DistanceType>& index, std::size_t num_threads){
+    
+    RandomProjectionForest rpTreesTest = RPTransformData(std::execution::par_unseq, search_data, index.splits_to_do, transformingScheme, num_threads)
+
+    size_t numberSearchBlocks = dataBlocks.size();
+
+    for (auto& context : queryContexts) {
+        context.querySearchDepth = searchQueryDepth;
+        context.querySize = numberSearchNeighbors;
+    }
+
+    fixed_block_binder searchDist(EuclideanMetricPair{}, test_data_set, std::span{ std::as_const(dataBlocks) });
+    erased_unary_binder<float> searchFunctor(searchDist);
+
+    std::vector<std::vector<size_t>> results(test_data_set.size());
+    IndexMaps<size_t> testMappings;
+
+     
+
+    ThreadPool<erased_unary_binder<float>> searchPool(numThreads, searchDist);
+
+    std::span<std::vector<size_t>> indexMappingView(blockIndexToSource.data(), blockIndexToSource.size());
+
+    auto [searchContexts, mappings] =
+        block_search_set(test_data_set, rpTreesTest, searchParams, indexBlocks.size(), splitToBlockNum);
+
+    ParallelSearch(searchPool, searchParams.maxSearchesQueued, searchContexts, queryContexts, indexBlocks);
+
+    std::chrono::time_point<std::chrono::steady_clock> runEnd2 = std::chrono::steady_clock::now();
+    // std::cout << std::chrono::duration_cast<std::chrono::duration<float>>(runEnd2 - runStart2).count() << "s test set search " <<
+    // std::endl;
+    std::cout << std::chrono::duration_cast<std::chrono::duration<float>>(runEnd2 - runStart2).count() << std::endl;
+
+    for (size_t i = 0; auto& [blockNum, testBlock] : searchContexts) {
+        for (size_t j = 0; auto& context : testBlock) {
+            GraphVertex<BlockIndecies, float>& result = context.currentNeighbors;
+            // size_t testIndex = testMappings.blockIndexToSource[i][j];
+            size_t testIndex = context.dataIndex;
+            // std::sort_heap(result.begin(), result.end(), NeighborDistanceComparison<BlockIndecies, float>);
+            for (const auto& neighbor : result) {
+                results[testIndex].push_back(indexMappingView[neighbor.first.blockNumber][neighbor.first.dataIndex]);
+            }
+            j++;
+        }
+        i++;
+    }
+}
+
+} // namespace nnd
+
+struct search_set_mappings {
     std::vector<ParallelContextBlock<float>> contexts;
     IndexMaps<size_t> mappings;
 };
 
-void ParallelSearchMapToForest(
+search_set_mappings block_search_set(
     const DataSet<float>& searchSet, const RandomProjectionForest& searchForest, const SearchParameters& searchParams,
-    std::span<const nnd::IndexBlock> indexView, const std::unordered_map<unsigned long, unsigned long>& splitToBlockNum) {
+    std::size_t num_index_blocks, const std::unordered_map<unsigned long, unsigned long>& splitToBlockNum) {
 
     DataMapper<float, void, void> testMapper(searchSet);
     std::vector<ParallelContextBlock<float>> searchContexts;
@@ -107,7 +187,7 @@ void ParallelSearchMapToForest(
             // const DataView searchPoint, const std::vector<DataBlock<DataEntry>>& blocks
             ParallelSearchContext<float>* contextPtr = &retBlock.second[i];
             contextPtr->~ParallelSearchContext<float>();
-            new (contextPtr) ParallelSearchContext<float>(searchParams.searchNeighbors, indexView.size(), index);
+            new (contextPtr) ParallelSearchContext<float>(searchParams.searchNeighbors, num_index_blocks, index);
 
             // retVec.emplace_back(numberSearchNeighbors, numberSearchBlocks, index);
             i++;
@@ -130,12 +210,12 @@ void ParallelSearchMapToForest(
 }
 
 void ParallelSearch(
-    ThreadPool<SinglePointFunctor<float>>& threadPool, const SearchParameters& searchParams,
-    std::span<ParallelSearchContext<float>> searchContexts, std::span<nnd::QueryContext<unsigned int, float>> queryContexts,
+    ThreadPool<erased_unary_binder<float>>& threadPool, std::size_t max_searches_queued,
+    std::span<ParallelContextBlock<float>> searchContexts, std::span<nnd::QueryContext<unsigned int, float>> queryContexts,
     std::span<const nnd::IndexBlock> indexView) {
 
     InitialSearchTask<float> searchGenerator = {
-        queryContexts, indexView, searchParams.maxSearchesQueued, AsyncQueue<std::pair<BlockIndecies, SearchSet>>()
+        queryContexts, indexView, max_searches_queued, AsyncQueue<std::pair<BlockIndecies, SearchSet>>()
     };
 
     threadPool.StartThreads();
@@ -143,13 +223,13 @@ void ParallelSearch(
 
     QueueView hintView = { searchHints.data(), searchHints.size() };
 
-    ParaSearchLoop(threadPool, hintView, searchContexts, queryContexts, indexView, searchParams.maxSearchesQueued, searchContexts.size());
+    ParaSearchLoop(threadPool, hintView, searchContexts, queryContexts, indexView, max_searches_queued, searchContexts.size());
     threadPool.StopThreads();
 }
 
 int main(int argc, char* argv[]) {
 
-    constexpr size_t numThreads = 4;
+    constexpr size_t numThreads = 12;
 
     // IndexParamters indexParams{12, 40, 35, 6};
     IndexParameters indexParams{ 12, 20, 15, 6 };
@@ -161,7 +241,7 @@ int main(int argc, char* argv[]) {
     size_t maxNearestNodes = 15;
     size_t queryDepth = 6;
 
-    SearchParameters searchParams{ 10, 6, 5 };
+    SearchParameters searchParams{ 10, 6, 10 };
     size_t numberSearchNeighbors = 10;
     size_t searchQueryDepth = 6;
     size_t maxNewSearches = 10;
@@ -176,23 +256,23 @@ int main(int argc, char* argv[]) {
     HyperParameterValues parameters{ splitParams, indexParams, searchParams };
 
     bool parallelIndexBuild = true;
-    bool parallelSearch = false;
+    bool parallelSearch = true;
 
+    /*
     std::filesystem::path indexLocation("./Saved-Indecies/MNIST-Fashion");
 
     std::string testDataFilePath("./TestData/MNIST-Fashion-Test.bin");
     std::string testNeighborsFilePath("./TestData/MNIST-Fashion-Neighbors.bin");
-    DataSet<float> mnistFashionTest(testDataFilePath, 28 * 28, 10'000);
-    DataSet<uint32_t, alignof(uint32_t)> mnistFashionTestNeighbors(testNeighborsFilePath, 100, 10'000);
+    DataSet<float> test_data_set(testDataFilePath, 28 * 28, 10'000);
+    DataSet<uint32_t, ann::align_val_of<uint32_t>> test_neighbors(testNeighborsFilePath, 100, 10'000);
+    */
 
-    /*
     std::filesystem::path indexLocation("./Saved-Indecies/SIFT");
 
     std::string testDataFilePath("./TestData/SIFT-Test.bin");
     std::string testNeighborsFilePath("./TestData/SIFT-Neighbors.bin");
-    DataSet<float> mnistFashionTest(testDataFilePath, 128, 10'000);
-    DataSet<uint32_t, alignof(uint32_t)> mnistFashionTestNeighbors(testNeighborsFilePath, 100, 10'000);
-    */
+    DataSet<float> test_data_set(testDataFilePath, 128, 10'000);
+    DataSet<std::uint32_t, ann::align_val_of<std::uint32_t>> test_neighbors(testNeighborsFilePath, 100, 10'000);
 
     auto dataBlocks = OpenDataBlocks<float>(indexLocation);
 
@@ -203,7 +283,7 @@ int main(int argc, char* argv[]) {
     auto splittingVectors = [&]() {
         std::filesystem::path splittingVectorsPath = indexLocation / "SplittingVectors.bin";
         std::ifstream vecFile(splittingVectorsPath, std::ios_base::binary);
-        return extract<std::unordered_map<size_t, std::pair<AlignedArray<float>, float>>>(vecFile);
+        return extract<std::unordered_map<size_t, std::pair<ann::aligned_array<float>, float>>>(vecFile);
     }();
 
     auto splitToBlockNum = [&]() {
@@ -222,7 +302,7 @@ int main(int argc, char* argv[]) {
     for (const auto& [key, value] : splitToBlockNum)
         splittingIndicies.erase(key);
 
-    EuclidianScheme<float, AlignedArray<float>> transformingScheme(mnistFashionTest);
+    EuclidianScheme<float, ann::aligned_array<float>> transformingScheme(test_data_set);
 
     transformingScheme.splittingVectors = std::move(splittingVectors);
 
@@ -230,9 +310,8 @@ int main(int argc, char* argv[]) {
         std::chrono::time_point<std::chrono::steady_clock> runStart2 = std::chrono::steady_clock::now();
 
         RandomProjectionForest rpTreesTest =
-            (parallelSearch)
-                ? RPTransformData(std::execution::par_unseq, mnistFashionTest, splittingIndicies, transformingScheme, numThreads)
-                : RPTransformData(mnistFashionTest, splittingIndicies, transformingScheme);
+            (parallelSearch) ? RPTransformData(std::execution::par_unseq, test_data_set, splittingIndicies, transformingScheme, numThreads)
+                             : RPTransformData(test_data_set, splittingIndicies, transformingScheme);
 
         size_t numberSearchBlocks = dataBlocks.size();
 
@@ -241,22 +320,27 @@ int main(int argc, char* argv[]) {
             context.querySize = numberSearchNeighbors;
         }
 
-        SearchFunctor<float, DataSet<float>, EuclideanMetricPair> searchDist(dataBlocks, mnistFashionTest);
-        SinglePointFunctor<float> searchFunctor(searchDist);
+        fixed_block_binder searchDist(EuclideanMetricPair{}, test_data_set, std::span{ std::as_const(dataBlocks) });
+        erased_unary_binder<float> searchFunctor(searchDist);
 
-        std::vector<std::vector<size_t>> results(mnistFashionTest.size());
+        std::vector<std::vector<size_t>> results(test_data_set.size());
         IndexMaps<size_t> testMappings;
 
         if (parallelSearch) {
 
-            ThreadPool<SinglePointFunctor<float>> searchPool(numThreads, searchDist);
+            ThreadPool<erased_unary_binder<float>> searchPool(numThreads, searchDist);
+
+            std::span<std::vector<size_t>> indexMappingView(blockIndexToSource.data(), blockIndexToSource.size());
+
+            auto [searchContexts, mappings] =
+                block_search_set(test_data_set, rpTreesTest, searchParams, indexBlocks.size(), splitToBlockNum);
+
+            ParallelSearch(searchPool, searchParams.maxSearchesQueued, searchContexts, queryContexts, indexBlocks);
 
             std::chrono::time_point<std::chrono::steady_clock> runEnd2 = std::chrono::steady_clock::now();
             // std::cout << std::chrono::duration_cast<std::chrono::duration<float>>(runEnd2 - runStart2).count() << "s test set search " <<
             // std::endl;
             std::cout << std::chrono::duration_cast<std::chrono::duration<float>>(runEnd2 - runStart2).count() << std::endl;
-
-            std::span<std::vector<size_t>> indexMappingView(blockIndexToSource.data(), blockIndexToSource.size());
 
             for (size_t i = 0; auto& [blockNum, testBlock] : searchContexts) {
                 for (size_t j = 0; auto& context : testBlock) {
@@ -273,7 +357,7 @@ int main(int argc, char* argv[]) {
             }
         } else {
 
-            DataMapper<float, void, void> testMapper(mnistFashionTest);
+            DataMapper<float, void, void> testMapper(test_data_set);
             std::vector<ContextBlock<float>> searchContexts;
             auto searcherConstructor =
                 [&, &splitToBlockNum = splitToBlockNum](size_t splittingIndex, std::span<const size_t> indicies) -> void {
@@ -308,7 +392,7 @@ int main(int argc, char* argv[]) {
             QueueView hintView = { searchHints.data(), searchHints.size() };
 
             SearchLoop(
-                searchFunctor, hintView, searchContexts, std::span{ queryContexts }, indexView, maxNewSearches, mnistFashionTest.size());
+                searchFunctor, hintView, searchContexts, std::span{ queryContexts }, indexView, maxNewSearches, test_data_set.size());
 
             /*
             auto task = [queryContexts = std::span{queryContexts}, indexView, maxNewSearches](const BlockNumber_t startBlock,
@@ -352,8 +436,8 @@ int main(int argc, char* argv[]) {
         std::vector<size_t> correctNeighborsPerIndex(results.size());
         for (size_t i = 0; const auto& result : results) {
             for (size_t j = 0; const auto& neighbor : result) {
-                auto findItr = std::find(std::begin(mnistFashionTestNeighbors[i]), std::begin(mnistFashionTestNeighbors[i]) + 10, neighbor);
-                if (findItr != (std::begin(mnistFashionTestNeighbors[i]) + 10)) {
+                auto findItr = std::find(std::begin(test_neighbors[i]), std::begin(test_neighbors[i]) + 10, neighbor);
+                if (findItr != (std::begin(test_neighbors[i]) + 10)) {
                     numNeighborsCorrect++;
                     correctNeighborsPerIndex[i]++;
                 }
@@ -362,7 +446,7 @@ int main(int argc, char* argv[]) {
             i++;
         }
 
-        double recall = double(numNeighborsCorrect) / double(10 * mnistFashionTestNeighbors.size());
+        double recall = double(numNeighborsCorrect) / double(10 * test_neighbors.size());
         std::cout << (recall * 100) << std::endl;
     }
     return 0;

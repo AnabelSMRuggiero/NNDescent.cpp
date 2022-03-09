@@ -15,6 +15,7 @@ https://github.com/AnabelSMRuggiero/NNDescent.cpp
 #include <functional>
 #include <thread>
 #include <numeric>
+#include <iterator>
 
 #include "Parallelization/AsyncQueue.hpp"
 #include "ann/Metrics/SpaceMetrics.hpp"
@@ -42,9 +43,13 @@ ann::aligned_array<DistType> EuclidianSplittingPlaneNormal(const DataEntry& poin
 
 
 
+auto bind_euclidean_predicate(std::random_access_iterator auto data, auto splitting_vector, auto offset){
+    return [=](std::size_t index){
+        return 0.0 < (ann::Dot(data[index], splitting_vector) + offset);
+    };
+}
 
-
-
+//std::random_access_iterator<ann::data_iterator<float, 32_a>>;
 struct TransformTag {};
 static const TransformTag transformTag;
 
@@ -85,6 +90,8 @@ struct EuclidianScheme{
 
         //};
         if constexpr(is_aligned_contiguous_range_v<SplittingVector>){
+            return bind_euclidean_predicate(dataSource.begin(), SplittingView(splittingVectors[splitIndex].first), splittingVectors[splitIndex].second);
+            /*
             auto comparisonFunction = [=, 
                                     &data = std::as_const(this->dataSource), 
                                     splitter = SplittingView(splittingVectors[splitIndex].first),
@@ -93,7 +100,11 @@ struct EuclidianScheme{
                     return 0.0 < (ann::Dot(data[comparisonIndex], splitter) + offset);
             };
             return comparisonFunction;
+            */
         } else {
+            SplittingView splitter_view{splittingVectors[splitIndex].first.begin(), splittingVectors[splitIndex].first.end()};
+            return bind_euclidean_predicate(dataSource.begin(), splitter_view, splittingVectors[splitIndex].second);
+            /*
             auto comparisonFunction = [=, 
                                     &data = std::as_const(this->dataSource), 
                                     splitter = SplittingView(splittingVectors[splitIndex].first.begin(), splittingVectors[splitIndex].first.end()),
@@ -102,13 +113,14 @@ struct EuclidianScheme{
                     return 0.0 < (ann::Dot(data[comparisonIndex], splitter) + offset);
             };
             return comparisonFunction;
+            */
         }
 
         
     };
 
-    auto operator()(size_t splitIndex, TransformTag){
-        std::pair<SplittingVector, OffSetType>& splitPair = splittingVectors.at(splitIndex);
+    auto operator()(size_t splitIndex, TransformTag) const {
+        const std::pair<SplittingVector, OffSetType>& splitPair = splittingVectors.at(splitIndex);
         if constexpr(is_aligned_contiguous_range_v<SplittingVector>){
             auto comparisonFunction = [=, 
                                     &data = std::as_const(this->dataSource), 
@@ -199,8 +211,8 @@ struct ParallelEuclidianScheme{
         
     };
 
-    auto operator()(size_t splitIndex, TransformTag){
-        std::pair<SplittingVector, OffSetType>& splitPair = splittingVectors.at(splitIndex);
+    auto operator()(size_t splitIndex, TransformTag) const{
+        const std::pair<SplittingVector, OffSetType>& splitPair = splittingVectors.at(splitIndex);
         if constexpr(is_aligned_contiguous_range_v<SplittingVector>){
             auto comparisonFunction = [=, 
                                     &data = std::as_const(this->dataSource), 
@@ -264,7 +276,7 @@ template<typename DataType, typename SplittingVector>
 struct AngularScheme{
     using OffSetType = typename SplittingVector::value_type;
     using SplittingView = typename DefaultDataView<SplittingVector>::ViewType;
-    using SplittingVectors = std::unordered_map<size_t, std::pair<SplittingVector, OffSetType>>;
+    using SplittingVectors = std::unordered_map<size_t, SplittingVector>;
 
     using ParallelScheme = std::false_type;
     using SerialScheme = std::true_type;
@@ -307,8 +319,8 @@ struct AngularScheme{
         
     };
 
-    auto operator()(size_t splitIndex, TransformTag){
-        SplittingVector& splittingVec = splittingVectors.at(splitIndex);
+    auto operator()(size_t splitIndex, TransformTag) const {
+        const SplittingVector& splittingVec = splittingVectors.at(splitIndex);
         if constexpr(is_aligned_contiguous_range_v<SplittingVector>){
             auto comparisonFunction = [=, 
                                     &data = std::as_const(this->dataSource), 

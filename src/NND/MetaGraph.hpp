@@ -236,7 +236,6 @@ struct DataMapper{
 template<typename DataEntry>
 struct DataMapper<DataEntry, void, void>{
 
-    const DataSet<DataEntry>& dataSource;
     size_t blockCounter;
     size_t graphFragment;
     std::unordered_map<size_t, size_t> splitToBlockNum;
@@ -246,11 +245,10 @@ struct DataMapper<DataEntry, void, void>{
     
 
     DataMapper(const DataSet<DataEntry>& source, const size_t fragmentNumber = 0, const size_t startIndex = 0):
-        dataSource(source),
         blockCounter(startIndex),
         graphFragment(fragmentNumber),
-        sourceToBlockIndex(dataSource.size()),
-        sourceToSplitIndex(dataSource.size()) {};
+        sourceToBlockIndex(source.size()),
+        sourceToSplitIndex(source.size()) {};
 
     void operator()(size_t splittingIndex, std::span<const size_t> indicies){
         //[[unlikely]]if (indicies.size() == 0) return;

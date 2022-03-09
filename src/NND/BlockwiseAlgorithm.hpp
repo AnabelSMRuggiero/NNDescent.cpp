@@ -236,7 +236,6 @@ void ReverseBlockJoin(const JoinHints& startJoins,
 
     //std::vector<std::pair<size_t, GraphVertex<size_t, DistType>>> retResults;
     while(joinQueue.size()){
-        std::vector<std::pair<size_t, GraphVertex<size_t, DistType>>> joinResults;
         for (auto& joinee: joinQueue){
 
             targetBlock.Query(cache.reverseGraph[joinee], joinee, queryFunctor, cache.nodesJoined[joinee]);

@@ -12,12 +12,16 @@ https://github.com/AnabelSMRuggiero/NNDescent.cpp
 #define NND_METRICHELPERS_HPP
 
 #include <algorithm>
+#include <iterator>
 #include <type_traits>
+#include <ranges>
+#include <utility>
 
 #include "../ann/Metrics/Euclidean.hpp"
 #include "../ann/Type.hpp"
 #include "MemoryInternals.hpp"
 #include "NND/Type.hpp"
+#include "../ann/SIMD/VectorSpan.hpp"
 
 namespace nnd {
 
@@ -74,12 +78,17 @@ void BatchDispatch(
     }
 }
 
+template <typename Range, typename ValueType>
+concept range_of = std::ranges::range<Range> && std::same_as<std::ranges::range_value_t<Range>, ValueType>;
+
 template<typename BatchNorm>
 std::pmr::vector<float> ComputeBatch(
-    const ann::vector_span<const float> pointFrom, std::span<const ann::vector_span<const float>> pointsTo, BatchNorm batchNorm) noexcept {
+    const ann::vector_span<const float> pointFrom, range_of<ann::vector_span<const float>> auto&& pointsTo, BatchNorm batchNorm) noexcept {
 
     constexpr size_t maxBatch = 7;
     std::pmr::vector<float> retVector(pointsTo.size(), internal::GetThreadResource());
+
+    std::array<ann::vector_span<const float>, maxBatch> views;
 
     size_t index = 0;
 
@@ -91,14 +100,17 @@ std::pmr::vector<float> ComputeBatch(
     }
 
     for (; (index + maxBatch) < pointsTo.size(); index += maxBatch) {
-        std::span<const ann::vector_span<const float>, maxBatch> partialBatch{ pointsTo.begin() + index, maxBatch };
+        std::ranges::copy(pointsTo.begin()+index, pointsTo.begin()+index+maxBatch, views.begin());
+        //std::span<const ann::vector_span<const float>, maxBatch> partialBatch{ pointsTo.begin() + index, maxBatch };
         std::span<float, maxBatch> batchOutput{ retVector.begin() + index, maxBatch };
-        batchNorm(pointFrom, partialBatch, batchOutput);
+        batchNorm(pointFrom, std::span{std::as_const(views)}, batchOutput);
     }
 
     if (index < pointsTo.size()) {
         size_t remainder = pointsTo.size() - index;
-        std::span<const ann::vector_span<const float>> partialBatch{ pointsTo.begin() + index, remainder };
+        std::ranges::copy(pointsTo.begin()+index, pointsTo.begin()+index+remainder, views.begin());
+        //std::span<const ann::vector_span<const float>> partialBatch{ pointsTo.begin() + index, remainder };
+        std::span<const ann::vector_span<const float>> partialBatch{ views.begin(), remainder };
         std::span<float> batchOutput{ retVector.begin() + index, remainder };
         BatchDispatch(pointFrom, partialBatch, batchOutput, batchNorm);
     }

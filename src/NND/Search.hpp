@@ -11,6 +11,7 @@ https://github.com/AnabelSMRuggiero/NNDescent.cpp
 #ifndef NND_SEARCH_HPP
 #define NND_SEARCH_HPP
 
+#include <new>
 #include <vector>
 #include <algorithm>
 #include <execution>
@@ -35,20 +36,6 @@ namespace nnd{
 
 using SearchQueue = std::vector<std::vector<std::pair<BlockIndecies, std::vector<DataIndex_t>>>>;
 using QueueView = std::span<std::vector<std::pair<BlockIndecies, std::vector<DataIndex_t>>>>;
-
-
-template<typename SearchContext, typename DistType, typename QueryFunctor>
-GraphVertex<DataIndex_t, DistType> BlockwiseSearch(SearchContext& searchingPoint,
-                   const QueryContext<DataIndex_t, DistType>& targetBlock,
-                   const std::vector<DataIndex_t>& hint,
-                   QueryFunctor&& queryFunctor){
-    
-    
-    
-    
-
-    return targetBlock.Query(hint, searchingPoint.dataIndex, queryFunctor(targetBlock.blockNumber));
-}
 
 
 
@@ -105,7 +92,7 @@ DataBlock<BlockNumber_t, alignof(BlockNumber_t)> BlocksToSearch(MetaGraph<float>
 }
 */
 
-std::vector<std::vector<size_t>> QueueSearches(const DataBlock<BlockNumber_t, alignof(BlockNumber_t)>& blocksToSearch, const size_t numberOfBlocks){
+inline std::vector<std::vector<size_t>> QueueSearches(const DataBlock<BlockNumber_t, std::align_val_t{alignof(BlockNumber_t)}>& blocksToSearch, const size_t numberOfBlocks){
 
     std::vector<std::vector<size_t>> searchesQueued(numberOfBlocks);
     for (size_t i = 0; i<blocksToSearch.size(); i+=1){
@@ -126,7 +113,7 @@ using ParallelContextBlock = std::pair<size_t, std::vector<ParallelSearchContext
 template<typename DistType>
 SearchQueue FirstBlockSearch(std::vector<ContextBlock<DistType>>& searchContexts,
                              //const std::vector<std::vector<size_t>>& blocksToSearch,
-                             erased_binary_binder<DistType> searchFunctor,
+                             const erased_unary_binder<DistType>& searchFunctor,
                              std::span<QueryContext<DataIndex_t, DistType>> queryContexts,
                              std::span<const IndexBlock> indexBlocks,
                              const size_t maxNewSearches){
@@ -198,10 +185,7 @@ void SingleSearch(std::span<QueryContext<DataIndex_t, DistType>> queryContexts,
             
             context.AddSearchResult(queryContexts[search.first].graphFragment,
                                     search.first,
-                                    BlockwiseSearch(context,
-                                                    queryContexts[search.first],
-                                                    search.second,
-                                                    searchFunctor(search.first)));
+                                    queryContexts[search.first].Query(search.second, context.dataIndex, searchFunctor(search.first)));
         }
 
         context.ConsumeUpdates(indexBlocks);
@@ -218,7 +202,7 @@ struct InitialSearchTask{
 
     AsyncQueue<std::pair<BlockIndecies, SearchSet>> searchesToQueue;
 
-    void operator()(std::vector<ParallelContextBlock<DistType>>& searchContexts, ThreadPool<erased_unary_binder<DistType>>& pool){
+    void operator()(std::span<ParallelContextBlock<DistType>> searchContexts, ThreadPool<erased_unary_binder<DistType>>& pool){
         auto blockSearchGenerator = [&](const size_t i, ParallelContextBlock<DistType>& testBlock)->auto{
             auto blockSearchTask = [&, i](erased_unary_binder<DistType> searchFunctor) mutable -> void{
                 
@@ -266,7 +250,7 @@ struct InitialSearchTask{
 
 template<typename DistType>
 SearchQueue ParaFirstBlockSearch(InitialSearchTask<DistType>& searchQueuer,
-                             std::vector<ParallelContextBlock<DistType>>& searchContexts,         
+                             std::span<ParallelContextBlock<DistType>> searchContexts,         
                              ThreadPool<erased_unary_binder<DistType>>& pool){
 
     SearchQueue searchHints(searchQueuer.indexBlocks.size());
@@ -311,10 +295,7 @@ void SearchLoop(const erased_unary_binder<DistType>& searchFunctor,
                 
                 context.AddSearchResult(queryContexts[i].graphFragment,
                                         i,
-                                        BlockwiseSearch(context,
-                                                        queryContexts[i],
-                                                        hint.second,
-                                                        searchFunctor(i)));
+                                        queryContexts[i].Query(hint.second, context.dataIndex, searchFunctor(i)));
 
             }
             hintMap.clear();
@@ -343,7 +324,7 @@ void SearchLoop(const erased_unary_binder<DistType>& searchFunctor,
 template<typename DistType>
 void ParaSearchLoop(ThreadPool<erased_unary_binder<DistType>>& pool,
                 QueueView searchHints,
-                std::vector<ParallelContextBlock<DistType>>& searchContexts,
+                std::span<ParallelContextBlock<DistType>> searchContexts,
                 std::span<QueryContext<DataIndex_t, DistType>> queryContexts,
                 std::span<const IndexBlock> indexBlocks,
                 const size_t maxNewSearches,
@@ -362,11 +343,7 @@ void ParaSearchLoop(ThreadPool<erased_unary_binder<DistType>>& pool,
             for (size_t j = 0; const auto& hint: hintMap){
                 
                 ParallelSearchContext<DistType>& context = searchContexts[hint.first.blockNumber].second[hint.first.dataIndex];
-                GraphVertex<DataIndex_t, DistType> newNodes = BlockwiseSearch(context,
-                                                                      queryContexts[i],
-                                                                      hint.second,
-                                                                      searchFunctor(i));
-                
+                GraphVertex<DataIndex_t, DistType> newNodes = queryContexts[i].Query(hint.second, context.dataIndex, searchFunctor(i));
 
                 if(context.AddSearchResult(queryContexts[i].graphFragment, queryContexts[i].blockNumber, std::move(newNodes))){
                     searchesToUpdate.Put(BlockIndecies(hint.first));
