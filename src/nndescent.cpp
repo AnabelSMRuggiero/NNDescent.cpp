@@ -255,14 +255,14 @@ int main(int argc, char *argv[]){
 
     constexpr size_t numThreads = 24;
 
-    IndexParameters indexParams{12, 40, 35, 8};
-    //IndexParameters indexParams{12, 20, 15, 6};
+    //IndexParameters indexParams{12, 40, 35, 8};
+    IndexParameters indexParams{12, 20, 15, 6};
 
     size_t numBlockGraphNeighbors = 12;
-    size_t numCOMNeighbors = 40;
-    size_t maxNearestNodes = 35;
-    //size_t numCOMNeighbors = 20;
-    //size_t maxNearestNodes = 15;
+    //size_t numCOMNeighbors = 40;
+    //size_t maxNearestNodes = 35;
+    size_t numCOMNeighbors = 20;
+    size_t maxNearestNodes = 15;
     size_t queryDepth = 8;
 
     SearchParameters searchParams{10, 6, 5};

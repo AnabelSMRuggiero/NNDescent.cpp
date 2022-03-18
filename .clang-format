@@ -13,10 +13,12 @@ IndentCaseLabels: true
 
 AlwaysBreakTemplateDeclarations: Yes
 SpaceAfterTemplateKeyword: false
+BreakBeforeConceptDeclarations: Always
 
 AllowShortIfStatementsOnASingleLine: WithoutElse
 
 BinPackArguments: false
+AllowAllParametersOfDeclarationOnNextLine: false
 
 Cpp11BracedListStyle: false
 AlignAfterOpenBracket: AlwaysBreak

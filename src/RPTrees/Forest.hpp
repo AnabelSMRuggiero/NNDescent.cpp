@@ -11,21 +11,23 @@ https://github.com/AnabelSMRuggiero/NNDescent.cpp
 #ifndef RPT_FORESTRF_HPP
 #define RPT_FORESTRF_HPP
 
-#include <utility>
-#include <vector>
-#include <functional>
-#include <numeric>
-#include <exception>
-#include <unordered_set>
-#include <cstddef>
-#include <iostream>
-#include <span>
-#include <execution>
 #include <bit>
+#include <concepts>
+#include <cstddef>
+#include <exception>
+#include <execution>
+#include <functional>
 #include <future>
+#include <iostream>
+#include <memory_resource>
+#include <numeric>
+#include <ranges>
+#include <span>
 #include <type_traits>
 #include <thread>
-#include <memory_resource>
+#include <unordered_set>
+#include <utility>
+#include <vector>
 
 
 #include "../ann/Type.hpp"
@@ -1230,17 +1232,16 @@ inline RandomProjectionForest RPTransformData(const DataSet<float>& testSet,
 }
 
 inline RandomProjectionForest RPTransformData(
-    const DataSet<float>& testSet,
+    std::size_t dataset_size,
     const std::unordered_set<size_t>& splittingIndecies,
-    const EuclidianScheme<float, ann::aligned_array<float>>& transformingScheme,
-    const size_t numThreads) {
+    std::regular_invocable<std::size_t, TransformTag> const auto& transformingScheme,
+    size_t numThreads) {
 
 
-    ann::dynamic_array<size_t> testIndecies(testSet.size());
-    std::iota(testIndecies.data(), testIndecies.data() + testSet.size(), 0);
+    ann::dynamic_array<size_t> testIndecies(std::views::iota(size_t{0}, dataset_size));
+    //std::iota(testIndecies.data(), testIndecies.data() + dataset_size, 0);
 
-
-    ThreadPool<TreeRef> pool(numThreads);
+    ThreadPool<TreeRef> pool{numThreads};
     pool.StartThreads();
     RandomProjectionForest retForest = transform(std::move(testIndecies), splittingIndecies, transformingScheme, pool);
     pool.StopThreads();

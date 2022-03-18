@@ -293,6 +293,10 @@ struct erased_unary_binder {
 
     erased_unary_binder& operator=(erased_unary_binder&&) = default;
 
+    operator bool() const{
+        return bool(ptrToFunc);
+    }
+
     template<is_not<erased_unary_binder> DistanceFunctor>
         requires std::is_copy_assignable_v<DistanceFunctor> erased_unary_binder(DistanceFunctor&& distanceFunctor)
             : ptrToFunc(

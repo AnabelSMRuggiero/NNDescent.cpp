@@ -107,7 +107,52 @@ struct index {
     std::unordered_map<size_t, size_t> split_idx_to_block_idx;
 
     erased_unary_binder<DistanceType> distance_metric;
+
+    SearchParameters search_parameters;
 };
+
+template<typename DistanceType>
+index<DistanceType> open_index(const std::filesystem::path& index_directory){
+
+    auto splitting_vectors = [&]() {
+        std::ifstream vecFile(index_directory / "SplittingVectors.bin", std::ios_base::binary);
+        return extract<std::unordered_map<size_t, std::pair<ann::aligned_array<DistanceType>, DistanceType>>>(vecFile);
+    }();
+
+    auto split_idx_to_block_idx = [&]() {
+        std::ifstream mappingFile(index_directory / "SplittingIndexToBlockNumber.bin", std::ios_base::binary);
+        return extract<std::unordered_map<size_t, size_t>>(mappingFile);
+    }();
+
+    auto block_idx_to_source_idx = [&]{
+        std::ifstream mappingFile(index_directory / "BlockIndexToSourceIndex.bin", std::ios_base::binary);
+        return extract<std::vector<std::vector<size_t>>>(mappingFile);
+    }();
+
+    auto splits_to_do = [&]{
+        std::unordered_set<size_t> splitting_indicies;
+        for (const auto& [key, value] : splitting_vectors)
+            splitting_indicies.insert(key);
+
+        for (const auto& [key, value] : split_idx_to_block_idx)
+            splitting_indicies.erase(key);
+        
+        return splitting_indicies;
+    }();
+
+    return index<DistanceType> {
+        .data_points                = OpenDataBlocks<float>(index_directory),
+        .query_contexts             = OpenQueryContexts<DataIndex_t, float>(index_directory),
+        .graph_neighbors            = OpenIndexBlocks(index_directory),
+        .block_idx_to_source_idx    = std::move(block_idx_to_source_idx),
+        .splits_to_do               = std::move(splits_to_do),
+        .splitting_vectors          = std::move(splitting_vectors),
+        .split_idx_to_block_idx     = std::move(split_idx_to_block_idx),
+        .distance_metric            = {},
+        .search_parameters          = {}
+    };
+}
+
 
 template<typename DistanceType>
 struct index_view {
@@ -119,36 +164,33 @@ struct index_view {
 template<typename DistanceType>
 std::vector<std::vector<std::size_t>> search(const DataSet<DistanceType>& search_data, const index<DistanceType>& index, std::size_t num_threads){
     
-    RandomProjectionForest rpTreesTest = RPTransformData(std::execution::par_unseq, search_data, index.splits_to_do, transformingScheme, num_threads)
+    RandomProjectionForest rpTreesTest = RPTransformData(search_data.size(),
+                                                         index.splits_to_do,
+                                                         borrowed_euclidean(search_data, index.splitting_vectors),
+                                                         num_threads);
 
-    size_t numberSearchBlocks = dataBlocks.size();
+    size_t numberSearchBlocks = index.data_points.size();
 
-    for (auto& context : queryContexts) {
-        context.querySearchDepth = searchQueryDepth;
-        context.querySize = numberSearchNeighbors;
+    for (auto& context : index.query_contexts) {
+        context.querySearchDepth = index.search_parameters.searchDepth;
+        context.querySize = index.search_parameters.searchNeighbors;
     }
 
-    fixed_block_binder searchDist(EuclideanMetricPair{}, test_data_set, std::span{ std::as_const(dataBlocks) });
-    erased_unary_binder<float> searchFunctor(searchDist);
-
-    std::vector<std::vector<size_t>> results(test_data_set.size());
+    
     IndexMaps<size_t> testMappings;
 
      
 
-    ThreadPool<erased_unary_binder<float>> searchPool(numThreads, searchDist);
+    ThreadPool<erased_unary_binder<DistanceType>> searchPool(num_threads, index.distance_metric);
 
-    std::span<std::vector<size_t>> indexMappingView(blockIndexToSource.data(), blockIndexToSource.size());
+    std::span<const std::vector<size_t>> indexMappingView(index.block_idx_to_source_idx);
 
     auto [searchContexts, mappings] =
-        block_search_set(test_data_set, rpTreesTest, searchParams, indexBlocks.size(), splitToBlockNum);
+        block_search_set(search_data, rpTreesTest, index.search_parameters, index.graph_neighbors.size(), index.split_idx_to_block_idx);
 
-    ParallelSearch(searchPool, searchParams.maxSearchesQueued, searchContexts, queryContexts, indexBlocks);
+    ParallelSearch(searchPool, index.search_parameters.maxSearchesQueued, searchContexts, index.query_contexts, index.graph_neighbors);
 
-    std::chrono::time_point<std::chrono::steady_clock> runEnd2 = std::chrono::steady_clock::now();
-    // std::cout << std::chrono::duration_cast<std::chrono::duration<float>>(runEnd2 - runStart2).count() << "s test set search " <<
-    // std::endl;
-    std::cout << std::chrono::duration_cast<std::chrono::duration<float>>(runEnd2 - runStart2).count() << std::endl;
+    std::vector<std::vector<size_t>> results(search_data.size());
 
     for (size_t i = 0; auto& [blockNum, testBlock] : searchContexts) {
         for (size_t j = 0; auto& context : testBlock) {
@@ -163,6 +205,8 @@ std::vector<std::vector<std::size_t>> search(const DataSet<DistanceType>& search
         }
         i++;
     }
+
+    return results;
 }
 
 } // namespace nnd
@@ -304,13 +348,16 @@ int main(int argc, char* argv[]) {
 
     EuclidianScheme<float, ann::aligned_array<float>> transformingScheme(test_data_set);
 
+    fixed_block_binder searchDist(EuclideanMetricPair{}, test_data_set, std::span{ std::as_const(dataBlocks) });
+    erased_unary_binder<float> searchFunctor(searchDist);
+
     transformingScheme.splittingVectors = std::move(splittingVectors);
 
     for (size_t i = 0; i < 10; i += 1) {
         std::chrono::time_point<std::chrono::steady_clock> runStart2 = std::chrono::steady_clock::now();
 
         RandomProjectionForest rpTreesTest =
-            (parallelSearch) ? RPTransformData(std::execution::par_unseq, test_data_set, splittingIndicies, transformingScheme, numThreads)
+            (parallelSearch) ? RPTransformData(test_data_set, splittingIndicies, transformingScheme, numThreads)
                              : RPTransformData(test_data_set, splittingIndicies, transformingScheme);
 
         size_t numberSearchBlocks = dataBlocks.size();

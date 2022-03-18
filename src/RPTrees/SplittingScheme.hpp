@@ -253,6 +253,52 @@ struct ParallelEuclidianScheme{
     }
 };
 
+/*
+auto operator()(size_t splitIndex, TransformTag) const{
+        const std::pair<SplittingVector, OffSetType>& splitPair = splittingVectors.at(splitIndex);
+        if constexpr(is_aligned_contiguous_range_v<SplittingVector>){
+            auto comparisonFunction = [=, 
+                                    &data = std::as_const(this->dataSource), 
+                                    splitter = SplittingView(splitPair.first),
+                                    offset = splitPair.second]
+                                    (size_t comparisonIndex) -> bool{
+                    return 0.0 < (ann::Dot(data[comparisonIndex], splitter) + offset);
+            };
+            return comparisonFunction;
+        } else {
+            auto comparisonFunction = [=, 
+                                    &data = std::as_const(this->dataSource), 
+                                    splitter = SplittingView(splitPair.first.begin(), splitPair.first.size()),
+                                    offset = splitPair.second]
+                                    (size_t comparisonIndex) -> bool{
+                    return 0.0 < (ann::Dot(data[comparisonIndex], splitter) + offset);
+            };
+            return comparisonFunction;
+        }
+
+        
+    };
+*/
+template<typename SplittingVector>
+auto make_splitting_view(const SplittingVector& vector){
+    return typename DefaultDataView<SplittingVector>::ViewType{vector};
+}
+
+template<typename SplittingVector>
+using euclidean_vector_map = std::unordered_map<size_t, std::pair<SplittingVector, typename SplittingVector::value_type>>;
+
+template<typename DataType, typename SplittingVector>
+auto make_borrowed_euclidean(const DataSet<DataType>& data, const euclidean_vector_map<SplittingVector>& splitting_vectors){
+
+    using offset_type = typename SplittingVector::value_type;
+    return [&](size_t splitIndex, TransformTag){
+        const std::pair<SplittingVector, offset_type>& splitPair = splitting_vectors.at(splitIndex);
+        
+        return bind_euclidean_predicate(data.begin(), make_splitting_view(splitPair.first), splitPair.second);
+    
+    };
+}
+
 template<typename DataEntry, typename DistType>
 ann::aligned_array<DistType> AngularSplittingPlane(const DataEntry& pointA, const DataEntry& pointB){
     ann::aligned_array<DistType> splittingLine(pointA.size());

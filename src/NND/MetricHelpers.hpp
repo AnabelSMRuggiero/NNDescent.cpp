@@ -12,6 +12,7 @@ https://github.com/AnabelSMRuggiero/NNDescent.cpp
 #define NND_METRICHELPERS_HPP
 
 #include <algorithm>
+#include <cstddef>
 #include <iterator>
 #include <type_traits>
 #include <ranges>
@@ -70,7 +71,7 @@ void BatchDispatch(
             return dispatch(std::integral_constant<size_t, 2>{});
         case 1:
 
-            resultLocation[0] = batchNorm(AlignedSpan<const float, 32>{ pointsTo[0] }, AlignedSpan<const float, 32>{ pointFrom });
+            resultLocation[0] = batchNorm(AlignedSpan<const float, 64>{ pointsTo[0] }, AlignedSpan<const float, 64>{ pointFrom });
             return;
         default:
             assert(false);
@@ -94,7 +95,7 @@ std::pmr::vector<float> ComputeBatch(
 
     if constexpr (debugNND){
         std::transform(pointsTo.begin(), pointsTo.end(), retVector.begin(), [&](const auto& view){
-            return batchNorm(AlignedSpan<const float, 32>{pointFrom}, AlignedSpan<const float, 32>{view});
+            return batchNorm(AlignedSpan<const float, 64>{pointFrom}, AlignedSpan<const float, 64>{view});
         });
         return retVector;
     }
