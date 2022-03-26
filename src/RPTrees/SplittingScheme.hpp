@@ -288,7 +288,7 @@ template<typename SplittingVector>
 using euclidean_vector_map = std::unordered_map<size_t, std::pair<SplittingVector, typename SplittingVector::value_type>>;
 
 template<typename DataType, typename SplittingVector>
-auto make_borrowed_euclidean(const DataSet<DataType>& data, const euclidean_vector_map<SplittingVector>& splitting_vectors){
+auto borrowed_euclidean(const DataSet<DataType>& data, const euclidean_vector_map<SplittingVector>& splitting_vectors){
 
     using offset_type = typename SplittingVector::value_type;
     return [&](size_t splitIndex, TransformTag){

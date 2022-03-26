@@ -253,7 +253,7 @@ int main(int argc, char *argv[]){
     SplittingHeurisitcs splitParams= {16, 140, 60, 180};
     */
 
-    constexpr size_t numThreads = 24;
+    constexpr size_t numThreads = 12;
 
     //IndexParameters indexParams{12, 40, 35, 8};
     IndexParameters indexParams{12, 20, 15, 6};

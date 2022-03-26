@@ -1231,10 +1231,11 @@ inline RandomProjectionForest RPTransformData(const DataSet<float>& testSet,
 
 }
 
+template<std::regular_invocable<std::size_t, TransformTag> Scheme> 
 inline RandomProjectionForest RPTransformData(
     std::size_t dataset_size,
     const std::unordered_set<size_t>& splittingIndecies,
-    std::regular_invocable<std::size_t, TransformTag> const auto& transformingScheme,
+    const Scheme& transformingScheme,
     size_t numThreads) {
 
 
