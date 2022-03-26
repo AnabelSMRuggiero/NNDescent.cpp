@@ -22,7 +22,7 @@ int main(){
 
     {
         ChatterResource squaker;
-        UnboundedCache testCache(&squaker);
+        ShallowCache testCache(&squaker);
 
         {
             std::pmr::vector<double> moreTest(45, &testCache);
