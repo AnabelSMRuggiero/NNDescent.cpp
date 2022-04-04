@@ -33,13 +33,13 @@ https://github.com/AnabelSMRuggiero/NNDescent.cpp
 namespace nnd{
 
 //template<typename DataIndexType>
-using ComparisonVec = std::vector<std::pair<DataIndex_t, DataIndex_t>>;
+using ComparisonVec = pmr::vector<std::pair<DataIndex_t, DataIndex_t>>;
 
 //template<typename BlockNumberType, typename DataIndexType>
-using ComparisonMap = std::unordered_map<BlockNumber_t, ComparisonVec>;
+using ComparisonMap = pmr::unordered_map<BlockNumber_t, ComparisonVec>;
 
 //template<typename DataIndexType>
-using JoinHint = std::pair<DataIndex_t, std::vector<DataIndex_t>>;
+using JoinHint = std::pair<DataIndex_t, pmr::vector<DataIndex_t>>;
 
 /*
 template<typename DataIndexType>
@@ -50,10 +50,10 @@ struct JoinHint{
 */
 
 //template<typename DataIndexType>
-using JoinHints = std::unordered_map<DataIndex_t, std::vector<DataIndex_t>>;
+using JoinHints = pmr::unordered_map<DataIndex_t, pmr::vector<DataIndex_t>>;
 
 //template<template<typename> typename Alloc = std::allocator>                                 
-using JoinMap = std::unordered_map<BlockNumber_t, std::unordered_map<DataIndex_t, std::vector<DataIndex_t>>>;
+using JoinMap = pmr::unordered_map<BlockNumber_t, pmr::unordered_map<DataIndex_t, pmr::vector<DataIndex_t>>>;
 
 
 template<typename DistType>
@@ -70,8 +70,8 @@ ComparisonMap InitializeComparisonQueues(const Graph<BlockIndecies, DistType>& c
 }
 
 template<typename DistType>
-std::vector<std::pair<DataIndex_t, std::vector<DataIndex_t>>> FlattenHints(const JoinHints& startJoins){
-    std::vector<std::pair<DataIndex_t, std::vector<DataIndex_t>>> joinHints(startJoins.size());
+pmr::vector<std::pair<DataIndex_t, pmr::vector<DataIndex_t>>> FlattenHints(const JoinHints& startJoins){
+    pmr::vector<std::pair<DataIndex_t, pmr::vector<DataIndex_t>>> joinHints(startJoins.size());
     std::ranges::transform(startJoins, joinHints.begin(), [&](auto hint) { return hint;});
     /*
     std::ranges::transform(startJoins, joinHints.begin(), [&] (const auto& hint){
@@ -90,6 +90,7 @@ std::vector<std::pair<DataIndex_t, std::vector<DataIndex_t>>> FlattenHints(const
 template<typename DistType, template<typename> typename Alloc = PolymorphicAllocator>
 using JoinResults = std::vector<std::pair<DataIndex_t, GraphVertex<DataIndex_t, DistType, Alloc>>, Alloc<std::pair<DataIndex_t, GraphVertex<DataIndex_t, DistType, Alloc>>>>;
 
+
 //template<typename BlockNumberType, typename DataIndexType, typename DataEntry, typename DistType>
 template<typename DistType, typename QueryFunctor>
 JoinResults<DistType> BlockwiseJoin(const JoinHints& startJoins,
@@ -98,14 +99,14 @@ JoinResults<DistType> BlockwiseJoin(const JoinHints& startJoins,
                    const QueryContext<DataIndex_t, DistType>& targetBlock,
                    QueryFunctor&& queryFunctor){
     
-    std::vector<std::pair<DataIndex_t, std::vector<DataIndex_t>>> joinHints = FlattenHints<DistType>(startJoins);
+    pmr::vector<std::pair<DataIndex_t, pmr::vector<DataIndex_t>>> joinHints = FlattenHints<DistType>(startJoins);
     
     
     NodeTracker nodesJoined(searchSubgraph.size());
     auto notJoined = [&](const auto& index){return !nodesJoined[index];};
 
     JoinResults<DistType> retResults;
-    std::vector<std::vector<DataIndex_t>> vecCache;
+    pmr::vector<pmr::vector<DataIndex_t>> vecCache;
     while(joinHints.size()){
         JoinResults<DistType> joinResults;
         
@@ -132,7 +133,7 @@ JoinResults<DistType> BlockwiseJoin(const JoinHints& startJoins,
                     joinHints.push_back({leafNeighbor, std::move(vecCache.back())});
                     vecCache.pop_back();
                 } else {
-                    joinHints.push_back({leafNeighbor, std::vector<DataIndex_t>{}});
+                    joinHints.push_back({leafNeighbor, pmr::vector<DataIndex_t>{}});
                 }
                 joinHints.back().second.resize(result.second.size());
 
@@ -165,7 +166,7 @@ void ReverseBlockJoin(const JoinHints& startJoins,
     auto& cache = result_cache.results;
 
     NodeTracker nodesJoined(searchSubgraph.size());
-    std::vector<size_t> successfulJoins;
+    pmr::vector<size_t> successfulJoins;
     for (const auto& hint: startJoins){
 
         GraphVertex<DataIndex_t, DistType>& vertex = cache.reverseGraph[hint.first];
@@ -204,7 +205,7 @@ void ReverseBlockJoin(const JoinHints& startJoins,
         */
     }
 
-    std::vector<size_t> joinQueue;
+    pmr::vector<size_t> joinQueue;
     auto toNeighbor = [&](const auto success){ return searchSubgraph[success]; };
     auto notJoined = [&](const auto leafNeighbor){ return !nodesJoined[leafNeighbor]; };
 

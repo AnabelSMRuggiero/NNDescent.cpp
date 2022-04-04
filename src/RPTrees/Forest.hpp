@@ -1189,9 +1189,10 @@ inline RandomProjectionForest RPTransformData(const DataSet<float>& testSet,
 
 }
 
+template<std::regular_invocable<std::size_t, TransformTag> Scheme> 
 inline RandomProjectionForest RPTransformData(const DataSet<float>& testSet,
     const std::unordered_set<size_t>& splittingIndecies,
-    const EuclidianScheme<float, ann::aligned_array<float>>& transforming_scheme) {
+    const Scheme& transforming_scheme) {
 
 
     ann::dynamic_array<size_t> testIndecies(testSet.size());

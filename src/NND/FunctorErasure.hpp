@@ -287,7 +287,7 @@ struct erased_unary_binder {
 
     erased_unary_binder(const erased_unary_binder& other) : ptrToFunc(other.ptrToFunc->clone()){};
 
-    erased_unary_binder& operator=(const erased_unary_binder& other) { ptrToFunc = other.ptrToFunc.clone(); }
+    erased_unary_binder& operator=(const erased_unary_binder& other) { ptrToFunc = other.ptrToFunc->clone();  return *this;}
 
     erased_unary_binder(erased_unary_binder&&) = default;
 
@@ -335,7 +335,7 @@ struct erased_binary_binder {
 
     erased_binary_binder(const erased_binary_binder& other) : ptrToFunc(other.ptrToFunc->clone()){};
 
-    erased_binary_binder& operator=(const erased_binary_binder& other) { ptrToFunc = other.ptrToFunc.clone(); }
+    erased_binary_binder& operator=(const erased_binary_binder& other) { ptrToFunc = other.ptrToFunc->clone();  return *this; }
 
     erased_binary_binder(erased_binary_binder&&) = default;
 

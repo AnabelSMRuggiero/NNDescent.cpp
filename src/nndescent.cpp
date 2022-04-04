@@ -10,6 +10,7 @@ https://github.com/AnabelSMRuggiero/NNDescent.cpp
 
 //This is primarily for testing an debugging
 
+#include <memory_resource>
 #include <string>
 #include <utility>
 #include <vector>
@@ -29,23 +30,25 @@ https://github.com/AnabelSMRuggiero/NNDescent.cpp
 
 //#include <type_traits>
 
+#include "ann/MemoryResources.hpp"
 #include "ann/Type.hpp"
 #include "ann/Data.hpp"
 #include "ann/Metrics/SpaceMetrics.hpp"
 #include "ann/Metrics/Euclidean.hpp"
 #include "ann/AlignedMemory/DynamicArray.hpp"
 
-#include "NND/FunctorErasure.hpp"
-#include "NND/GraphStructures.hpp"
-#include "NND/MetaGraph.hpp"
-#include "NND/SubGraphQuerying.hpp"
-#include "NND/BlockwiseAlgorithm.hpp"
-#include "NND/GraphInitialization.hpp"
-#include "NND/Search.hpp"
-#include "NND/MemoryInternals.hpp"
-#include "NND/MetricHelpers.hpp"
 
+#include "NND/BlockwiseAlgorithm.hpp"
+#include "NND/FunctorErasure.hpp"
+#include "NND/GraphInitialization.hpp"
+#include "NND/GraphStructures.hpp"
+#include "NND/Index.hpp"
+#include "NND/MetaGraph.hpp"
+#include "NND/MetricHelpers.hpp"
 #include "NND/Parallel-Algorithm/FreeFunctions.hpp"
+#include "NND/Search.hpp"
+#include "NND/SubGraphQuerying.hpp"
+
 
 #include "RPTrees/SplittingScheme.hpp"
 #include "RPTrees/Forest.hpp"
@@ -55,27 +58,6 @@ https://github.com/AnabelSMRuggiero/NNDescent.cpp
 
 
 using namespace nnd;
-/*
-struct IndexParamters{
-    size_t blockGraphNeighbors;
-    size_t COMNeighbors;
-    size_t nearestNodeNeighbors;
-    size_t queryDepth;
-};
-
-struct SearchParameters{
-    size_t searchNeighbors;
-    size_t searchDepth;
-    size_t maxSearchesQueued;
-};
-
-struct OptionsValues{
-    SplittingHeurisitcs splitParams;
-    IndexParamters indexParams;
-    SearchParameters searchParams;
-};
-*/
-
 
 
 template<typename DistType>
@@ -129,7 +111,6 @@ std::vector<IndexBlock> IndexFinalization(std::span<BlockUpdateContext<DistType>
 
         size_t totalSize = std::accumulate(filteredSizes.begin(), filteredSizes.end(), size_t{0});
 
-        //std::vector<std::vector<BlockIndecies>> graphFragment(block.currentGraph.size());
         UnevenBlock<BlockIndecies> graphFragment = UninitUnevenBlock<BlockIndecies>(filteredSizes.size(), totalSize);
         
         size_t* headerStart = static_cast<size_t*>(static_cast<void*>(graphFragment.data()));
@@ -144,12 +125,7 @@ std::vector<IndexBlock> IndexFinalization(std::span<BlockUpdateContext<DistType>
                 }
             }
         }
-        /*
-        std::transform(block.currentGraph.begin(), block.currentGraph.end(), graphFragment.begin(),
-            [blockNumber = block.queryContext.blockNumber](const auto& vertex){
-                return VertexToIndex(vertex, blockNumber);
-            });
-        */
+
 
         return graphFragment;
     });
@@ -157,10 +133,7 @@ std::vector<IndexBlock> IndexFinalization(std::span<BlockUpdateContext<DistType>
     return index;
 }
 
-struct FragmentMetaData{
-    size_t numBlocks;
-};
-        
+  
 template<typename DistType>
 void SerializeFragmentIndex(std::span<const DataBlock<DistType>> dataBlocks, std::span<const BlockUpdateContext<DistType>> graphBlocks, std::span<const IndexBlock> indexBlocks, std::filesystem::path fragmentDirectory){
 
@@ -375,150 +348,118 @@ int main(int argc, char *argv[]){
                 } else{
                     std::cout << "parallelSearch input (" << option.substr(nameEnd+1) << ") does not evaluate to 'true' or 'false'" << std::endl;
                 }
-                /*
-                    searchNeighbors,
-                    searchDepth,
-                    maxSearchesQueued
-                */
-
         }
     }
 
     HyperParameterValues parameters{splitParams, indexParams, searchParams};
+    {
+        /*
+        std::string trainDataFilePath("./TestData/MNIST-Fashion-Train.bin");
+        DataSet<float> mnistFashionTrain(trainDataFilePath, 28*28, 60'000);
 
-    static const std::endian dataEndianness = std::endian::native;
-    //static const std::endian dataEndianness = std::endian::big;
-    
-    /*
-    std::string trainDataFilePath("./TestData/MNIST-Fashion-Train.bin");
-    DataSet<float> mnistFashionTrain(trainDataFilePath, 28*28, 60'000);
+        std::filesystem::path indexLocation("./Saved-Indecies/MNIST-Fashion");
+        */
 
-    std::filesystem::path indexLocation("./Saved-Indecies/MNIST-Fashion");
-    */
+        /*
+        std::string testDataFilePath("./TestData/MNIST-Fashion-Test.bin");
+        std::string testNeighborsFilePath("./TestData/MNIST-Fashion-Neighbors.bin");
+        DataSet<float> mnistFashionTest(testDataFilePath, 28*28, 10'000);
+        DataSet<uint32_t, alignof(uint32_t)> mnistFashionTestNeighbors(testNeighborsFilePath, 100, 10'000);
+        */
 
-    /*
-    std::string testDataFilePath("./TestData/MNIST-Fashion-Test.bin");
-    std::string testNeighborsFilePath("./TestData/MNIST-Fashion-Neighbors.bin");
-    DataSet<float> mnistFashionTest(testDataFilePath, 28*28, 10'000);
-    DataSet<uint32_t, alignof(uint32_t)> mnistFashionTestNeighbors(testNeighborsFilePath, 100, 10'000);
-    */
+        
+        std::string trainDataFilePath("./TestData/SIFT-Train.bin");
+        DataSet<float> mnistFashionTrain(trainDataFilePath, 128, 1'000'000);
+        std::filesystem::path indexLocation("./Saved-Indecies/SIFT");
+        
+        /*
+        std::string testDataFilePath("./TestData/SIFT-Test.bin");
+        std::string testNeighborsFilePath("./TestData/SIFT-Neighbors.bin");
+        DataSet<float> mnistFashionTest(testDataFilePath, 128, 10'000);
+        DataSet<uint32_t, alignof(uint32_t)> mnistFashionTestNeighbors(testNeighborsFilePath, 100, 10'000);
+        */
 
-    
-    std::string trainDataFilePath("./TestData/SIFT-Train.bin");
-    DataSet<float> mnistFashionTrain(trainDataFilePath, 128, 1'000'000);
-    std::filesystem::path indexLocation("./Saved-Indecies/SIFT");
-    
-    /*
-    std::string testDataFilePath("./TestData/SIFT-Test.bin");
-    std::string testNeighborsFilePath("./TestData/SIFT-Neighbors.bin");
-    DataSet<float> mnistFashionTest(testDataFilePath, 128, 10'000);
-    DataSet<uint32_t, alignof(uint32_t)> mnistFashionTestNeighbors(testNeighborsFilePath, 100, 10'000);
-    */
+        /*
+        std::string trainDataFilePath("./TestData/NYTimes-Angular-Train.bin");
+        DataSet<AlignedArray<float>> mnistFashionTrain(trainDataFilePath, 256, 290'000, &ExtractNumericArray<AlignedArray<float>,dataEndianness>);
 
-    /*
-    std::string trainDataFilePath("./TestData/NYTimes-Angular-Train.bin");
-    DataSet<AlignedArray<float>> mnistFashionTrain(trainDataFilePath, 256, 290'000, &ExtractNumericArray<AlignedArray<float>,dataEndianness>);
-
-    std::string testDataFilePath("./TestData/NYTimes-Angular-Test.bin");
-    std::string testNeighborsFilePath("./TestData/NYTimes-Angular-Neighbors.bin");
-    DataSet<AlignedArray<float>> mnistFashionTest(testDataFilePath, 256, 10'000, &ExtractNumericArray<AlignedArray<float>,dataEndianness>);
-    DataSet<AlignedArray<uint32_t>> mnistFashionTestNeighbors(testNeighborsFilePath, 100, 10'000, &ExtractNumericArray<AlignedArray<uint32_t>,dataEndianness>);
-    */
-    //std::cout << "I/O done." << std::endl;
+        std::string testDataFilePath("./TestData/NYTimes-Angular-Test.bin");
+        std::string testNeighborsFilePath("./TestData/NYTimes-Angular-Neighbors.bin");
+        DataSet<AlignedArray<float>> mnistFashionTest(testDataFilePath, 256, 10'000, &ExtractNumericArray<AlignedArray<float>,dataEndianness>);
+        DataSet<AlignedArray<uint32_t>> mnistFashionTestNeighbors(testNeighborsFilePath, 100, 10'000, &ExtractNumericArray<AlignedArray<uint32_t>,dataEndianness>);
+        */
+        //std::cout << "I/O done." << std::endl;
 
 
-    std::chrono::time_point<std::chrono::steady_clock> runStart = std::chrono::steady_clock::now();
+        std::chrono::time_point<std::chrono::steady_clock> runStart = std::chrono::steady_clock::now();
+
+        auto [rpTrees, splittingVectors] = (parallelIndexBuild) ? 
+                                            BuildRPForest<ParallelEuclidianScheme<float, ann::aligned_array<float>>>(std::execution::par_unseq, mnistFashionTrain, parameters.splitParams, numThreads) :
+                                            BuildRPForest<EuclidianScheme<float, ann::aligned_array<float>>>(std::execution::seq, mnistFashionTrain, parameters.splitParams);
+                                            
+        SerializeSplittingVectors(splittingVectors, indexLocation / "SplittingVectors.bin");
 
 
-    //
-    RngFunctor rngFunctor(0, mnistFashionTrain.size() - 1);
+        //std::pmr::monotonic_buffer_resource memoryIn(std::pmr::get_default_resource());
+        //ann::threaded_multipool nndPool(&memoryIn);
+        //std::pmr::synchronized_pool_resource nndPool(&memoryIn);
+        //internal::SetInternalResource(&nndPool);
+        
+        ThreadPool<void> blockBuilder(numThreads);
 
-    
+        auto [indexMappings, dataBlocks] = (parallelIndexBuild) ? 
+                                            PartitionData<float>(rpTrees, mnistFashionTrain, blockBuilder):
+                                            PartitionData<float>(rpTrees, mnistFashionTrain);
 
-    auto [rpTrees, splittingVectors] = (parallelIndexBuild) ? 
-                                        BuildRPForest<ParallelEuclidianScheme<float, ann::aligned_array<float>>>(std::execution::par_unseq, mnistFashionTrain, parameters.splitParams, numThreads) :
-                                        BuildRPForest<EuclidianScheme<float, ann::aligned_array<float>>>(std::execution::seq, mnistFashionTrain, parameters.splitParams);
-                                        
-    SerializeSplittingVectors(splittingVectors, indexLocation / "SplittingVectors.bin");
-    //std::chrono::time_point<std::chrono::steady_clock> rpTrainEnd = std::chrono::steady_clock::now();
-    //std::cout << std::chrono::duration_cast<std::chrono::duration<float>>(rpTrainEnd - runStart).count() << "s total for test set rpTrees " << std::endl;
+        
+        [&, &indexMappings = indexMappings](){
+            std::ofstream mappingFile{indexLocation/"SplittingIndexToBlockNumber.bin", std::ios_base::binary | std::ios_base::trunc};
+            serialize(indexMappings.splitToBlockNum, mappingFile);
+        }();
 
+        [&, &indexMappings = indexMappings](){
+            std::ofstream mappingFile{indexLocation/"BlockIndexToSourceIndex.bin", std::ios_base::binary | std::ios_base::trunc};
+            serialize(indexMappings.blockIndexToSource, mappingFile);
+        }();
+        block_binder euclideanBinder(EuclideanMetricPair{}, std::span{std::as_const(dataBlocks)}, std::span{std::as_const(dataBlocks)});
+        erased_binary_binder<float> testDispatch(euclideanBinder);
 
-    //std::vector<size_t> trainClassifications(mnistFashionTrain.numberOfSamples);
+        
+        MetaGraph<float> metaGraph = BuildMetaGraphFragment<float>(dataBlocks, parameters.indexParams, 0, EuclideanMetricSet(), EuclideanCOM<float, float>);
+        fixed_block_binder comFunctor(EuclideanMetricPair{}, metaGraph.points, std::span{std::as_const(dataBlocks)});
 
-    std::pmr::monotonic_buffer_resource memoryIn(std::pmr::get_default_resource());
-    std::pmr::synchronized_pool_resource nndPool(&memoryIn);
+        //hacky but not a long term thing
+        std::unique_ptr<BlockUpdateContext<float>[]> blockContextArr;
+        std::span<BlockUpdateContext<float>> blockUpdateContexts;
 
-    //internal::SetInternalResource(&nndPool);
-    
-    ThreadPool<void> blockBuilder(numThreads);
+        if (parallelIndexBuild){
+            ThreadPool<thread_functors<float, float>> pool(numThreads, euclideanBinder, comFunctor, splitParams.maxTreeSize, parameters.indexParams.blockGraphNeighbors);
+            pool.StartThreads();
+            blockContextArr = BuildGraph(metaGraph, parameters, pool);
+            blockUpdateContexts = {blockContextArr.get(), dataBlocks.size()};
+            pool.StopThreads();
+        } else {
+            blockContextArr = BuildGraph<float, float, float>(dataBlocks, metaGraph, testDispatch, parameters, comFunctor);
+            blockUpdateContexts = {blockContextArr.get(), dataBlocks.size()};
+        }
+        //
+        
+        std::chrono::time_point<std::chrono::steady_clock> runEnd = std::chrono::steady_clock::now();
+        //std::cout << std::chrono::duration_cast<std::chrono::duration<float>>(runEnd - runStart).count() << "s total for index building " << std::endl;
+        std::cout << std::chrono::duration_cast<std::chrono::duration<float>>(runEnd - runStart).count() << std::endl;
+        //std::chrono::time_point<std::chrono::steady_clock> finalizationStart = std::chrono::steady_clock::now();
 
-    auto [indexMappings, dataBlocks] = (parallelIndexBuild) ? 
-                                        PartitionData<float>(rpTrees, mnistFashionTrain, blockBuilder):
-                                        PartitionData<float>(rpTrees, mnistFashionTrain);
+        std::vector<IndexBlock> index = IndexFinalization(blockUpdateContexts);
 
-    
-    [&, &indexMappings = indexMappings](){
-        std::ofstream mappingFile{indexLocation/"SplittingIndexToBlockNumber.bin", std::ios_base::binary | std::ios_base::trunc};
-        serialize(indexMappings.splitToBlockNum, mappingFile);
-    }();
-
-    [&, &indexMappings = indexMappings](){
-        std::ofstream mappingFile{indexLocation/"BlockIndexToSourceIndex.bin", std::ios_base::binary | std::ios_base::trunc};
-        serialize(indexMappings.blockIndexToSource, mappingFile);
-    }();
-    block_binder euclideanBinder(EuclideanMetricPair{}, std::span{std::as_const(dataBlocks)}, std::span{std::as_const(dataBlocks)});
-    erased_binary_binder<float> testDispatch(euclideanBinder);
-
-    /*
-    std::vector<size_t> sizes;
-    sizes.reserve(dataBlocks.size());
-    for(const auto& block: dataBlocks){
-        sizes.push_back(block.size());
+        std::span<const IndexBlock> indexView{index.data(), index.size()};
+        //std::chrono::time_point<std::chrono::steady_clock> finalizationEnd = std::chrono::steady_clock::now();
+        //std::cout << std::chrono::duration_cast<std::chrono::duration<float>>(finalizationEnd - finalizationStart).count() << "s total for index finalization " << std::endl;
+        SerializeFragmentIndex(std::span<const DataBlock<float>>{dataBlocks},
+                            std::span<const BlockUpdateContext<float>>{blockUpdateContexts},
+                            indexView,
+                            indexLocation);
+        
     }
-    */
-    
-    //MetricFunctor<AlignedArray<float>, EuclideanMetricPair> euclideanFunctor(dataBlocks);
-    
-    
-    
-    
-    MetaGraph<float> metaGraph = BuildMetaGraphFragment<float>(dataBlocks, parameters.indexParams, 0, EuclideanMetricSet(), EuclideanCOM<float, float>);
-    fixed_block_binder comFunctor(EuclideanMetricPair{}, metaGraph.points, std::span{std::as_const(dataBlocks)});
 
-    //hacky but not a long term thing
-    std::unique_ptr<BlockUpdateContext<float>[]> blockContextArr;
-    std::span<BlockUpdateContext<float>> blockUpdateContexts;
-
-    if (parallelIndexBuild){
-        ThreadPool<thread_functors<float, float>> pool(numThreads, euclideanBinder, comFunctor, splitParams.maxTreeSize, parameters.indexParams.blockGraphNeighbors);
-        pool.StartThreads();
-        //blockContextArr = BuildGraph(std::move(sizes), metaGraph, parameters, pool);
-        blockContextArr = BuildGraph(metaGraph, parameters, pool);
-        blockUpdateContexts = {blockContextArr.get(), dataBlocks.size()};
-        pool.StopThreads();
-    } else {
-        //blockContextArr = BuildGraph<float, float, float>(dataBlocks, metaGraph, testDispatch, std::move(sizes), parameters, std::execution::seq);
-        blockContextArr = BuildGraph<float, float, float>(dataBlocks, metaGraph, testDispatch, parameters, comFunctor);
-        blockUpdateContexts = {blockContextArr.get(), dataBlocks.size()};
-    }
-    //
-    
-    std::chrono::time_point<std::chrono::steady_clock> runEnd = std::chrono::steady_clock::now();
-    //std::cout << std::chrono::duration_cast<std::chrono::duration<float>>(runEnd - runStart).count() << "s total for index building " << std::endl;
-    std::cout << std::chrono::duration_cast<std::chrono::duration<float>>(runEnd - runStart).count() << std::endl;
-    //std::chrono::time_point<std::chrono::steady_clock> finalizationStart = std::chrono::steady_clock::now();
-
-    std::vector<IndexBlock> index = IndexFinalization(blockUpdateContexts);
-
-    std::span<const IndexBlock> indexView{index.data(), index.size()};
-    //std::chrono::time_point<std::chrono::steady_clock> finalizationEnd = std::chrono::steady_clock::now();
-    //std::cout << std::chrono::duration_cast<std::chrono::duration<float>>(finalizationEnd - finalizationStart).count() << "s total for index finalization " << std::endl;
-    SerializeFragmentIndex(std::span<const DataBlock<float>>{dataBlocks},
-                           std::span<const BlockUpdateContext<float>>{blockUpdateContexts},
-                           indexView,
-                           indexLocation);
-    
-    
     return 0;
 }

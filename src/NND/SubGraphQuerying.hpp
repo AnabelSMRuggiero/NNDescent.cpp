@@ -167,7 +167,7 @@ struct QueryContext {
 
     template<typename QueryFunctor>
     GraphVertex<IndexType, DistType, PolymorphicAllocator> Query(
-        const std::vector<IndexType>& initHints,
+        std::span<const IndexType> initHints,
         const size_t queryIndex, // Can realistically be any parameter passed through to the Functor
         QueryFunctor&& queryFunctor) const {
 
@@ -296,7 +296,7 @@ struct QueryContext {
 
     template<typename QueryFunctor>
     auto ForwardQueryInit(
-        const std::vector<IndexType>& startHint,
+        std::span<const IndexType> startHint,
         const size_t queryIndex, // Can realistically be any parameter passed through to the Functor
         QueryFunctor& queryFunctor) const
         -> std::pair<GraphVertex<IndexType, DistType, PolymorphicAllocator>, NodeTrackerImpl<std::pmr::polymorphic_allocator<bool>>> {

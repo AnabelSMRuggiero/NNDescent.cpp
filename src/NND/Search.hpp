@@ -19,13 +19,15 @@ https://github.com/AnabelSMRuggiero/NNDescent.cpp
 #include <unordered_set>
 #include <optional>
 #include <span>
-//include <atomic>
-//#include <list>
 
-#include "GraphStructures.hpp"
 #include "BlockwiseAlgorithm.hpp"
-#include "Type.hpp"
+#include "GraphStructures.hpp"
+#include "Index.hpp"
+#include "MetaGraph.hpp"
+#include "NND/MetricHelpers.hpp"
+#include "RPTrees/Forest.hpp"
 #include "SearchContexts.hpp"
+#include "Type.hpp"
 #include "Parallelization/AsyncQueue.hpp"
 #include "Parallelization/ThreadPool.hpp"
 
@@ -43,9 +45,6 @@ template<typename DistType>
 GraphVertex<DataIndex_t, DistType> InitialSearch(erased_unary_binder<DistType> distFunctor,
                                                    const QueryContext<DataIndex_t, DistType>& blockToSearch,
                                                    const size_t searchIndex){
-    
-    
-    //GraphVertex<DataIndex_t, DistType> initNeighbors = blockToSearch.Query(std::vector<DataIndex_t>{}, searchIndex, distFunctor);
 
     
     return blockToSearch.Query(std::vector<DataIndex_t>{}, searchIndex, distFunctor(blockToSearch.blockNumber));
@@ -114,7 +113,7 @@ template<typename DistType>
 SearchQueue FirstBlockSearch(std::vector<ContextBlock<DistType>>& searchContexts,
                              //const std::vector<std::vector<size_t>>& blocksToSearch,
                              const erased_unary_binder<DistType>& searchFunctor,
-                             std::span<QueryContext<DataIndex_t, DistType>> queryContexts,
+                             std::span<const QueryContext<DataIndex_t, DistType>> queryContexts,
                              std::span<const IndexBlock> indexBlocks,
                              const size_t maxNewSearches){
 
@@ -161,7 +160,7 @@ SearchQueue FirstBlockSearch(std::vector<ContextBlock<DistType>>& searchContexts
 }
 
 template<typename DistType>
-void SingleSearch(std::span<QueryContext<DataIndex_t, DistType>> queryContexts,
+void SingleSearch(std::span<const QueryContext<DataIndex_t, DistType>> queryContexts,
                   std::span<const IndexBlock> indexBlocks,
                   SearchContext<DistType>& context,
                   const GraphFragment_t currentFragment,
@@ -195,7 +194,7 @@ void SingleSearch(std::span<QueryContext<DataIndex_t, DistType>> queryContexts,
 
 template<typename DistType>
 struct InitialSearchTask{
-    std::span<QueryContext<DataIndex_t, DistType>> queryContexts;
+    std::span<const QueryContext<DataIndex_t, DistType>> queryContexts;
     std::span<const IndexBlock> indexBlocks;
     //const std::vector<std::vector<size_t>> blocksToSearch;
     const size_t maxNewSearches;
@@ -281,7 +280,7 @@ template<typename DistType>
 void SearchLoop(const erased_unary_binder<DistType>& searchFunctor,
                 QueueView searchHints,
                 std::vector<ContextBlock<DistType>>& searchContexts,
-                std::span<QueryContext<DataIndex_t, DistType>> queryContexts,
+                std::span<const QueryContext<DataIndex_t, DistType>> queryContexts,
                 std::span<const IndexBlock> indexBlocks,
                 const size_t maxNewSearches,
                 const size_t searchesToDo){
@@ -325,7 +324,7 @@ template<typename DistType>
 void ParaSearchLoop(ThreadPool<erased_unary_binder<DistType>>& pool,
                 QueueView searchHints,
                 std::span<ParallelContextBlock<DistType>> searchContexts,
-                std::span<QueryContext<DataIndex_t, DistType>> queryContexts,
+                std::span<const QueryContext<DataIndex_t, DistType>> queryContexts,
                 std::span<const IndexBlock> indexBlocks,
                 const size_t maxNewSearches,
                 const size_t searchesToDo){
@@ -401,6 +400,178 @@ void ParaSearchLoop(ThreadPool<erased_unary_binder<DistType>>& pool,
         }
 
     }
+}
+
+struct search_set_mappings {
+    std::vector<ParallelContextBlock<float>> contexts;
+    IndexMaps<size_t> mappings;
+};
+template<typename DistanceType>
+search_set_mappings block_search_set(
+    const DataSet<DistanceType>& searchSet, const RandomProjectionForest& searchForest, const SearchParameters& searchParams,
+    std::size_t num_index_blocks, const std::unordered_map<unsigned long, unsigned long>& splitToBlockNum) {
+
+    DataMapper<DistanceType, void, void> testMapper(searchSet);
+    std::vector<ParallelContextBlock<DistanceType>> searchContexts;
+
+    auto searcherConstructor = [&, &splitToBlockNum = splitToBlockNum](size_t splittingIndex, std::span<const size_t> indicies) -> void {
+        ParallelContextBlock<DistanceType> retBlock{ splitToBlockNum.at(splittingIndex),
+                                              std::vector<ParallelSearchContext<float>>(indicies.size()) };
+
+        for (size_t i = 0; size_t index : indicies) {
+
+            ParallelSearchContext<DistanceType>* contextPtr = &retBlock.second[i];
+            contextPtr->~ParallelSearchContext<DistanceType>();
+            new (contextPtr) ParallelSearchContext<DistanceType>(searchParams.searchNeighbors, num_index_blocks, index);
+
+            i++;
+        }
+        searchContexts.push_back(std::move(retBlock));
+        testMapper(splittingIndex, indicies);
+    };
+
+    CrawlTerminalLeaves(searchForest, searcherConstructor);
+
+
+    IndexMaps<size_t> testMappings = { std::move(testMapper.splitToBlockNum),
+                                       std::move(testMapper.blockIndexToSource),
+                                       std::move(testMapper.sourceToBlockIndex),
+                                       std::move(testMapper.sourceToSplitIndex) };
+
+    return { std::move(searchContexts), std::move(testMappings) };
+}
+template< typename DistanceType >
+void ParallelSearch(
+    ThreadPool<erased_unary_binder<DistanceType>>& threadPool, std::size_t max_searches_queued,
+    std::span<ParallelContextBlock<DistanceType>> searchContexts, std::span<const QueryContext<DataIndex_t, DistanceType>> queryContexts,
+    std::span<const IndexBlock> indexView) {
+
+    InitialSearchTask<DistanceType> searchGenerator = {
+        queryContexts, indexView, max_searches_queued, AsyncQueue<std::pair<BlockIndecies, SearchSet>>()
+    };
+
+    threadPool.StartThreads();
+    SearchQueue searchHints = ParaFirstBlockSearch(searchGenerator, searchContexts, threadPool);
+
+    QueueView hintView = { searchHints.data(), searchHints.size() };
+
+    ParaSearchLoop(threadPool, hintView, searchContexts, queryContexts, indexView, max_searches_queued, searchContexts.size());
+    threadPool.StopThreads();
+}
+
+template<typename DistanceType>
+std::vector<std::vector<std::size_t>> search(const DataSet<DistanceType>& search_data, const index<DistanceType>& index, std::size_t num_threads){
+    
+    RandomProjectionForest rpTreesTest = RPTransformData(search_data.size(),
+                                                         index.splits_to_do,
+                                                         borrowed_euclidean(search_data, index.splitting_vectors),
+                                                         num_threads);
+
+    size_t numberSearchBlocks = index.data_points.size();
+
+    
+    IndexMaps<size_t> testMappings;
+
+     
+
+    ThreadPool<erased_unary_binder<DistanceType>> searchPool(num_threads, index.distance_metric);
+
+    std::span<const std::vector<size_t>> indexMappingView(index.block_idx_to_source_idx);
+
+    auto [searchContexts, mappings] =
+        block_search_set(search_data, rpTreesTest, index.search_parameters, index.graph_neighbors.size(), index.split_idx_to_block_idx);
+
+    ParallelSearch(searchPool, index.search_parameters.maxSearchesQueued, std::span{searchContexts}, std::span{index.query_contexts}, std::span{std::as_const(index.graph_neighbors)});
+
+    std::vector<std::vector<size_t>> results(search_data.size());
+
+    for (size_t i = 0; auto& [blockNum, testBlock] : searchContexts) {
+        for (size_t j = 0; auto& context : testBlock) {
+            GraphVertex<BlockIndecies, float>& result = context.currentNeighbors;
+            
+            size_t testIndex = context.dataIndex;
+            
+            for (const auto& neighbor : result) {
+                results[testIndex].push_back(indexMappingView[neighbor.first.blockNumber][neighbor.first.dataIndex]);
+            }
+            j++;
+        }
+        i++;
+    }
+
+    return results;
+}
+
+
+
+
+
+template< typename DistanceType >
+std::vector<std::vector<std::size_t>> search(const DataSet<DistanceType>& search_data, const nnd::index<DistanceType>& index){
+
+    
+
+    
+
+    fixed_block_binder searchDist(EuclideanMetricPair{}, search_data, std::span{ std::as_const(index.data_points) });
+    erased_unary_binder<float> searchFunctor(searchDist);
+
+    std::vector<std::vector<size_t>> results(search_data.size());
+    IndexMaps<size_t> testMappings;
+
+    RandomProjectionForest rpTreesTest = RPTransformData(search_data, index.splits_to_do, borrowed_euclidean(search_data, index.splitting_vectors));
+    DataMapper<float, void, void> testMapper(search_data);
+    std::vector<ContextBlock<float>> searchContexts;
+    auto searcherConstructor =
+        [&, &splitToBlockNum = index.split_idx_to_block_idx](size_t splittingIndex, std::span<const size_t> indicies) -> void {
+        ContextBlock<float> retBlock;
+        retBlock.first = splitToBlockNum.at(splittingIndex);
+        retBlock.second.reserve(indicies.size());
+        for (size_t idx : indicies) {
+
+            retBlock.second.push_back({ index.search_parameters.searchNeighbors, index.data_points.size(), idx });
+        }
+        searchContexts.push_back(std::move(retBlock));
+        testMapper(splittingIndex, indicies);
+    };
+
+    CrawlTerminalLeaves(rpTreesTest, searcherConstructor);
+
+
+    testMappings = { std::move(testMapper.splitToBlockNum),
+                        std::move(testMapper.blockIndexToSource),
+                        std::move(testMapper.sourceToBlockIndex),
+                        std::move(testMapper.sourceToSplitIndex) };
+
+    std::span<const IndexBlock> indexView{ std::as_const(index.graph_neighbors) };
+
+    SearchQueue searchHints =
+        FirstBlockSearch(searchContexts, searchFunctor, std::span{ index.query_contexts }, indexView, index.search_parameters.maxSearchesQueued);
+
+
+    QueueView hintView = { searchHints.data(), searchHints.size() };
+
+    SearchLoop(
+        searchFunctor, hintView, searchContexts, std::span{ index.query_contexts }, indexView, index.search_parameters.maxSearchesQueued, search_data.size());
+
+
+
+    std::span<const std::vector<size_t>> indexMappingView{index.block_idx_to_source_idx};
+
+    for (size_t i = 0; auto& [ignore, testBlock] : searchContexts) {
+        for (size_t j = 0; auto& context : testBlock) {
+            GraphVertex<BlockIndecies, float>& result = context.currentNeighbors;
+            
+            size_t testIndex = context.dataIndex;
+            
+            for (const auto& neighbor : result) {
+                results[testIndex].push_back(indexMappingView[neighbor.first.blockNumber][neighbor.first.dataIndex]);
+            }
+            j++;
+        }
+        i++;
+    }
+    return results;
 }
 
 

@@ -11,8 +11,12 @@ https://github.com/AnabelSMRuggiero/NNDescent.cpp
 #ifndef NND_MEMORYINTERALS_HPP
 #define NND_MEMORYINTERALS_HPP
 
+#include <functional>
 #include <memory_resource>
 #include <atomic>
+#include <unordered_map>
+#include <unordered_set>
+#include <vector>
 
 namespace nnd{
 
@@ -55,6 +59,17 @@ struct PolymorphicAllocator : std::pmr::polymorphic_allocator<ValueType>{
         return PolymorphicAllocator();
     }
 };
+
+namespace pmr{
+template<typename ValueType>
+using vector = std::vector<ValueType, PolymorphicAllocator<ValueType>>;
+
+template<typename Key, typename MappedType, typename Hash = std::hash<Key>, typename KeyEqual = std::equal_to<Key>>
+using unordered_map = std::unordered_map<Key, MappedType, Hash, KeyEqual, PolymorphicAllocator<std::pair<const Key, MappedType>>>;
+
+template<typename Key, typename Hash = std::hash<Key>, typename KeyEqual = std::equal_to<Key>>
+using unordered_set = std::unordered_set<Key, Hash, KeyEqual, PolymorphicAllocator<Key>>;
+}
 
 
 }
