@@ -51,7 +51,7 @@ related to NND, and didn't want to tuck this there. This is a super general func
 */
 
 template<typename Iterator, typename rIterator, typename Predicate>
-size_t Split(Iterator fromBegin, Iterator fromEnd, Iterator toBegin, rIterator toRev, Predicate splitter){
+size_t Split(Iterator fromBegin, Iterator fromEnd, Iterator toBegin, rIterator toRev, Predicate&& splitter){
     int numTrue = 0;
     for ( ; fromBegin != fromEnd; fromBegin++){
         if (splitter(*fromBegin)){
@@ -1119,7 +1119,7 @@ void CrawlLeaves(const RandomProjectionForest& forest, Functor& nodeFunctor){
 
 template<typename SplittingScheme, typename DataEntry>
     requires std::is_same_v<std::true_type, typename SplittingScheme::SerialScheme>
-std::pair<RandomProjectionForest, typename SplittingScheme::SplittingVectors> BuildRPForest(std::execution::sequenced_policy, const DataSet<DataEntry>& data, const SplittingHeurisitcs params, std::pmr::memory_resource* upstream = std::pmr::get_default_resource()){
+std::pair<RandomProjectionForest, typename SplittingScheme::SplittingVectors> BuildRPForest(const DataSet<DataEntry>& data, const SplittingHeurisitcs params, std::pmr::memory_resource* upstream = std::pmr::get_default_resource()){
     
 
     RngFunctor rngFunctor(data.IndexStart(), data.size() - data.IndexStart());
@@ -1136,7 +1136,7 @@ std::pair<RandomProjectionForest, typename SplittingScheme::SplittingVectors> Bu
 
 template<typename SplittingScheme, typename DataEntry>
     requires std::is_same_v<std::true_type, typename SplittingScheme::SerialScheme>
-std::pair<RandomProjectionForest, typename SplittingScheme::SplittingVectors> BuildRPForest(std::execution::sequenced_policy, const DataSet<DataEntry>& data, ann::dynamic_array<size_t>&& indecies, const SplittingHeurisitcs params){
+std::pair<RandomProjectionForest, typename SplittingScheme::SplittingVectors> BuildRPForest(const DataSet<DataEntry>& data, ann::dynamic_array<size_t>&& indecies, const SplittingHeurisitcs params){
     
 
     RngFunctor rngFunctor(0, indecies.size());
@@ -1150,7 +1150,7 @@ std::pair<RandomProjectionForest, typename SplittingScheme::SplittingVectors> Bu
 
 template<typename SplittingScheme, typename DataEntry>
     requires std::is_same_v<std::true_type, typename SplittingScheme::ParallelScheme>
-std::pair<RandomProjectionForest, typename SplittingScheme::SplittingVectors> BuildRPForest(std::execution::parallel_unsequenced_policy, const DataSet<DataEntry>& data, const SplittingHeurisitcs params, const size_t numThreads, std::pmr::memory_resource* upstream = std::pmr::get_default_resource()){
+std::pair<RandomProjectionForest, typename SplittingScheme::SplittingVectors> BuildRPForest(const DataSet<DataEntry>& data, const SplittingHeurisitcs params, const size_t numThreads, std::pmr::memory_resource* upstream = std::pmr::get_default_resource()){
     
 
     RngFunctor rngFunctor(data.IndexStart(), data.size() - data.IndexStart());
@@ -1176,7 +1176,7 @@ inline RandomProjectionForest RPTransformData(const DataSet<float>& testSet,
                      const std::unordered_set<size_t>& splittingIndecies,
                      std::unordered_map<size_t, std::pair<ann::aligned_array<float>, ann::aligned_array<float>::value_type>>&& splitting_vectors){
 
-    EuclidianScheme<float, ann::aligned_array<float>> transforming_scheme(testSet);
+    euclidean_scheme<float, ann::aligned_array<float>> transforming_scheme(testSet);
 
     transforming_scheme.splittingVectors = std::move(splitting_vectors);
 
@@ -1212,7 +1212,7 @@ inline RandomProjectionForest RPTransformData(const DataSet<float>& testSet,
                      std::unordered_map<size_t, std::pair<ann::aligned_array<float>, ann::aligned_array<float>::value_type>>&& splittingVectors,
                      const size_t numThreads){
 
-    EuclidianScheme<float, ann::aligned_array<float>> transforming_scheme(testSet);
+    euclidean_scheme<float, ann::aligned_array<float>> transforming_scheme(testSet);
 
     transforming_scheme.splittingVectors = std::move(splittingVectors);
 

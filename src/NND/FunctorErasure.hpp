@@ -281,6 +281,9 @@ struct fixed_block_binder {
 };
 
 template<typename DistanceType>
+struct erased_binary_binder;
+
+template<typename DistanceType>
 struct erased_unary_binder {
 
     erased_unary_binder() = default;
@@ -300,7 +303,9 @@ struct erased_unary_binder {
     template<is_not<erased_unary_binder> DistanceFunctor>
         requires std::is_copy_assignable_v<DistanceFunctor> erased_unary_binder(DistanceFunctor&& distanceFunctor)
             : ptrToFunc(
-                std::make_unique<concrete_functor<std::remove_cvref_t<DistanceFunctor>>>(std::forward<DistanceFunctor>(distanceFunctor))){};
+                std::make_unique<concrete_functor<std::remove_cvref_t<DistanceFunctor>>>(std::forward<DistanceFunctor>(distanceFunctor))){
+                    static_assert(is_not<DistanceFunctor, erased_binary_binder<DistanceType>>);
+    };
 
         erased_metric<DistanceType> operator()(size_t bindIndex) const { return std::invoke(*ptrToFunc, bindIndex); };
 
@@ -327,6 +332,9 @@ struct erased_unary_binder {
       private:
         std::unique_ptr<abstract_functor> ptrToFunc;
 };
+
+template<typename DistanceFunctor>
+erased_unary_binder(DistanceFunctor&&) -> erased_unary_binder<typename std::remove_reference_t<DistanceFunctor>::distance_type>;
 
 template<typename DistanceType>
 struct erased_binary_binder {

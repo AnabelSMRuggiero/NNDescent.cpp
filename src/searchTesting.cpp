@@ -70,7 +70,7 @@ int main(int argc, char* argv[]) {
 
     nnd::index<float> index = open_index<float>(indexLocation);
     index.search_parameters = search_parameters;
-    fixed_block_binder searchDist(EuclideanMetricPair{}, test_data_set, std::span{ std::as_const(index.data_points) });
+    fixed_block_binder searchDist(euclidean_metric_pair{}, test_data_set, std::span<const DataBlock<float>>{ std::as_const(index.data_points) });
     erased_unary_binder<float> searchFunctor(searchDist);
 
     for (auto& context : index.query_contexts) {

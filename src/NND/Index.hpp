@@ -11,6 +11,9 @@ https://github.com/AnabelSMRuggiero/NNDescent.cpp
 #ifndef NND_INDEX_HPP
 #define NND_INDEX_HPP
 
+#include "RPTrees/SplittingScheme.hpp"
+#include "ann/AlignedMemory/DynamicArray.hpp"
+#include "NND/Type.hpp"
 #include "ann/Data.hpp"
 
 #include "SubGraphQuerying.hpp"
@@ -28,65 +31,59 @@ struct FragmentMetaData {
 };
 
 template<typename DistType>
-std::vector<DataBlock<DistType>> OpenDataBlocks(std::filesystem::path fragmentDirectory) {
+ann::dynamic_array<DataBlock<DistType>> OpenDataBlocks(std::filesystem::path fragmentDirectory) {
     std::ifstream metaDataFile{ fragmentDirectory / "MetaData.bin", std::ios_base::binary };
     FragmentMetaData metadata = Extract<FragmentMetaData>(metaDataFile);
 
-    std::vector<DataBlock<DistType>> dataBlocks;
-    dataBlocks.reserve(metadata.numBlocks);
+    ann::dynamic_array<DataBlock<DistType>> dataBlocks{metadata.numBlocks};
+    
 
     for (size_t i = 0; i < metadata.numBlocks; i += 1) {
         std::filesystem::path dataBlockPath = fragmentDirectory / ("DataBlock-" + std::to_string(i) + ".bin");
         std::ifstream dataBlockFile{ dataBlockPath, std::ios_base::binary };
-        auto extractor = [&]() { return Extract<DataBlock<DistType>>(dataBlockFile, i); };
-        dataBlocks.emplace_back(DelayConstruct<DataBlock<DistType>>(extractor));
+        dataBlocks[i] = extract<DataBlock<DistType>>(dataBlockFile, i);
     }
     return dataBlocks;
 }
 
 template<typename IndexType, typename DistType>
-std::vector<QueryContext<IndexType, DistType>> OpenQueryContexts(std::filesystem::path fragmentDirectory) {
+ann::dynamic_array<QueryContext<IndexType, DistType>> OpenQueryContexts(std::filesystem::path fragmentDirectory) {
     std::ifstream metaDataFile{ fragmentDirectory / "MetaData.bin", std::ios_base::binary };
     FragmentMetaData metadata = Extract<FragmentMetaData>(metaDataFile);
 
-    std::vector<QueryContext<IndexType, DistType>> queryContexts;
-    queryContexts.reserve(metadata.numBlocks);
+    ann::dynamic_array<QueryContext<IndexType, DistType>> queryContexts{metadata.numBlocks};
 
     for (size_t i = 0; i < metadata.numBlocks; i += 1) {
         std::filesystem::path dataBlockPath = fragmentDirectory / ("QueryContext-" + std::to_string(i) + ".bin");
         std::ifstream contextFile{ dataBlockPath, std::ios_base::binary };
-        auto extractor = [&]() { return Extract<QueryContext<IndexType, DistType>>(contextFile); };
-        queryContexts.emplace_back(DelayConstruct<QueryContext<IndexType, DistType>>(extractor));
-        // queryContexts.emplace_back(QueryContext<IndexType, DistType>(contextFile));
+        queryContexts[i] = extract<QueryContext<IndexType, DistType>>(contextFile);
     }
     return queryContexts;
 }
 
-inline std::vector<IndexBlock> OpenIndexBlocks(std::filesystem::path fragmentDirectory) {
+inline ann::dynamic_array<IndexBlock> OpenIndexBlocks(std::filesystem::path fragmentDirectory) {
     std::ifstream metaDataFile{ fragmentDirectory / "MetaData.bin", std::ios_base::binary };
     FragmentMetaData metadata = Extract<FragmentMetaData>(metaDataFile);
 
-    std::vector<IndexBlock> queryContexts;
-    queryContexts.reserve(metadata.numBlocks);
+    ann::dynamic_array<IndexBlock> index_blocks{metadata.numBlocks};
 
     for (size_t i = 0; i < metadata.numBlocks; i += 1) {
         std::filesystem::path dataBlockPath = fragmentDirectory / ("IndexBlock-" + std::to_string(i) + ".bin");
         std::ifstream contextFile{ dataBlockPath, std::ios_base::binary };
-        auto extractor = [&]() { return Extract<IndexBlock>(contextFile); };
-        queryContexts.emplace_back(DelayConstruct<IndexBlock>(extractor));
+        index_blocks[i] = extract<IndexBlock>(contextFile);
     }
-    return queryContexts;
+    return index_blocks;
 }
 
 template<typename DistanceType>
 struct index {
-    std::vector<DataBlock<DistanceType>> data_points;
-    std::vector<QueryContext<DataIndex_t, DistanceType>> query_contexts;
-    std::vector<IndexBlock> graph_neighbors;
-    std::vector<std::vector<size_t>> block_idx_to_source_idx;
+    ann::dynamic_array<DataBlock<DistanceType>> data_points;
+    ann::dynamic_array<QueryContext<DataIndex_t, DistanceType>> query_contexts;
+    ann::dynamic_array<IndexBlock> graph_neighbors;
+    ann::dynamic_array<ann::dynamic_array<size_t>> block_idx_to_source_idx;
 
     std::unordered_set<size_t> splits_to_do;
-    std::unordered_map<size_t, std::pair<ann::aligned_array<float>, float>> splitting_vectors;
+    splitting_vectors splits;
     std::unordered_map<size_t, size_t> split_idx_to_block_idx;
 
     erased_unary_binder<DistanceType> distance_metric;
@@ -109,7 +106,7 @@ index<DistanceType> open_index(const std::filesystem::path& index_directory){
 
     auto block_idx_to_source_idx = [&]{
         std::ifstream mappingFile(index_directory / "BlockIndexToSourceIndex.bin", std::ios_base::binary);
-        return extract<std::vector<std::vector<size_t>>>(mappingFile);
+        return extract<ann::dynamic_array<ann::dynamic_array<size_t>>>(mappingFile);
     }();
 
     auto splits_to_do = [&]{

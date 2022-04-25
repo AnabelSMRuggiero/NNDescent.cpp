@@ -25,6 +25,7 @@ https://github.com/AnabelSMRuggiero/NNDescent.cpp
 #include "GraphStructures.hpp"
 #include "NND/FunctorErasure.hpp"
 #include "NND/GraphStructures/CachingFunctor.hpp"
+#include "NND/Type.hpp"
 #include "SubGraphQuerying.hpp"
 
 #include "UtilityFunctions.hpp"
@@ -55,6 +56,10 @@ using JoinHints = pmr::unordered_map<DataIndex_t, pmr::vector<DataIndex_t>>;
 //template<template<typename> typename Alloc = std::allocator>                                 
 using JoinMap = pmr::unordered_map<BlockNumber_t, pmr::unordered_map<DataIndex_t, pmr::vector<DataIndex_t>>>;
 
+inline void add_candidate(JoinMap& map, DataIndex_t in_block, BlockIndecies out_of_block){
+    map[out_of_block.blockNumber][in_block].push_back(out_of_block.dataIndex);
+}
+
 
 template<typename DistType>
 ComparisonMap InitializeComparisonQueues(const Graph<BlockIndecies, DistType>& currentBlock, BlockNumber_t blockNum){
@@ -71,18 +76,10 @@ ComparisonMap InitializeComparisonQueues(const Graph<BlockIndecies, DistType>& c
 
 template<typename DistType>
 pmr::vector<std::pair<DataIndex_t, pmr::vector<DataIndex_t>>> FlattenHints(const JoinHints& startJoins){
+    
     pmr::vector<std::pair<DataIndex_t, pmr::vector<DataIndex_t>>> joinHints(startJoins.size());
     std::ranges::transform(startJoins, joinHints.begin(), [&](auto hint) { return hint;});
-    /*
-    std::ranges::transform(startJoins, joinHints.begin(), [&] (const auto& hint){
-        GraphVertex<DataIndex_t, DistType> queryHint;
-        queryHint.resize(hint.second.size());
-        std::ranges::transform(hint.second, queryHint.begin(), [&](const auto& index){ 
-            return std::pair{index, std::numeric_limits<DistType>::max()};
-        });
-        return std::pair{hint.first, queryHint};
-    });
-    */
+
     return joinHints;
 }
 

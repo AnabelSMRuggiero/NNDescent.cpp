@@ -167,7 +167,7 @@ struct TaskThread<void>{
 template<typename ThreadState>
 struct ThreadPool{
 
-
+    using state = ThreadState;
     using ThreadTask = std::function<void(ThreadState&)>;
 
     ThreadPool() requires std::is_default_constructible_v<ThreadState>: numThreads(std::jthread::hardware_concurrency()),
@@ -365,6 +365,13 @@ struct ThreadPool<void>{
     std::unique_ptr<std::jthread[]> threadHandles;
     
 };
+
+template<typename ThreadState, std::invocable<> Region>
+void threaded_region(ThreadPool<ThreadState>& pool, Region&& region){
+    pool.StartThreads();
+    std::invoke(region);
+    pool.StopThreads();
+}
 
 }
 

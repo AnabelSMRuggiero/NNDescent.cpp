@@ -17,23 +17,24 @@ https://github.com/AnabelSMRuggiero/NNDescent.cpp
 #include "../FunctorErasure.hpp"
 #include "../GraphStructures.hpp"
 #include "../BlockwiseAlgorithm.hpp"
+#include "ann/AlignedMemory/DynamicArray.hpp"
 
 namespace nnd{
 
 template<typename DistType, typename COMExtent>
-struct thread_functors{
+struct old_thread_functors{
     erased_binary_binder<DistType> dispatchFunctor;
     cache_state<DistType> cache;
     erased_unary_binder<COMExtent> comDistFunctor;
 
-    thread_functors() = default;
+    old_thread_functors() = default;
 
-    thread_functors(const thread_functors&) = default;
+    old_thread_functors(const old_thread_functors&) = default;
 
-    thread_functors& operator=(const thread_functors&) = default;
+    old_thread_functors& operator=(const old_thread_functors&) = default;
 
     template<typename DistanceFunctor, typename COMFunctor>
-    thread_functors(DistanceFunctor distanceFunctor, COMFunctor comFunctor, size_t maxBlockSize, size_t numNeighbors):
+    old_thread_functors(DistanceFunctor distanceFunctor, COMFunctor comFunctor, size_t maxBlockSize, size_t numNeighbors):
         dispatchFunctor(distanceFunctor),
         cache(maxBlockSize, numNeighbors),
         comDistFunctor(comFunctor) {};
@@ -41,8 +42,26 @@ struct thread_functors{
 };
 
 template<typename DistType>
+struct thread_functors{
+    erased_binary_binder<DistType> dispatchFunctor;
+    cache_state<DistType> cache;
+
+    thread_functors() = default;
+
+    thread_functors(const thread_functors&) = default;
+
+    thread_functors& operator=(const thread_functors&) = default;
+
+    template<typename DistanceFunctor>
+    thread_functors(DistanceFunctor distanceFunctor, size_t maxBlockSize, size_t numNeighbors):
+        dispatchFunctor(distanceFunctor),
+        cache(maxBlockSize, numNeighbors){};
+
+};
+
+template<typename DistType>
 struct BlocksAndState{
-    std::unique_ptr<BlockUpdateContext<DistType>[]> blocks;
+    ann::dynamic_array<BlockUpdateContext<DistType>> blocks;
     std::unique_ptr<std::atomic<bool>[]> isReady;
 };
 

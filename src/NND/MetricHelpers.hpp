@@ -18,11 +18,13 @@ https://github.com/AnabelSMRuggiero/NNDescent.cpp
 #include <ranges>
 #include <utility>
 
-#include "../ann/Metrics/Euclidean.hpp"
-#include "../ann/Type.hpp"
+#include "ann/Metrics/Angular.hpp"
+#include "ann/Metrics/Euclidean.hpp"
+#include "ann/Type.hpp"
 #include "MemoryInternals.hpp"
 #include "NND/Type.hpp"
-#include "../ann/SIMD/VectorSpan.hpp"
+#include "ann/SIMD/VectorSpan.hpp"
+#include "RPTrees/SplittingScheme.hpp"
 
 namespace nnd {
 
@@ -119,7 +121,7 @@ std::pmr::vector<float> ComputeBatch(
     return retVector;
 }
 
-struct EuclideanMetricPair {
+struct euclidean_metric_pair {
     using DistType = float;
     float operator()(const AlignedSpan<const float> lhsVector, const AlignedSpan<const float> rhsVector) const {
         return ann::EuclideanNorm<AlignedSpan<const float>, AlignedSpan<const float>, float>(lhsVector, rhsVector);
@@ -130,6 +132,24 @@ struct EuclideanMetricPair {
         return ann::BatchEuclideanNorm(lhsVector, rhsVectors, resultLocation);
     };
 };
+
+template<>
+constexpr splitting_scheme choose_scheme<euclidean_metric_pair> = splitting_scheme::euclidean;
+
+struct inner_product_pair {
+    using DistType = float;
+    float operator()(const AlignedSpan<const float> lhsVector, const AlignedSpan<const float> rhsVector) const {
+        return ann::inner_product<AlignedSpan<const float>, AlignedSpan<const float>, float>(lhsVector, rhsVector);
+    };
+
+    template<size_t numPoints>
+    void operator()(ann::vector_span<const float> lhsVector, std::span<const ann::vector_span<const float>, numPoints> rhsVectors, std::span<float, numPoints> resultLocation) const {
+        return ann::batch_inner_product(lhsVector, rhsVectors, resultLocation);
+    };
+};
+
+template<>
+constexpr splitting_scheme choose_scheme<inner_product_pair> = splitting_scheme::angular;
 
 struct EuclideanComDistance {
     using DistType = float;
@@ -144,13 +164,13 @@ struct EuclideanComDistance {
 };
 
 struct EuclideanMetricSet {
-    using DataToData_t = EuclideanMetricPair;
-    using DataToCom_t = EuclideanMetricPair;
-    using ComToCom_t = EuclideanMetricPair;
+    using DataToData_t = euclidean_metric_pair;
+    using DataToCom_t = euclidean_metric_pair;
+    using ComToCom_t = euclidean_metric_pair;
 
-    [[no_unique_address]] EuclideanMetricPair dataToData{};
-    [[no_unique_address]] EuclideanMetricPair dataToCom{};
-    [[no_unique_address]] EuclideanMetricPair comToCom{};
+    [[no_unique_address]] euclidean_metric_pair dataToData{};
+    [[no_unique_address]] euclidean_metric_pair dataToCom{};
+    [[no_unique_address]] euclidean_metric_pair comToCom{};
     // data to data
     // data to COM
     // COM to COM

@@ -190,10 +190,10 @@ void SerializeCOMS(const std::vector<MetaPoint<DistType>>& COMs, const std::stri
 template<std::integral BlockNumberType>//, std::integral DataIndexType>
 struct IndexMaps{
 
-    std::unordered_map<size_t, BlockNumberType> splitToBlockNum;
-    std::vector<std::vector<size_t>> blockIndexToSource;
+    std::unordered_map<std::size_t, BlockNumberType> splitToBlockNum;
+    std::vector<ann::dynamic_array<size_t>> blockIndexToSource;
     std::vector<BlockIndecies> sourceToBlockIndex;
-    std::vector<size_t> sourceToSplitIndex;
+    std::vector<std::size_t> sourceToSplitIndex;
 
 };
 
@@ -205,7 +205,7 @@ struct DataMapper{
     size_t graphFragment;
     std::vector<DataStructure> dataBlocks;
     std::unordered_map<size_t, size_t> splitToBlockNum;
-    std::vector<std::vector<size_t>> blockIndexToSource;
+    std::vector<ann::dynamic_array<size_t>> blockIndexToSource;
     std::vector<BlockIndecies> sourceToBlockIndex;
     std::vector<size_t> sourceToSplitIndex;
     BoundConstructor construct;
@@ -221,7 +221,7 @@ struct DataMapper{
     void operator()(size_t splittingIndex, std::span<const size_t> indicies){
         //[[unlikely]]if (indicies.size() == 0) return;
         splitToBlockNum[splittingIndex] = blockCounter;
-        std::vector<size_t> indeciesInBlock(indicies.size());
+        ann::dynamic_array<size_t> indeciesInBlock(indicies.size());
         std::copy(indicies.begin(), indicies.end(), indeciesInBlock.begin());
         blockIndexToSource.push_back(std::move(indeciesInBlock));
         for (size_t i = 0; i<indicies.size(); i += 1){
@@ -239,7 +239,7 @@ struct DataMapper<DataEntry, void, void>{
     size_t blockCounter;
     size_t graphFragment;
     std::unordered_map<size_t, size_t> splitToBlockNum;
-    std::vector<std::vector<size_t>> blockIndexToSource;
+    std::vector<ann::dynamic_array<size_t>> blockIndexToSource;
     std::vector<BlockIndecies> sourceToBlockIndex;
     std::vector<size_t> sourceToSplitIndex;
     
@@ -253,7 +253,7 @@ struct DataMapper<DataEntry, void, void>{
     void operator()(size_t splittingIndex, std::span<const size_t> indicies){
         //[[unlikely]]if (indicies.size() == 0) return;
         splitToBlockNum[splittingIndex] = blockCounter;
-        std::vector<size_t> indeciesInBlock(indicies.size());
+        ann::dynamic_array<size_t> indeciesInBlock(indicies.size());
         std::copy(indicies.begin(), indicies.end(), indeciesInBlock.begin());
         blockIndexToSource.push_back(std::move(indeciesInBlock));
         for (size_t i = 0; i<indicies.size(); i += 1){

@@ -10,7 +10,11 @@ https://github.com/AnabelSMRuggiero/NNDescent.cpp
 
 //This is primarily for testing an debugging
 
+#include <algorithm>
+#include <cstddef>
+#include <functional>
 #include <memory_resource>
+#include <ranges>
 #include <string>
 #include <utility>
 #include <vector>
@@ -30,6 +34,7 @@ https://github.com/AnabelSMRuggiero/NNDescent.cpp
 
 //#include <type_traits>
 
+#include "NND/Type.hpp"
 #include "ann/MemoryResources.hpp"
 #include "ann/Type.hpp"
 #include "ann/Data.hpp"
@@ -82,9 +87,9 @@ std::vector<BlockIndecies> VertexToIndex(const GraphVertex<BlockIndecies, DistTy
 
 
 template<typename DistType>
-std::vector<IndexBlock> IndexFinalization(std::span<BlockUpdateContext<DistType>> blocks, std::pmr::memory_resource* resource = std::pmr::get_default_resource()){
+ann::dynamic_array<IndexBlock> IndexFinalization(std::span<BlockUpdateContext<DistType>> blocks, std::pmr::memory_resource* resource = std::pmr::get_default_resource()){
 
-    std::vector<UnevenBlock<BlockIndecies>> index(blocks.size());
+    ann::dynamic_array<UnevenBlock<BlockIndecies>> index(blocks.size());
     //index.reserve(blocks.size());
     
     //maybe I should write my own "multi_transform"
@@ -135,7 +140,7 @@ std::vector<IndexBlock> IndexFinalization(std::span<BlockUpdateContext<DistType>
 
   
 template<typename DistType>
-void SerializeFragmentIndex(std::span<const DataBlock<DistType>> dataBlocks, std::span<const BlockUpdateContext<DistType>> graphBlocks, std::span<const IndexBlock> indexBlocks, std::filesystem::path fragmentDirectory){
+void SerializeFragmentIndex(std::span<const DataBlock<DistType>> dataBlocks, std::span<const QueryContext<DataIndex_t, DistType>> graphBlocks, std::span<const IndexBlock> indexBlocks, std::filesystem::path fragmentDirectory){
 
     FragmentMetaData metadata{dataBlocks.size()};
 
@@ -150,9 +155,9 @@ void SerializeFragmentIndex(std::span<const DataBlock<DistType>> dataBlocks, std
 
 
     for (const auto& block: graphBlocks){
-        std::filesystem::path queryContextPath = fragmentDirectory / ("QueryContext-" + std::to_string(block.queryContext.blockNumber) + ".bin");
+        std::filesystem::path queryContextPath = fragmentDirectory / ("QueryContext-" + std::to_string(block.blockNumber) + ".bin");
         std::ofstream contextFile{queryContextPath, std::ios_base::binary | std::ios_base::trunc};
-        serialize(block.queryContext, contextFile);
+        serialize(block, contextFile);
     }
 
     for (size_t i = 0; const auto& block: indexBlocks){
@@ -163,12 +168,198 @@ void SerializeFragmentIndex(std::span<const DataBlock<DistType>> dataBlocks, std
     }
 }
 
-using SplittingVectors = std::unordered_map<size_t, std::pair<ann::aligned_array<float>, float>>;
-
-void SerializeSplittingVectors(const SplittingVectors& splittingVectors, std::filesystem::path filePath){
+void SerializeSplittingVectors(const splitting_vectors& splittingVectors, std::filesystem::path filePath){
     std::ofstream vectorFile{filePath, std::ios_base::binary | std::ios_base::trunc};
     serialize(splittingVectors, vectorFile);
 }
+
+constexpr SplittingHeurisitcs seed_parameters{
+    .splitThreshold = 10,
+    .childThreshold = 4,
+    .maxTreeSize = 22,
+    .maxSplitFraction = 0.0f,
+};
+
+constexpr auto add_candidates = [] (auto&& candidates, auto&& index_maps, std::size_t splitIdx, std::span<const size_t> indecies){
+    constexpr std::size_t buffer_size = sizeof(BlockIndecies) * seed_parameters.maxTreeSize * 4;
+    std::byte stack_buffer[buffer_size];
+    std::pmr::monotonic_buffer_resource stack_resource{stack_buffer, buffer_size};
+
+    ann::pmr::dynamic_array<BlockIndecies> block_indecies{ 
+        indecies | std::views::transform([&](const auto& index){
+            return index_maps.sourceToBlockIndex[index];
+        }), 
+        &stack_resource
+    };
+
+    for (const auto& element : block_indecies){
+        auto& candidates_vec = candidates[element.blockNumber][element.dataIndex];
+        candidates_vec.reserve(block_indecies.size());
+        std::ranges::copy_if(block_indecies, std::back_inserter(candidates_vec), [&](const auto current_candidate){
+            return current_candidate.blockNumber != element.blockNumber;
+        });
+        if (candidates_vec.size()>seed_parameters.childThreshold){
+            candidates_vec.resize(seed_parameters.childThreshold);
+        }
+    }
+};
+
+template<typename SplittingScheme, typename DistanceType>
+auto seed_candidates(const DataSet<DistanceType>& training_data, const IndexMaps<std::size_t>& index_maps){
+    
+    auto [rp_trees, splitting_vectors] = BuildRPForest<SplittingScheme>(training_data, seed_parameters);
+
+    auto seed_arrays = index_maps.blockIndexToSource 
+                       | std::views::transform(
+                           [](const auto& block){
+                               return ann::dynamic_array<std::vector<BlockIndecies>>{block.size()};
+                         });
+
+    ann::dynamic_array<ann::dynamic_array<std::vector<BlockIndecies>>> candidates{seed_arrays};
+
+    
+
+    auto candidate_task = [&](std::size_t splitIdx, std::span<const size_t> indecies){
+        add_candidates(candidates, index_maps, splitIdx, indecies);
+    };
+
+    CrawlTerminalLeaves(rp_trees, candidate_task);
+
+    return candidates;
+}
+
+template<typename SplittingScheme, typename DistanceType>
+auto seed_candidates(const DataSet<DistanceType>& training_data, const IndexMaps<std::size_t>& index_maps, std::size_t num_threads){
+    
+    auto [rp_trees, splitting_vectors] = BuildRPForest<SplittingScheme>(training_data, seed_parameters, num_threads);
+
+    auto seed_arrays = index_maps.blockIndexToSource 
+                       | std::views::transform(
+                           [](const auto& block){
+                               return ann::dynamic_array<std::vector<BlockIndecies>>{block.size()};
+                         });
+
+    ann::dynamic_array<ann::dynamic_array<std::vector<BlockIndecies>>> candidates{seed_arrays};
+
+    ThreadPool<void> assemble_candidates(num_threads);
+
+    auto add_task = [&](std::size_t splitIdx, std::span<const size_t> indecies){
+        assemble_candidates.DelegateTask([&, splitIdx, indecies]{
+            add_candidates(candidates, index_maps, splitIdx, indecies);
+        });
+    };
+
+    threaded_region(assemble_candidates, [&](){CrawlTerminalLeaves(rp_trees, add_task);});
+
+    return candidates;
+}
+
+template<typename DistanceType, typename DistanceMetric>
+nnd::index<DistanceType> build_index(const DataSet<DistanceType>& training_data, const DistanceMetric& distance, std::size_t num_threads, const hyper_parameters& index_parameters = {}){
+
+    using splitting_scheme = pick_parallel_scheme<choose_scheme<DistanceMetric>, DistanceType, ann::aligned_array<DistanceType>>;
+    
+    auto [rp_trees, splitting_vectors] = BuildRPForest<splitting_scheme>(training_data, index_parameters.splitParams, num_threads);
+                                            
+    ThreadPool<void> block_builder(num_threads);
+
+    auto [index_mappings, data_blocks] = PartitionData<DistanceType>(rp_trees, training_data, block_builder);
+
+    auto candidates = seed_candidates<splitting_scheme>(training_data, index_mappings, num_threads);
+
+    //block_builder.StopThreads();
+    
+    block_binder euclideanBinder(distance, std::span{std::as_const(data_blocks)}, std::span{std::as_const(data_blocks)});
+    erased_binary_binder<DistanceType> distance_metric{euclideanBinder};
+
+    ThreadPool<thread_functors<float>> pool(num_threads, euclideanBinder, index_parameters.splitParams.maxTreeSize, index_parameters.indexParams.blockGraphNeighbors);
+    pool.StartThreads();
+    //ann::dynamic_array<BlockUpdateContext<DistanceType>> blockContextArr = BuildGraph(meta_graph, index_parameters, pool);
+    ann::dynamic_array<BlockUpdateContext<DistanceType>> blockContextArr = BuildGraphRedux(candidates, index_parameters, pool);
+    pool.StopThreads();
+    
+    std::span<BlockUpdateContext<DistanceType>> blockUpdateContexts{blockContextArr.data(), data_blocks.size()};
+    
+    
+    ann::dynamic_array<IndexBlock> index = IndexFinalization(blockUpdateContexts);
+
+    auto splits_to_do = [&splits = splitting_vectors, &mappings = index_mappings]{
+        std::unordered_set<size_t> splitting_indicies;
+        for (const auto& [key, value] : splits)
+            splitting_indicies.insert(key);
+
+        for (const auto& [key, value] : mappings.splitToBlockNum)
+            splitting_indicies.erase(key);
+        
+        return splitting_indicies;
+    }();
+    //auto move_query_view = blockContextArr | std::views::transform([](auto&& element)->auto&& {return std::move(element).queryContext;});
+    return nnd::index<DistanceType>{
+        .data_points                = std::move(data_blocks),
+        .query_contexts             = blockContextArr | std::views::transform([](auto&& element)->auto&& {return std::move(element).queryContext;}),
+        .graph_neighbors            = std::move(index),
+        .block_idx_to_source_idx    = std::move(index_mappings).blockIndexToSource,
+        .splits_to_do               = std::move(splits_to_do),
+        .splits                     = std::move(splitting_vectors),
+        .split_idx_to_block_idx     = std::move(index_mappings).splitToBlockNum,
+        .distance_metric            = {},
+        .search_parameters          = {}
+    };
+    
+}
+
+
+
+template<typename DistanceType, typename DistanceMetric>
+nnd::index<DistanceType> build_index(const DataSet<DistanceType>& training_data, const DistanceMetric& distance, const hyper_parameters& index_parameters = {}){
+    
+    using splitting_scheme = pick_serial_scheme<choose_scheme<DistanceMetric>, DistanceType, ann::aligned_array<DistanceType>>;
+
+    auto [rp_trees, splitting_vectors] = BuildRPForest<splitting_scheme>(training_data, index_parameters.splitParams);
+                                            
+    auto [index_mappings, data_blocks] = PartitionData<DistanceType>(rp_trees, training_data);
+
+    
+    block_binder euclideanBinder(distance, std::span{std::as_const(data_blocks)}, std::span{std::as_const(data_blocks)});
+    erased_binary_binder<DistanceType> distance_metric{euclideanBinder};
+
+    auto candidates = seed_candidates<splitting_scheme>(training_data, index_mappings);
+    //MetaGraph<DistanceType> meta_graph = BuildMetaGraphFragment<DistanceType>(data_blocks, index_parameters.indexParams, 0, EuclideanMetricSet{}, EuclideanCOM<float, float>);
+    //fixed_block_binder com_functor(distance, meta_graph.points, std::span{std::as_const(data_blocks)});
+
+    
+    //ann::dynamic_array<BlockUpdateContext<DistanceType>> blockContextArr = BuildGraphRedux(meta_graph, distance_metric, index_parameters, erased_unary_binder{com_functor});
+    ann::dynamic_array<BlockUpdateContext<DistanceType>> blockContextArr = BuildGraphRedux(candidates, distance_metric, index_parameters);
+    std::span<BlockUpdateContext<DistanceType>> blockUpdateContexts{blockContextArr.data(), data_blocks.size()};
+    
+    
+    ann::dynamic_array<IndexBlock> index = IndexFinalization(blockUpdateContexts);
+
+    auto splits_to_do = [&splits = splitting_vectors, &mappings = index_mappings]{
+        std::unordered_set<size_t> splitting_indicies;
+        for (const auto& [key, value] : splits)
+            splitting_indicies.insert(key);
+
+        for (const auto& [key, value] : mappings.splitToBlockNum)
+            splitting_indicies.erase(key);
+        
+        return splitting_indicies;
+    }();
+    
+    return nnd::index<DistanceType>{
+        .data_points                = std::move(data_blocks),
+        .query_contexts             = blockContextArr | std::views::transform([](auto&& element)->auto&& {return std::move(element).queryContext;}),
+        .graph_neighbors            = std::move(index),
+        .block_idx_to_source_idx    = std::move(index_mappings).blockIndexToSource,
+        .splits_to_do               = std::move(splits_to_do),
+        .splits                     = std::move(splitting_vectors),
+        .split_idx_to_block_idx     = std::move(index_mappings).splitToBlockNum,
+        .distance_metric            = {},
+        .search_parameters          = {}
+    };
+    
+}
+
 
 enum class Options{
     blockGraphNeighbors,
@@ -261,7 +452,7 @@ int main(int argc, char *argv[]){
     // max block size must be < <DataIndex_t>::max()
     // max fragment size must be <  dataSet size (min num fragments * min block size)
 
-    bool parallelIndexBuild = true;
+    bool parallelIndexBuild = false;
     bool parallelSearch = true;
 
 
@@ -351,13 +542,14 @@ int main(int argc, char *argv[]){
         }
     }
 
-    HyperParameterValues parameters{splitParams, indexParams, searchParams};
+    hyper_parameters parameters{splitParams, indexParams, searchParams};
     {
         /*
         std::string trainDataFilePath("./TestData/MNIST-Fashion-Train.bin");
         DataSet<float> mnistFashionTrain(trainDataFilePath, 28*28, 60'000);
 
         std::filesystem::path indexLocation("./Saved-Indecies/MNIST-Fashion");
+        using metric = euclidean_metric_pair;
         */
 
         /*
@@ -367,11 +559,19 @@ int main(int argc, char *argv[]){
         DataSet<uint32_t, alignof(uint32_t)> mnistFashionTestNeighbors(testNeighborsFilePath, 100, 10'000);
         */
 
-        
+        /*
         std::string trainDataFilePath("./TestData/SIFT-Train.bin");
         DataSet<float> mnistFashionTrain(trainDataFilePath, 128, 1'000'000);
         std::filesystem::path indexLocation("./Saved-Indecies/SIFT");
+        using metric = euclidean_metric_pair;
+        */
         
+        std::string trainDataFilePath("./TestData/NYTimes-Angular-Train.bin");
+        DataSet<float> training_data(trainDataFilePath, 256, 290'000);
+        std::filesystem::path indexLocation("./Saved-Indecies/NYTimes");
+        using metric = inner_product_pair;
+        
+
         /*
         std::string testDataFilePath("./TestData/SIFT-Test.bin");
         std::string testNeighborsFilePath("./TestData/SIFT-Neighbors.bin");
@@ -384,79 +584,45 @@ int main(int argc, char *argv[]){
         DataSet<AlignedArray<float>> mnistFashionTrain(trainDataFilePath, 256, 290'000, &ExtractNumericArray<AlignedArray<float>,dataEndianness>);
 
         std::string testDataFilePath("./TestData/NYTimes-Angular-Test.bin");
-        std::string testNeighborsFilePath("./TestData/NYTimes-Angular-Neighbors.bin");
-        DataSet<AlignedArray<float>> mnistFashionTest(testDataFilePath, 256, 10'000, &ExtractNumericArray<AlignedArray<float>,dataEndianness>);
-        DataSet<AlignedArray<uint32_t>> mnistFashionTestNeighbors(testNeighborsFilePath, 100, 10'000, &ExtractNumericArray<AlignedArray<uint32_t>,dataEndianness>);
+        //std::string testNeighborsFilePath("./TestData/NYTimes-Angular-Neighbors.bin");
+        DataSet<float> mnistFashionTest(testDataFilePath, 256, 10'000, &ExtractNumericArray<AlignedArray<float>,dataEndianness>);
+        //DataSet<AlignedArray<uint32_t>> mnistFashionTestNeighbors(testNeighborsFilePath, 100, 10'000, &ExtractNumericArray<AlignedArray<uint32_t>,dataEndianness>);
         */
+        
         //std::cout << "I/O done." << std::endl;
 
 
         std::chrono::time_point<std::chrono::steady_clock> runStart = std::chrono::steady_clock::now();
-
-        auto [rpTrees, splittingVectors] = (parallelIndexBuild) ? 
-                                            BuildRPForest<ParallelEuclidianScheme<float, ann::aligned_array<float>>>(std::execution::par_unseq, mnistFashionTrain, parameters.splitParams, numThreads) :
-                                            BuildRPForest<EuclidianScheme<float, ann::aligned_array<float>>>(std::execution::seq, mnistFashionTrain, parameters.splitParams);
-                                            
-        SerializeSplittingVectors(splittingVectors, indexLocation / "SplittingVectors.bin");
-
-
-        //std::pmr::monotonic_buffer_resource memoryIn(std::pmr::get_default_resource());
-        //ann::threaded_multipool nndPool(&memoryIn);
-        //std::pmr::synchronized_pool_resource nndPool(&memoryIn);
-        //internal::SetInternalResource(&nndPool);
         
-        ThreadPool<void> blockBuilder(numThreads);
-
-        auto [indexMappings, dataBlocks] = (parallelIndexBuild) ? 
-                                            PartitionData<float>(rpTrees, mnistFashionTrain, blockBuilder):
-                                            PartitionData<float>(rpTrees, mnistFashionTrain);
-
-        
-        [&, &indexMappings = indexMappings](){
-            std::ofstream mappingFile{indexLocation/"SplittingIndexToBlockNumber.bin", std::ios_base::binary | std::ios_base::trunc};
-            serialize(indexMappings.splitToBlockNum, mappingFile);
-        }();
-
-        [&, &indexMappings = indexMappings](){
-            std::ofstream mappingFile{indexLocation/"BlockIndexToSourceIndex.bin", std::ios_base::binary | std::ios_base::trunc};
-            serialize(indexMappings.blockIndexToSource, mappingFile);
-        }();
-        block_binder euclideanBinder(EuclideanMetricPair{}, std::span{std::as_const(dataBlocks)}, std::span{std::as_const(dataBlocks)});
-        erased_binary_binder<float> testDispatch(euclideanBinder);
-
-        
-        MetaGraph<float> metaGraph = BuildMetaGraphFragment<float>(dataBlocks, parameters.indexParams, 0, EuclideanMetricSet(), EuclideanCOM<float, float>);
-        fixed_block_binder comFunctor(EuclideanMetricPair{}, metaGraph.points, std::span{std::as_const(dataBlocks)});
-
-        //hacky but not a long term thing
-        std::unique_ptr<BlockUpdateContext<float>[]> blockContextArr;
-        std::span<BlockUpdateContext<float>> blockUpdateContexts;
-
-        if (parallelIndexBuild){
-            ThreadPool<thread_functors<float, float>> pool(numThreads, euclideanBinder, comFunctor, splitParams.maxTreeSize, parameters.indexParams.blockGraphNeighbors);
-            pool.StartThreads();
-            blockContextArr = BuildGraph(metaGraph, parameters, pool);
-            blockUpdateContexts = {blockContextArr.get(), dataBlocks.size()};
-            pool.StopThreads();
-        } else {
-            blockContextArr = BuildGraph<float, float, float>(dataBlocks, metaGraph, testDispatch, parameters, comFunctor);
-            blockUpdateContexts = {blockContextArr.get(), dataBlocks.size()};
-        }
-        //
-        
+        nnd::index built_index = parallelIndexBuild 
+                                    ? build_index(training_data, metric{}, numThreads, parameters)
+                                    : build_index(training_data, metric{}, parameters);
         std::chrono::time_point<std::chrono::steady_clock> runEnd = std::chrono::steady_clock::now();
         //std::cout << std::chrono::duration_cast<std::chrono::duration<float>>(runEnd - runStart).count() << "s total for index building " << std::endl;
         std::cout << std::chrono::duration_cast<std::chrono::duration<float>>(runEnd - runStart).count() << std::endl;
         //std::chrono::time_point<std::chrono::steady_clock> finalizationStart = std::chrono::steady_clock::now();
 
-        std::vector<IndexBlock> index = IndexFinalization(blockUpdateContexts);
+        SerializeSplittingVectors(built_index.splits, indexLocation / "SplittingVectors.bin");
 
-        std::span<const IndexBlock> indexView{index.data(), index.size()};
+        [&, &split_idx_to_block_idx = built_index.split_idx_to_block_idx](){
+            std::ofstream mappingFile{indexLocation/"SplittingIndexToBlockNumber.bin", std::ios_base::binary | std::ios_base::trunc};
+            serialize(split_idx_to_block_idx, mappingFile);
+        }();
+
+        [&, &block_idx_to_source_idx = built_index.block_idx_to_source_idx](){
+            std::ofstream mappingFile{indexLocation/"BlockIndexToSourceIndex.bin", std::ios_base::binary | std::ios_base::trunc};
+            serialize(block_idx_to_source_idx, mappingFile);
+        }();
+        
+        
+        //std::span<const IndexBlock> indexView{index.data(), index.size()};
         //std::chrono::time_point<std::chrono::steady_clock> finalizationEnd = std::chrono::steady_clock::now();
         //std::cout << std::chrono::duration_cast<std::chrono::duration<float>>(finalizationEnd - finalizationStart).count() << "s total for index finalization " << std::endl;
-        SerializeFragmentIndex(std::span<const DataBlock<float>>{dataBlocks},
-                            std::span<const BlockUpdateContext<float>>{blockUpdateContexts},
-                            indexView,
+        
+        
+        SerializeFragmentIndex( as_const_span(built_index.data_points),
+                            as_const_span(built_index.query_contexts),
+                            as_const_span(built_index.graph_neighbors),
                             indexLocation);
         
     }

@@ -476,12 +476,12 @@ std::vector<std::vector<std::size_t>> search(const DataSet<DistanceType>& search
 
     ThreadPool<erased_unary_binder<DistanceType>> searchPool(num_threads, index.distance_metric);
 
-    std::span<const std::vector<size_t>> indexMappingView(index.block_idx_to_source_idx);
+    std::span<const ann::dynamic_array<size_t>> indexMappingView(index.block_idx_to_source_idx);
 
     auto [searchContexts, mappings] =
         block_search_set(search_data, rpTreesTest, index.search_parameters, index.graph_neighbors.size(), index.split_idx_to_block_idx);
 
-    ParallelSearch(searchPool, index.search_parameters.maxSearchesQueued, std::span{searchContexts}, std::span{index.query_contexts}, std::span{std::as_const(index.graph_neighbors)});
+    ParallelSearch(searchPool, index.search_parameters.maxSearchesQueued, std::span{searchContexts}, as_const_span(index.query_contexts), as_const_span(index.graph_neighbors));
 
     std::vector<std::vector<size_t>> results(search_data.size());
 
@@ -513,7 +513,7 @@ std::vector<std::vector<std::size_t>> search(const DataSet<DistanceType>& search
 
     
 
-    fixed_block_binder searchDist(EuclideanMetricPair{}, search_data, std::span{ std::as_const(index.data_points) });
+    fixed_block_binder searchDist(euclidean_metric_pair{}, search_data, as_const_span(index.data_points));
     erased_unary_binder<float> searchFunctor(searchDist);
 
     std::vector<std::vector<size_t>> results(search_data.size());
@@ -546,17 +546,17 @@ std::vector<std::vector<std::size_t>> search(const DataSet<DistanceType>& search
     std::span<const IndexBlock> indexView{ std::as_const(index.graph_neighbors) };
 
     SearchQueue searchHints =
-        FirstBlockSearch(searchContexts, searchFunctor, std::span{ index.query_contexts }, indexView, index.search_parameters.maxSearchesQueued);
+        FirstBlockSearch(searchContexts, searchFunctor, as_const_span(index.query_contexts), indexView, index.search_parameters.maxSearchesQueued);
 
 
     QueueView hintView = { searchHints.data(), searchHints.size() };
 
     SearchLoop(
-        searchFunctor, hintView, searchContexts, std::span{ index.query_contexts }, indexView, index.search_parameters.maxSearchesQueued, search_data.size());
+        searchFunctor, hintView, searchContexts, as_const_span(index.query_contexts), indexView, index.search_parameters.maxSearchesQueued, search_data.size());
 
 
 
-    std::span<const std::vector<size_t>> indexMappingView{index.block_idx_to_source_idx};
+    std::span<const ann::dynamic_array<size_t>> indexMappingView{index.block_idx_to_source_idx};
 
     for (size_t i = 0; auto& [ignore, testBlock] : searchContexts) {
         for (size_t j = 0; auto& context : testBlock) {

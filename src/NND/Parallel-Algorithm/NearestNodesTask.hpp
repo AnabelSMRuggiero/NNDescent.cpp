@@ -28,11 +28,11 @@ namespace nnd {
 template<typename DistType, typename COMExtent>
 struct NearestNodesGenerator{
 
-    using TaskResult = std::pair<ComparisonKey<BlockNumber_t>, std::tuple<DataIndex_t, DataIndex_t, DistType>>;
+    using TaskResult = std::pair<comparison_key<BlockNumber_t>, std::tuple<DataIndex_t, DataIndex_t, DistType>>;
 
     using BlockPtrPair = std::pair<BlockUpdateContext<DistType>*, BlockUpdateContext<DistType>*>;
     
-    using TaskArgs = ComparisonKey<BlockNumber_t>;
+    using TaskArgs = comparison_key<BlockNumber_t>;
     
     NearestNodesGenerator(std::span<BlockUpdateContext<DistType>> blockSpan,
                           std::span<std::atomic<bool>> blockStates)://,
@@ -47,12 +47,12 @@ struct NearestNodesGenerator{
     std::vector<std::optional<ComparisonKey<size_t>>>& distancesToCompute;
     size_t nullCounter;
     */
-    bool operator()(ThreadPool<thread_functors<DistType, COMExtent>>& pool,
-                    AsyncQueue<std::pair<ComparisonKey<BlockNumber_t>, std::tuple<DataIndex_t, DataIndex_t, DistType>>>& resultsQueue,
-                    std::vector<std::optional<ComparisonKey<BlockNumber_t>>>& distancesToCompute){
+    bool operator()(ThreadPool<old_thread_functors<DistType, COMExtent>>& pool,
+                    AsyncQueue<std::pair<comparison_key<BlockNumber_t>, std::tuple<DataIndex_t, DataIndex_t, DistType>>>& resultsQueue,
+                    std::vector<std::optional<comparison_key<BlockNumber_t>>>& distancesToCompute){
         auto nnDistanceTaskGenerator = [&](BlockPtrPair blockPtrs)->auto{
 
-            auto task = [&, ptrs = blockPtrs](thread_functors<DistType, COMExtent>& functors) mutable->void{
+            auto task = [&, ptrs = blockPtrs](old_thread_functors<DistType, COMExtent>& functors) mutable->void{
                 const QueryContext<DataIndex_t, DistType>& lhsQueryContext = ptrs.first->queryContext;
                 const QueryContext<DataIndex_t, DistType>& rhsQueryContext = ptrs.second->queryContext;
                 
@@ -126,8 +126,8 @@ struct InitJoinConsumer;
 template<typename DistType>
 struct NearestNodesConsumer{
 
-    using TaskResult = std::pair<ComparisonKey<BlockNumber_t>, std::tuple<DataIndex_t, DataIndex_t, DistType>>;
-    using StitchHint = std::pair<ComparisonKey<BlockNumber_t>, std::tuple<DataIndex_t, DataIndex_t, DistType>>;
+    using TaskResult = std::pair<comparison_key<BlockNumber_t>, std::tuple<DataIndex_t, DataIndex_t, DistType>>;
+    using StitchHint = std::pair<comparison_key<BlockNumber_t>, std::tuple<DataIndex_t, DataIndex_t, DistType>>;
 
     NearestNodesConsumer() = default;
 
@@ -138,7 +138,7 @@ struct NearestNodesConsumer{
                             blocksDone(0),
                             joinsPerBlock(std::make_unique<size_t[]>(numBlocks)) {};
 
-    bool operator()(std::pair<ComparisonKey<BlockNumber_t>, std::tuple<DataIndex_t, DataIndex_t, DistType>> result){
+    bool operator()(std::pair<comparison_key<BlockNumber_t>, std::tuple<DataIndex_t, DataIndex_t, DistType>> result){
         joinHints[result.first] = result.second;
 
         nnGraph[result.first.first].push_back({result.first.second, std::get<2>(result.second)});
@@ -205,8 +205,8 @@ struct NearestNodesConsumer{
     
     size_t blocksDone;
 
-    std::unordered_map<ComparisonKey<BlockNumber_t>, std::tuple<DataIndex_t, DataIndex_t, DistType>> joinHints;
-    std::unordered_set<ComparisonKey<BlockNumber_t>> initJoinsQueued;
+    std::unordered_map<comparison_key<BlockNumber_t>, std::tuple<DataIndex_t, DataIndex_t, DistType>> joinHints;
+    std::unordered_set<comparison_key<BlockNumber_t>> initJoinsQueued;
     
     std::vector<std::optional<StitchHint>> initJoinsToDo;
 

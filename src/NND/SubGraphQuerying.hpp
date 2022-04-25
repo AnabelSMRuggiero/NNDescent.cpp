@@ -17,6 +17,7 @@ https://github.com/AnabelSMRuggiero/NNDescent.cpp
 #include <functional>
 #include <iterator>
 #include <limits>
+#include <memory_resource>
 #include <optional>
 #include <ranges>
 #include <tuple>
@@ -25,12 +26,17 @@ https://github.com/AnabelSMRuggiero/NNDescent.cpp
 #include <utility>
 #include <vector>
 
-#include "../ann/Data.hpp"
-#include "../ann/DataDeserialization.hpp"
-#include "../ann/DataSerialization.hpp"
+#include "ann/Data.hpp"
+#include "ann/DataDeserialization.hpp"
+#include "ann/DataSerialization.hpp"
+#include "ann/AlignedMemory/DynamicArray.hpp"
+
+#include "NND/GraphStructures/GraphVertex.hpp"
+#include "RNG.hpp"
 #include "FunctorErasure.hpp"
 #include "GraphStructures.hpp"
 #include "MemoryInternals.hpp"
+#include "NND/Type.hpp"
 
 namespace nnd {
 
@@ -132,15 +138,64 @@ GraphVertex<IndexType, DistType> QueryHintFromCOM(
     }
 }
 
+
+/*
+template<typename DistType>
+GraphVertex<DataIndex_t, DistType> DispersedQueryHint(erased_metric<DistType> distance_functor, std::size_t block_size, std::size_t num_candidates) {
+    
+    stack_fed_buffer<4096> stack_buffer;
+    std::pmr::polymorphic_allocator<> allocator{stack_buffer};
+
+    using distance_cache = std::pmr::unordered_map<comparison_key<DataIndex_t>, DistType>;
+
+    distance_cache& cache = *allocator.new_object<distance_cache>();
+
+    auto distance = [&](DataIndex_t lhs, DataIndex_t rhs)->DistType{
+        auto cache_itr = cache.find({lhs, rhs});
+        if(cache_itr != cache.end()){
+            return *cache_itr;
+        } else{
+            return cache[{lhs, rhs}] = distance_functor(lhs, rhs);
+        }
+    };
+
+    ann::pmr::dynamic_array<DataIndex_t>& indecies = *allocator.new_object<ann::pmr::dynamic_array<DataIndex_t>>(num_candidates);
+    
+}
+*/
+template<typename IndexType, typename DistType>
+GraphVertex<IndexType, DistType> RandomQueryHint(std::size_t block_size, std::size_t num_candidates) {
+    
+    stack_fed_buffer<4096> stack_buffer;
+    std::pmr::polymorphic_allocator<> allocator{stack_buffer};
+    
+    std::pmr::unordered_set<IndexType>& selected_indecies = *allocator.new_object<std::pmr::unordered_set<IndexType>>();
+
+    RngFunctor rng{0, block_size};
+
+    while (selected_indecies.size()<num_candidates){
+        selected_indecies.insert(rng());
+    }
+
+    GraphVertex<IndexType, DistType> result{num_candidates};
+    
+    for (const auto& index : selected_indecies){
+        result.push_back({index, std::numeric_limits<DistType>::max()});
+    }
+
+    return result;
+}
+
+
 template<std::unsigned_integral IndexType, std::totally_ordered DistType>
 struct QueryContext {
 
-    const UndirectedGraph<IndexType> subGraph;
-    const GraphVertex<IndexType, DistType> queryHint;
+    UndirectedGraph<IndexType> subGraph;
+    GraphVertex<IndexType, DistType> queryHint;
     size_t querySize;
     size_t querySearchDepth;
-    const GraphFragment_t graphFragment{ GraphFragment_t(-1) };
-    const BlockNumber_t blockNumber{ BlockNumber_t(-1) };
+    GraphFragment_t graphFragment{ GraphFragment_t(-1) };
+    BlockNumber_t blockNumber{ BlockNumber_t(-1) };
     size_t blockSize{ size_t(-1) };
 
     QueryContext() = default;
@@ -163,7 +218,7 @@ struct QueryContext {
           querySearchDepth(Extract<size_t>(inFile)), graphFragment(Extract<GraphFragment_t>(inFile)),
           blockNumber(Extract<BlockNumber_t>(inFile)), blockSize(Extract<size_t>(inFile)) {}
 
-    QueryContext(QueryContext&&) = default;
+    //QueryContext(QueryContext&&) = default;
 
     template<typename QueryFunctor>
     GraphVertex<IndexType, DistType, PolymorphicAllocator> Query(

@@ -32,14 +32,14 @@ struct GraphComparisonGenerator {
         std::span<BlockUpdateContext<DistType>> blocks, std::vector<bool>& updatedBlocks, std::span<std::atomic<bool>> initializedBlocks)
         : blocks(blocks), updatedBlocks(updatedBlocks), initializedBlocks(initializedBlocks){};
 
-    bool operator()(ThreadPool<thread_functors<DistType, COMExtent>>& pool, std::vector<std::optional<TaskArgs>>& comparisonsToDo) {
+    bool operator()(ThreadPool<old_thread_functors<DistType, COMExtent>>& pool, std::vector<std::optional<TaskArgs>>& comparisonsToDo) {
         auto comparisonGenerator = [&](const BlockNumber_t blockToUpdate, ComparisonMap&& comparisonsToDo) {
             auto comparisonTask = [&,
                                    blockPtr = &(blocks[blockToUpdate]),
                                    comparisons = std::move(comparisonsToDo),
                                    blocks = this->blocks,
                                    initializedBlocks =
-                                       this->initializedBlocks](thread_functors<DistType, COMExtent>& threadFunctors) mutable {
+                                       this->initializedBlocks](old_thread_functors<DistType, COMExtent>& threadFunctors) mutable {
                 blockPtr->joinsToDo = InitializeJoinMap<DistType>(blocks, comparisons, blockPtr->blockJoinTracker);
                 // resultsQueue.Put();
                 initializedBlocks[blockPtr->queryContext.blockNumber] = true;

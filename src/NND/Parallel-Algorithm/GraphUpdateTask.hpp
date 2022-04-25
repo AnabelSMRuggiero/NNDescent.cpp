@@ -43,10 +43,10 @@ struct GraphUpdateGenerator{
                         readyBlocks(readyBlocks),
                         graphUpdates(graphUpdates){};
 
-    bool operator()(ThreadPool<thread_functors<DistType, COMExtent>>& pool, AsyncQueue<TaskResult>& resultsQueue, std::vector<std::optional<size_t>>& resultsToReduce){
+    bool operator()(ThreadPool<old_thread_functors<DistType, COMExtent>>& pool, AsyncQueue<TaskResult>& resultsQueue, std::vector<std::optional<size_t>>& resultsToReduce){
         auto updateGenerator = [&](const size_t blockToUpdate){
 
-            auto updateTask = [&, blockPtr = &(blocks[blockToUpdate]), updates = std::move(graphUpdates[blockToUpdate]), readyBlocks = this->readyBlocks](thread_functors<DistType, COMExtent>& threadFunctors) mutable{
+            auto updateTask = [&, blockPtr = &(blocks[blockToUpdate]), updates = std::move(graphUpdates[blockToUpdate]), readyBlocks = this->readyBlocks](old_thread_functors<DistType, COMExtent>& threadFunctors) mutable{
                 for (auto& joinUpdates: updates){
                     for(auto& vertex: joinUpdates.second){
                         ConsumeVertex(blockPtr->currentGraph[vertex.first], vertex.second, blockPtr->queryContext.graphFragment, joinUpdates.first);

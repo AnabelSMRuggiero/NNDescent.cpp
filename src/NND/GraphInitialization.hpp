@@ -11,6 +11,7 @@ https://github.com/AnabelSMRuggiero/NNDescent.cpp
 #ifndef NND_GRAPHINITIALIZATION_HPP
 #define NND_GRAPHINITIALIZATION_HPP
 
+#include <cstddef>
 #include <utility>
 #include <vector>
 #include <algorithm>
@@ -35,7 +36,7 @@ namespace nnd{
 
 template<typename DataType>
 std::pair<IndexMaps<size_t>, std::vector<DataBlock<DataType>>> PartitionData(const RandomProjectionForest& treeToMap, const DataSet<DataType>& sourceData, const size_t startIndex=0){
-    //There might be a more elegant way to do this with templates. I tried.
+
 
     //using DataType = typename DataEntry::value_type;
 
@@ -113,7 +114,7 @@ std::pair<IndexMaps<size_t>, std::vector<DataBlock<DataType>>> PartitionData(con
 
 template<typename DistType>
 std::vector<Graph<DataIndex_t, DistType>> InitializeBlockGraphs(const size_t numBlocks,
-                                                           const std::vector<size_t>& blockSizes,
+                                                           std::span<const std::size_t> blockSizes,
                                                            const size_t numNeighbors,
                                                            erased_binary_binder<DistType> distanceFunctor){
     
@@ -126,16 +127,13 @@ std::vector<Graph<DataIndex_t, DistType>> InitializeBlockGraphs(const size_t num
     return blockGraphs;
 }
 
-
-
 template <typename DistType, typename COMExtent, typename IndexType>
-Graph<IndexType, DistType> GenerateQueryHints(const std::span<Graph<IndexType, DistType>> blockGraphs,
-                                                  const MetaGraph<COMExtent>& metaGraph,
-                                                  const size_t numNeighbors,
-                                                  erased_unary_binder<COMExtent> distanceFunctor){
+Graph<IndexType, DistType> old_GenerateQueryHints(std::span<Graph<IndexType, DistType>> blockGraphs,
+                                              size_t numNeighbors,
+                                              erased_unary_binder<COMExtent> distanceFunctor){
     
     Graph<IndexType, DistType> retGraph;
-    for(size_t i = 0; i<metaGraph.size(); i+=1){
+    for(size_t i = 0; i<blockGraphs.size(); i+=1){
         retGraph.push_back(QueryHintFromCOM<DistType, COMExtent>(i, 
                                                                  blockGraphs[i], 
                                                                  numNeighbors, 
@@ -146,14 +144,29 @@ Graph<IndexType, DistType> GenerateQueryHints(const std::span<Graph<IndexType, D
 
 }
 
+template <typename DistType, typename IndexType>
+Graph<IndexType, DistType> GenerateQueryHints(std::span<Graph<IndexType, DistType>> blockGraphs,
+                                              size_t numNeighbors){
+    
+    Graph<IndexType, DistType> retGraph;
+    for(size_t i = 0; i<blockGraphs.size(); i+=1){
+        //RandomQueryHint(std::size_t block_size, std::size_t num_candidates)
+        retGraph.push_back(RandomQueryHint<IndexType, DistType>(blockGraphs[i].size(), 
+                                                     numNeighbors));
+    }
 
-template<typename DistType, typename COMExtent>
-std::unique_ptr<BlockUpdateContext<DistType>[]> InitializeBlockContexts(std::vector<Graph<DataIndex_t, DistType>>& blockGraphs,
-                                                                  const MetaGraph<COMExtent>& metaGraph,
+    return retGraph;
+
+}
+
+
+template<typename DistType>
+ann::dynamic_array<BlockUpdateContext<DistType>> InitializeBlockContexts(std::vector<Graph<DataIndex_t, DistType>>& blockGraphs,
                                                                   Graph<DataIndex_t, DistType>& queryHints,
-                                                                  const int queryDepth){
+                                                                  int queryDepth,
+                                                                  GraphFragment_t fragment_number=0){
                                                                         
-    std::unique_ptr<BlockUpdateContext<DistType>[]> blockUpdateContexts = std::make_unique<BlockUpdateContext<DistType>[]>(blockGraphs.size());
+    ann::dynamic_array<BlockUpdateContext<DistType>> blockUpdateContexts{blockGraphs.size()};
     //blockUpdateContexts.reserve(blockGraphs.size());
     //template<typename size_t, typename DataEntry, typename DistType, typename COMExtentType>
     for (size_t i = 0; i<blockGraphs.size(); i+=1){
@@ -161,7 +174,7 @@ std::unique_ptr<BlockUpdateContext<DistType>[]> InitializeBlockContexts(std::vec
         QueryContext<DataIndex_t, DistType> queryContext(blockGraphs[i],
                                             std::move(queryHints[i]),
                                             queryDepth,
-                                            metaGraph.FragmentNumber(),
+                                            fragment_number,
                                             i,
                                             blockGraphs[i].size());
 
@@ -171,7 +184,7 @@ std::unique_ptr<BlockUpdateContext<DistType>[]> InitializeBlockContexts(std::vec
         blockLocation->~BlockUpdateContext<DistType>();
         new(blockLocation) BlockUpdateContext<DistType>(std::move(blockGraphs[i]),
                                                         std::move(queryContext),
-                                                        metaGraph.verticies.size());
+                                                        blockGraphs.size());
 
         //blockUpdateContexts.back().currentGraph = ToBlockIndecies(blockGraphs[i], i);
         blockUpdateContexts[i].blockJoinTracker[i] = true;
@@ -181,7 +194,7 @@ std::unique_ptr<BlockUpdateContext<DistType>[]> InitializeBlockContexts(std::vec
 }
 
 template<typename DistType>
-using InitialJoinHints = std::unordered_map<ComparisonKey<BlockNumber_t>, std::tuple<DataIndex_t, DataIndex_t, DistType>>;
+using InitialJoinHints = std::unordered_map<comparison_key<BlockNumber_t>, std::tuple<DataIndex_t, DataIndex_t, DistType>>;
 
 template<typename DistType>
 std::pair<Graph<BlockNumber_t, DistType>, InitialJoinHints<DistType>> NearestNodeDistances(std::span<const BlockUpdateContext<DistType>> blockUpdateContexts,
@@ -189,7 +202,7 @@ std::pair<Graph<BlockNumber_t, DistType>, InitialJoinHints<DistType>> NearestNod
                                                         const size_t maxNearestNodeNeighbors,
                                                         const erased_binary_binder<DistType>& distanceFunctor){
 
-    std::unordered_set<ComparisonKey<BlockNumber_t>> nearestNodeDistQueue;
+    std::unordered_set<comparison_key<BlockNumber_t>> nearestNodeDistQueue;
     //const size_t startIndex = blockUpdateContexts[0].queryContext.blockNumber;
 
 
@@ -200,21 +213,21 @@ std::pair<Graph<BlockNumber_t, DistType>, InitialJoinHints<DistType>> NearestNod
         i++;
     }
     
-    std::vector<ComparisonKey<BlockNumber_t>> distancesToCompute;
+    std::vector<comparison_key<BlockNumber_t>> distancesToCompute;
     distancesToCompute.reserve(nearestNodeDistQueue.size());
     for (const auto& pair: nearestNodeDistQueue){
         distancesToCompute.push_back(pair);
     }
     
     std::vector<std::tuple<DataIndex_t, DataIndex_t, DistType>> nnDistanceResults(nearestNodeDistQueue.size());
-    auto nnDistanceFunctor = [&](const ComparisonKey<BlockNumber_t> blockNumbers) -> std::tuple<DataIndex_t, DataIndex_t, DistType>{
+    auto nnDistanceFunctor = [&](const comparison_key<BlockNumber_t> blockNumbers) -> std::tuple<DataIndex_t, DataIndex_t, DistType>{
         return blockUpdateContexts[blockNumbers.first].queryContext.NearestNodes(blockUpdateContexts[blockNumbers.second].queryContext,
                                                                                  distanceFunctor(blockNumbers.first, blockNumbers.second));
     };
 
     std::transform(std::execution::unseq, distancesToCompute.begin(), distancesToCompute.end(), nnDistanceResults.begin(), nnDistanceFunctor);
 
-    std::unordered_map<ComparisonKey<BlockNumber_t>, std::tuple<DataIndex_t, DataIndex_t, DistType>> blockJoinHints;
+    std::unordered_map<comparison_key<BlockNumber_t>, std::tuple<DataIndex_t, DataIndex_t, DistType>> blockJoinHints;
 
     for (size_t i = 0; i<distancesToCompute.size(); i += 1){
         blockJoinHints[distancesToCompute[i]] = nnDistanceResults[i];
@@ -254,7 +267,7 @@ void StitchBlocks(const Graph<BlockNumber_t, DistType>& nearestNodeDistances,
 
     //OffsetSpan distView = nearestNodeDistances.GetOffsetView(blockIdxOffset);
 
-    std::unordered_set<ComparisonKey<BlockNumber_t>> initBlockJoinQueue;
+    std::unordered_set<comparison_key<BlockNumber_t>> initBlockJoinQueue;
     for(size_t i = 0; const auto& vertex: nearestNodeDistances){
         for(size_t j = 0; j<vertex.size(); j+=1){
             initBlockJoinQueue.insert({static_cast<BlockNumber_t>(i), vertex[j].first});
@@ -262,7 +275,7 @@ void StitchBlocks(const Graph<BlockNumber_t, DistType>& nearestNodeDistances,
         i++;
     }
 
-    std::vector<ComparisonKey<BlockNumber_t>> initBlockJoins;
+    std::vector<comparison_key<BlockNumber_t>> initBlockJoins;
     initBlockJoins.reserve(initBlockJoinQueue.size());
     for (const auto& pair: initBlockJoinQueue){
         blockUpdateContexts[pair.first].blockJoinTracker[pair.second] = true;
@@ -274,7 +287,7 @@ void StitchBlocks(const Graph<BlockNumber_t, DistType>& nearestNodeDistances,
     std::vector<std::pair<JoinResults<DistType>, JoinResults<DistType>>> initUpdates(initBlockJoins.size());
     
 
-    auto initBlockJoin = [&](const ComparisonKey<BlockNumber_t> blockNumbers) -> std::pair<JoinResults<DistType>, JoinResults<DistType>>{
+    auto initBlockJoin = [&](const comparison_key<BlockNumber_t> blockNumbers) -> std::pair<JoinResults<DistType>, JoinResults<DistType>>{
         
         auto [blockNums, stitchHint] = *(stitchHints.find(blockNumbers));
         if (blockNums.first != blockNumbers.first) stitchHint = {std::get<1>(stitchHint), std::get<0>(stitchHint), std::get<2>(stitchHint)};
@@ -320,7 +333,7 @@ void StitchBlocks(const Graph<BlockNumber_t, DistType>& nearestNodeDistances,
     std::transform(std::execution::seq, initBlockJoins.begin(), initBlockJoins.end(), initUpdates.begin(), initBlockJoin);
     int initGraphUpdates(0);
     for (size_t i = 0; i<initUpdates.size(); i += 1){
-        ComparisonKey<BlockNumber_t> blocks = initBlockJoins[i];
+        comparison_key<BlockNumber_t> blocks = initBlockJoins[i];
         std::pair<JoinResults<DistType>, JoinResults<DistType>>& updates = initUpdates[i];
         for (auto& result: updates.first){
             initGraphUpdates += ConsumeVertex(blockUpdateContexts[blocks.first].currentGraph[result.first], result.second, graphFragment, blocks.second);
@@ -351,34 +364,74 @@ void StitchBlocks(const Graph<BlockNumber_t, DistType>& nearestNodeDistances,
     }
 }
 
-template<typename DataType, typename DistType, typename COMExtent>
-std::unique_ptr<BlockUpdateContext<DistType>[]> BuildGraph(const std::vector<DataBlock<DataType>>& dataBlocks,
-                                                                          const MetaGraph<COMExtent>& metaGraph,
-                                                                          erased_binary_binder<DistType> dispatch,
-                                                                          //std::vector<size_t>&& sizes,
-                                                                          const HyperParameterValues& hyperParams,
-                                                                          erased_unary_binder<COMExtent> comFunctor){
+template<typename DistType, typename COMExtent>
+ann::dynamic_array<BlockUpdateContext<DistType>> BuildGraph(const MetaGraph<COMExtent>& metaGraph,
+                                                           erased_binary_binder<DistType> dispatch,
+                                                           const hyper_parameters& hyperParams,
+                                                           erased_unary_binder<COMExtent> comFunctor){
 
 
     std::vector<Graph<DataIndex_t, float>> blockGraphs = InitializeBlockGraphs<float>(metaGraph.size(), metaGraph.weights, hyperParams.indexParams.blockGraphNeighbors, dispatch);
 
     std::span<Graph<DataIndex_t, float>> blockGraphView = {blockGraphs.begin(), blockGraphs.size()};
 
-    Graph<DataIndex_t, float> queryHints = GenerateQueryHints<float, float>(blockGraphView, metaGraph, hyperParams.indexParams.blockGraphNeighbors, comFunctor);
+    Graph<DataIndex_t, float> queryHints = old_GenerateQueryHints<float, float>(blockGraphView, hyperParams.indexParams.blockGraphNeighbors, comFunctor);
 
 
-    std::unique_ptr<BlockUpdateContext<DistType>[]> blockUpdateContexts = InitializeBlockContexts<DistType, COMExtent>(blockGraphs, 
-                                                                                         metaGraph,
+    ann::dynamic_array<BlockUpdateContext<DistType>> blockUpdateContexts = InitializeBlockContexts<DistType>(blockGraphs,
                                                                                          queryHints,
                                                                                          hyperParams.indexParams.queryDepth);
     
-    std::span<BlockUpdateContext<DistType>> blockSpan(blockUpdateContexts.get(), blockGraphs.size());
-    std::span<const BlockUpdateContext<DistType>> constBlockSpan(blockUpdateContexts.get(), blockGraphs.size());
+    std::span<BlockUpdateContext<DistType>> blockSpan{blockUpdateContexts};
+    std::span<const BlockUpdateContext<DistType>> constBlockSpan(blockUpdateContexts.data(), blockUpdateContexts.size());
     cache_state<float> cache(hyperParams.splitParams.maxTreeSize, hyperParams.indexParams.blockGraphNeighbors);
 
     auto [nearestNodeDistances, stitchHints] = NearestNodeDistances(constBlockSpan, metaGraph, hyperParams.indexParams.nearestNodeNeighbors, dispatch);
     StitchBlocks(nearestNodeDistances, stitchHints, blockSpan, metaGraph.FragmentNumber(), dispatch, cache);
     
+    
+    //int iteration(1);
+    int graphUpdates(1);
+    while(graphUpdates>0){
+        graphUpdates = 0;
+        for(size_t i = 0; i<blockSpan.size(); i+=1){
+            for (auto& joinList: blockSpan[i].joinsToDo){
+                graphUpdates += UpdateBlocks(blockSpan[i], blockSpan[joinList.first], dispatch, cache);
+                blockSpan[joinList.first].joinsToDo.erase(i);
+            }
+        }
+        for (auto& context: blockSpan){
+            context.SetNextJoins();
+        }
+
+    }
+
+    return blockUpdateContexts;
+}
+
+template<typename DistType>
+ann::dynamic_array<BlockUpdateContext<DistType>> BuildGraphRedux(const ann::dynamic_array<candidate_set>& candidates,
+                                                           erased_binary_binder<DistType> dispatch,
+                                                           const hyper_parameters& hyperParams){
+
+    ann::dynamic_array<std::size_t> sizes{ candidates | std::views::transform([](const auto& array){return array.size();})};
+
+    std::vector<Graph<DataIndex_t, float>> blockGraphs = InitializeBlockGraphs<float>(candidates.size(), sizes, hyperParams.indexParams.blockGraphNeighbors, dispatch);
+
+    std::span<Graph<DataIndex_t, float>> blockGraphView = {blockGraphs.begin(), blockGraphs.size()};
+
+    Graph<DataIndex_t, float> queryHints = GenerateQueryHints(blockGraphView, hyperParams.indexParams.blockGraphNeighbors);
+
+
+    ann::dynamic_array<BlockUpdateContext<DistType>> blockUpdateContexts = InitializeBlockContexts<DistType>(blockGraphs,
+                                                                                         queryHints,
+                                                                                         hyperParams.indexParams.queryDepth);
+    
+    std::span<BlockUpdateContext<DistType>> blockSpan{blockUpdateContexts};
+    std::span<const BlockUpdateContext<DistType>> constBlockSpan(blockUpdateContexts.data(), blockUpdateContexts.size());
+    cache_state<float> cache(hyperParams.splitParams.maxTreeSize, hyperParams.indexParams.blockGraphNeighbors);
+
+     
     
     //int iteration(1);
     int graphUpdates(1);

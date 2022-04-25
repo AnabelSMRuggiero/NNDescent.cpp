@@ -1,6 +1,8 @@
 #ifndef NND_NNDTYPE_HPP
 #define NND_NNDTYPE_HPP
 
+#include <iterator>
+#include <memory_resource>
 #include <vector>
 #include <concepts>
 #include "../ann/Type.hpp"
@@ -99,13 +101,13 @@ using NodeTracker = NodeTrackerImpl<>;
 // Two member struct with the following properties. hash({x,y}) == hash({y,x}) and {x,y} == {y,x}
 // This way a set can be used to queue up an operation between two blocks without worrying which is first or second.
 template<typename IndexType>
-struct ComparisonKey{
+struct comparison_key{
     IndexType first;
     IndexType second;
 };
 
 template<typename IndexType>
-bool operator==(ComparisonKey<IndexType> lhs, ComparisonKey<IndexType> rhs){
+bool operator==(comparison_key<IndexType> lhs, comparison_key<IndexType> rhs){
     return (lhs.first == rhs.first && lhs.second == rhs.second) ||
            (lhs.first == rhs.second && lhs.second == rhs.first);
 }
@@ -127,7 +129,7 @@ struct SearchParameters{
 
 
 
-struct HyperParameterValues{
+struct hyper_parameters{
     SplittingHeurisitcs splitParams;
     IndexParameters indexParams;
     SearchParameters searchParams;
@@ -136,6 +138,25 @@ struct HyperParameterValues{
 //using IndexBlock = std::vector<std::vector<BlockIndecies>>;
 
 using IndexBlock = UnevenBlock<BlockIndecies>;
+
+template<std::ranges::contiguous_range Range>
+auto as_const_span(Range&& range){
+    using value_type = std::ranges::range_value_t<Range>;
+    return std::span<const value_type>{range};
+}
+
+using candidate_set = ann::dynamic_array<std::vector<BlockIndecies>>;
+
+template<std::size_t BufferSize>
+struct stack_fed_buffer{
+    std::byte buffer[BufferSize];
+    std::pmr::monotonic_buffer_resource memoryResource{buffer, BufferSize};
+
+    template<typename ValueType>
+    operator std::pmr::polymorphic_allocator<ValueType>(){
+        return &memoryResource;
+    }
+};
 
 }
 
@@ -150,10 +171,10 @@ struct std::hash<nnd::BlockIndecies>{
 
 // If first = second, I screwed up before calling this
 template<typename IndexType>
-struct std::hash<nnd::ComparisonKey<IndexType>>{
+struct std::hash<nnd::comparison_key<IndexType>>{
 
-    size_t operator()(const nnd::ComparisonKey<IndexType>& key) const noexcept{
-        return std::hash<size_t>()(key.first) ^ std::hash<size_t>()(key.second);
+    size_t operator()(const nnd::comparison_key<IndexType>& key) const noexcept{
+        return std::hash<IndexType>()(key.first) ^ std::hash<IndexType>()(key.second);
     };
 
 };

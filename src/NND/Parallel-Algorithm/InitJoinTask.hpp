@@ -24,11 +24,11 @@ struct InitJoinGenerator{
     
 
     using BlockPtrPair = std::pair<BlockUpdateContext<DistType>*, BlockUpdateContext<DistType>*>;
-    using StitchHint = std::pair<ComparisonKey<BlockNumber_t>, std::tuple<DataIndex_t, DataIndex_t, DistType>>;
+    using StitchHint = std::pair<comparison_key<BlockNumber_t>, std::tuple<DataIndex_t, DataIndex_t, DistType>>;
     using InitJoinResult = std::pair<JoinResults<DistType>, JoinResults<DistType>>;
 
     using TaskArgs = StitchHint;
-    using TaskResult = std::pair<ComparisonKey<BlockNumber_t>, InitJoinResult>;
+    using TaskResult = std::pair<comparison_key<BlockNumber_t>, InitJoinResult>;
 
     
     InitJoinGenerator(std::span<BlockUpdateContext<DistType>> blocks, std::span<std::atomic<bool>> readyBlocks):
@@ -36,12 +36,12 @@ struct InitJoinGenerator{
         readyBlocks(readyBlocks) {};
     
 
-    bool operator()(ThreadPool<thread_functors<DistType, COMExtent>>& pool,
+    bool operator()(ThreadPool<old_thread_functors<DistType, COMExtent>>& pool,
                     AsyncQueue<TaskResult>& resultsQueue,
                     std::vector<std::optional<StitchHint>>& initJoinsToDo){
         auto joinGenerator = [&](const BlockPtrPair blockPtrs, const std::tuple<DataIndex_t, DataIndex_t, DistType> stitchHint) -> auto{
         
-            auto initJoin = [&, blockPtrs, stitchHint](thread_functors<DistType, COMExtent>& threadFunctors)->void{
+            auto initJoin = [&, blockPtrs, stitchHint](old_thread_functors<DistType, COMExtent>& threadFunctors)->void{
                 //auto [blockNums, stitchHint] = *(stitchHints.find(blockNumbers));
                 //if (blockNums.first != blockNumbers.first) stitchHint = {std::get<1>(stitchHint), std::get<0>(stitchHint), std::get<2>(stitchHint)};
                 auto& blockLHS = *(blockPtrs.first);
@@ -85,7 +85,7 @@ struct InitJoinGenerator{
                     i++;
                 }
 
-                resultsQueue.Put({ComparisonKey<BlockNumber_t>{blockLHS.queryContext.blockNumber, blockRHS.queryContext.blockNumber}, std::move(retPair)});
+                resultsQueue.Put({comparison_key<BlockNumber_t>{blockLHS.queryContext.blockNumber, blockRHS.queryContext.blockNumber}, std::move(retPair)});
             };
 
             return initJoin;
@@ -134,12 +134,12 @@ struct InitJoinGenerator{
 
 template<typename DistType>
 struct InitJoinConsumer{
-    using StitchHint = std::pair<ComparisonKey<BlockNumber_t>, std::tuple<DataIndex_t, DataIndex_t, DistType>>;
+    using StitchHint = std::pair<comparison_key<BlockNumber_t>, std::tuple<DataIndex_t, DataIndex_t, DistType>>;
     using BlockUpdates = std::vector<std::pair<BlockNumber_t, JoinResults<DistType>>>;
     using TaskArgs = StitchHint;
     
     using InitJoinResult = std::pair<JoinResults<DistType>, JoinResults<DistType>>;
-    using TaskResult = std::pair<ComparisonKey<BlockNumber_t>, InitJoinResult>;
+    using TaskResult = std::pair<comparison_key<BlockNumber_t>, InitJoinResult>;
 
     InitJoinConsumer() = default;
 
@@ -153,7 +153,7 @@ struct InitJoinConsumer{
 
     using NextTaskArg = size_t;
 
-    bool operator()(std::pair<ComparisonKey<BlockNumber_t>, InitJoinResult> result){
+    bool operator()(std::pair<comparison_key<BlockNumber_t>, InitJoinResult> result){
         graphUpdates[result.first.first].push_back({result.first.second, std::move(result.second.first)});
         graphUpdates[result.first.second].push_back({result.first.first, std::move(result.second.second)});
 
