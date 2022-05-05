@@ -12,11 +12,13 @@ https://github.com/AnabelSMRuggiero/NNDescent.cpp
 #define RPT_SPLITTINGSCHEMERF_HPP
 
 #include <algorithm>
-#include <type_traits>
 #include <functional>
-#include <thread>
-#include <numeric>
 #include <iterator>
+#include <numeric>
+#include <optional>
+#include <ranges>
+#include <thread>
+#include <type_traits>
 #include <variant>
 
 #include "Parallelization/AsyncQueue.hpp"
@@ -53,29 +55,31 @@ using angular_splitting_vectors = std::unordered_map<size_t, ann::aligned_array<
 using splitting_vectors = std::variant<euclidean_splitting_vectors, angular_splitting_vectors>;
 
 template<typename DataEntry, typename DistType>
-ann::aligned_array<DistType> EuclidianSplittingPlaneNormal(const DataEntry& pointA, const DataEntry& pointB){
-    ann::aligned_array<DistType> splittingLine(pointA.size());
-    for (size_t i = 0; i < pointA.size(); i += 1){
-        splittingLine[i] = DistType(pointA[i]) - DistType(pointB[i]);
+std::optional<ann::aligned_array<DistType>> euclidean_splitting_plane(const DataEntry& point_a, const DataEntry& point_b){
+    ann::aligned_array<DistType> splitting_line(point_a.size());
+    for (size_t i = 0; i < point_a.size(); i += 1){
+        splitting_line[i] = DistType(point_a[i]) - DistType(point_b[i]);
     }
-    DistType splittingLineMag(0);
-    for (DistType i : splittingLine){
-        splittingLineMag += i*i;
-    }
-    splittingLineMag = std::sqrt(splittingLineMag);
 
-    for(auto& extent: splittingLine) extent /= splittingLineMag;
+    DistType splitting_line_mag = ann::PNorm<2>(splitting_line);
 
-    return splittingLine;
+    if (splitting_line_mag == DistType{0}) return std::nullopt; 
+
+    for(auto& extent: splitting_line) extent /= splitting_line_mag;
+
+    return splitting_line;
 }
-
-
 
 auto bind_euclidean_predicate(std::random_access_iterator auto data, auto splitting_vector, auto offset){
     return [=](std::size_t index){
         return 0.0 < (ann::Dot(data[index], splitting_vector) + offset);
     };
 }
+
+template<std::random_access_iterator IterType, std::ranges::contiguous_range VectorType>
+using euclidean_predicate = decltype(bind_euclidean_predicate(std::declval<IterType>(),
+                                                             std::declval<VectorType>(),
+                                                             std::declval<std::ranges::range_value_t<VectorType>>()));
 
 //std::random_access_iterator<ann::data_iterator<float, 32_a>>;
 struct TransformTag {};
@@ -95,19 +99,22 @@ struct euclidean_scheme{
     
     using DataView = typename DataSet<DataType>::ConstDataView;
 
+    using predicate_type = euclidean_predicate<std::ranges::iterator_t<const DataSet<DataType>>, SplittingView>;
+
     const DataSet<DataType>& dataSource;
     std::unordered_map<size_t, std::pair<SplittingVector, OffSetType>> splittingVectors;
     //DistType projectionOffset;
 
     euclidean_scheme(const DataSet<DataType>& data) : dataSource(data), splittingVectors(){};
 
-    auto operator()(size_t splitIndex, std::pair<size_t, size_t> splittingPoints){
+    std::optional<predicate_type> operator()(size_t splitIndex, std::pair<size_t, size_t> splittingPoints){
         
         
-        // For right now at least, in the serial case I want to be able to get a new splitting vector
-        //if (splittingVectors.find(splitIndex) == splittingVectors.end()){
-        SplittingVector splittingVector = EuclidianSplittingPlaneNormal<DataView, OffSetType>(dataSource[splittingPoints.first], dataSource[splittingPoints.second]);
+        std::optional<SplittingVector> splittingVectorOptional = euclidean_splitting_plane<DataView, OffSetType>(dataSource[splittingPoints.first], dataSource[splittingPoints.second]);
 
+        if (!splittingVectorOptional) return std::nullopt;
+
+        SplittingVector& splittingVector = *splittingVectorOptional;
 
         OffSetType projectionOffset = 0;
         for (size_t i = 0; i<dataSource[splittingPoints.first].size(); i+=1){
@@ -132,17 +139,7 @@ struct euclidean_scheme{
         const std::pair<SplittingVector, OffSetType>& splitPair = splittingVectors.at(splitIndex);
         if constexpr(is_aligned_contiguous_range_v<SplittingVector>){
             return bind_euclidean_predicate(dataSource.begin(), SplittingView(splitPair.first), splitPair.second);
-            /*
-            auto comparisonFunction = [=, 
-                                    &data = std::as_const(this->dataSource), 
-                                    splitter = SplittingView(splitPair.first),
-                                    offset = splitPair.second]
-                                    (size_t comparisonIndex) -> bool{
-                    return 0.0 < (ann::Dot(data[comparisonIndex], splitter) + offset);
-            };
             
-            return comparisonFunction;
-            */
         } else {
             auto comparisonFunction = [=, 
                                     &data = std::as_const(this->dataSource), 
@@ -172,6 +169,8 @@ struct parallel_euclidean_scheme{
     using SerialScheme = std::false_type;
     using DataView = typename DataSet<DataType>::DataView;
     
+    using predicate_type = euclidean_predicate<std::ranges::iterator_t<const DataSet<DataType>>, SplittingView>;
+
     const DataSet<DataType>& dataSource;
     std::unordered_map<size_t, std::pair<SplittingVector, OffSetType>> splittingVectors;
 
@@ -180,13 +179,16 @@ struct parallel_euclidean_scheme{
 
     parallel_euclidean_scheme(const DataSet<DataType>& data) : dataSource(data), splittingVectors(){};
 
-    auto operator()(size_t splitIndex, std::pair<size_t, size_t> splittingPoints){
+    std::optional<predicate_type> operator()(size_t splitIndex, std::pair<size_t, size_t> splittingPoints){
         
         
         // For right now at least, in the serial case I want to be able to get a new splitting vector
         //if (splittingVectors.find(splitIndex) == splittingVectors.end()){
-        SplittingVector splittingVector = EuclidianSplittingPlaneNormal<DataView, OffSetType>(dataSource[splittingPoints.first], dataSource[splittingPoints.second]);
+        std::optional<SplittingVector> splittingVectorOptional = euclidean_splitting_plane<DataView, OffSetType>(dataSource[splittingPoints.first], dataSource[splittingPoints.second]);
 
+        if (!splittingVectorOptional) return std::nullopt;
+
+        SplittingVector& splittingVector = *splittingVectorOptional;
 
         OffSetType projectionOffset = 0;
         for (size_t i = 0; i<dataSource[splittingPoints.first].size(); i+=1){
@@ -285,34 +287,46 @@ template<typename DataType, typename SplittingVector>
 using borrowed_euclidean_scheme = decltype(borrowed_euclidean(std::declval<DataSet<DataType>>(), std::declval<euclidean_vector_map<SplittingVector>>()));
 
 template<typename DataEntry, typename DistType>
-ann::aligned_array<DistType> angular_splitting_plane(const DataEntry& pointA, const DataEntry& pointB){
+std::optional<ann::aligned_array<DistType>> angular_splitting_plane(const DataEntry& pointA, const DataEntry& pointB){
     ann::aligned_array<DistType> splittingLine(pointA.size());
 
 
-    //double normA = ann::PNorm<2>(pointA);
-    //double normB = ann::PNorm<2>(pointB);
+    double normA = ann::PNorm<2>(pointA);
+    double normB = ann::PNorm<2>(pointB);
 
-    if (std::lexicographical_compare_three_way(pointA.begin(), pointA.end(), pointB.begin(), pointB.end()) == 0){
-        throw "equal vectors";
-    }
+    auto divideBy = [](auto divisor){
+        return [=](auto numerator){
+            return numerator/divisor;
+        };
+    };
 
-    for (size_t i = 0; i < pointA.size(); i += 1){
-        //splittingLine[i] = DistType(pointA[i])/normA - DistType(pointB[i])/normB;
-        splittingLine[i] = DistType(pointA[i]) - DistType(pointB[i]);
-    }
-
+    std::ranges::transform(pointA, 
+                           pointB, 
+                           splittingLine.begin(), 
+                           std::minus<>{}, 
+                           divideBy(normA), 
+                           divideBy(normB));
+    
     double splitterNorm = ann::PNorm<2>(splittingLine);
+
+    if (splitterNorm == DistType{0}) return std::nullopt;
 
     for(auto& extent: splittingLine) extent /= splitterNorm;
 
     return splittingLine;
 }
 
+
+
 auto bind_angular_predicate(std::random_access_iterator auto data, auto splitting_vector){
     return [=](std::size_t index){
         return 0.0 < (ann::Dot(data[index], splitting_vector));
     };
 }
+
+template<std::random_access_iterator IterType, std::ranges::contiguous_range VectorType>
+using angular_predicate = decltype(bind_euclidean_predicate(std::declval<IterType>(),
+                                                            std::declval<VectorType>()));
 
 template<typename DataType, typename SplittingVector>
 struct angular_scheme{
@@ -324,15 +338,21 @@ struct angular_scheme{
     using SerialScheme = std::true_type;
     using DataView = typename DataSet<DataType>::DataView;
 
+
+    using predicate_type = angular_predicate<std::ranges::iterator_t<const DataSet<DataType>>, SplittingView>;
+
     const DataSet<DataType>& dataSource;
     std::unordered_map<size_t, SplittingVector> splittingVectors;
     //DistType projectionOffset;
 
     angular_scheme(const DataSet<DataType>& data) : dataSource(data), splittingVectors(){};
 
-    auto operator()(size_t splitIndex, std::pair<size_t, size_t> splittingPoints){
+    std::optional<predicate_type> operator()(size_t splitIndex, std::pair<size_t, size_t> splittingPoints){
 
-        splittingVectors[splitIndex] = angular_splitting_plane<DataView, OffSetType>(dataSource[splittingPoints.first], dataSource[splittingPoints.second]);
+        std::optional<SplittingVector> optionalVector = angular_splitting_plane<DataView, OffSetType>(dataSource[splittingPoints.first], dataSource[splittingPoints.second]);
+
+        if (!optionalVector) return std::nullopt;
+        splittingVectors[splitIndex] = *optionalVector;
 
         //};
         if constexpr(is_aligned_contiguous_range_v<SplittingVector>){
@@ -375,6 +395,8 @@ struct parallel_angular_scheme{
     using SerialScheme = std::false_type;
     using DataView = typename DataSet<DataType>::DataView;
 
+    using predicate_type = angular_predicate<std::ranges::iterator_t<const DataSet<DataType>>, SplittingView>;
+
     const DataSet<DataType>& dataSource;
     std::unordered_map<std::size_t, SplittingVector> splittingVectors{};
 
@@ -382,9 +404,13 @@ struct parallel_angular_scheme{
 
     parallel_angular_scheme(const DataSet<DataType>& data) : dataSource(data), splittingVectors(){};
 
-    auto operator()(size_t splitIndex, std::pair<size_t, size_t> splittingPoints){
+    std::optional<predicate_type> operator()(size_t splitIndex, std::pair<size_t, size_t> splittingPoints){
+        std::optional<SplittingVector> optionalVector = angular_splitting_plane<DataView, OffSetType>(dataSource[splittingPoints.first], dataSource[splittingPoints.second]);
 
-        auto splittingVector = angular_splitting_plane<DataView, OffSetType>(dataSource[splittingPoints.first], dataSource[splittingPoints.second]);
+        if (!optionalVector) return std::nullopt;
+
+        SplittingVector& splittingVector = *optionalVector;
+        //auto splittingVector = angular_splitting_plane<DataView, OffSetType>(dataSource[splittingPoints.first], dataSource[splittingPoints.second]);
 
         if constexpr(is_aligned_contiguous_range_v<SplittingVector>){
             

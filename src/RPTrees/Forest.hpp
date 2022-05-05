@@ -469,9 +469,8 @@ RandomProjectionForest ForestBuilder<SplittingScheme>::operator()(ann::dynamic_a
             index1 = samples[index1];
             index2 = samples[index2];
 
-            // Get the splitting vector, this can be fed into this function in the parallel/distributed case.
             auto splittingFunction = getSplitComponents(builder.refNode->splittingIndex, std::pair<size_t, size_t>(index1, index2));
-
+            
 
             auto beginIt = samples.begin() + builder.refNode->splitRange.first;
             auto endIt = samples.begin() + builder.refNode->splitRange.second;
