@@ -134,6 +134,21 @@ struct TreeLeaf{
                                                                                 parent(parent),
                                                                                 children(nullptr, nullptr){};
     
+    template< std::ranges::contiguous_range RangeToView >
+    std::span<std::ranges::range_value_t<RangeToView>> to_span(RangeToView& range) const{
+        return std::span{range.data() + splitRange.first, splitRange.second - splitRange.first};
+    }
+
+    std::size_t begin(){
+        return splitRange.first;
+    }
+    std::size_t end(){
+        return splitRange.second;
+    }
+    std::size_t size(){
+        return end() - begin();
+    }
+
 };
 
 //std::pmr::synchronized_pool_resource;
@@ -237,7 +252,7 @@ struct TreeRef{
         //If I'm not using the new_delete_resource, I should be able to get away with letting the resource
         //manage the memory.
         //This is cheesy to drop the memory though...
-        if(alloc.resource() == std::pmr::new_delete_resource()) memManager->Put(std::move(somethingToMove));
+        memManager->Put(std::move(somethingToMove));
     }
 
     TreeLeaf* buildMemory;
@@ -277,7 +292,7 @@ struct ForestBuilder{
 
     //std::vector<size_t> indexArray;
     RngFunctor rngFunctor;
-    const SplittingHeurisitcs heurisitics;
+    SplittingHeurisitcs heurisitics;
     SplittingScheme& getSplitComponents;
     
 
@@ -313,13 +328,13 @@ struct ForestBuilder{
 };
 
 //Training version
-inline void AddLeaves(TreeRef& nodeRef, std::span<size_t> samples, std::span<size_t> workSpace, const size_t numTrue, std::vector<TreeLeaf*>& queue, const size_t splitThreshold){
+inline void AddLeaves(TreeRef& nodeRef, std::span<size_t> samples, std::span<size_t> workSpace, const size_t numTrue, std::vector<std::pair<std::size_t, TreeLeaf*>>& queue, const size_t splitThreshold){
     
 
     TreeLeaf* leftSplit = nodeRef.AddLeftLeaf(std::pair<size_t, size_t>(nodeRef.refNode->splitRange.first, nodeRef.refNode->splitRange.first + numTrue),
                                                         nodeRef.refNode->splittingIndex * 2 + 1);
             
-    if (leftSplit->splitRange.second - leftSplit->splitRange.first > splitThreshold) queue.push_back(leftSplit);
+    if (leftSplit->size() > splitThreshold) queue.emplace_back(0, leftSplit);
     else{
         //copy section of vec2 back to vec 1;
         
@@ -330,10 +345,10 @@ inline void AddLeaves(TreeRef& nodeRef, std::span<size_t> samples, std::span<siz
         std::copy(fromIt, endFrom, toIt);
     }
 
-    TreeLeaf* rightSplit = nodeRef.AddRightLeaf(std::pair<size_t, size_t>(nodeRef.refNode->splitRange.first + numTrue, nodeRef.refNode->splitRange.second),
+    TreeLeaf* rightSplit = nodeRef.AddRightLeaf(std::pair<size_t, size_t>(nodeRef.refNode->begin() + numTrue, nodeRef.refNode->end()),
         nodeRef.refNode->splittingIndex * 2 + 2);
 
-    if (rightSplit->splitRange.second - rightSplit->splitRange.first > splitThreshold) queue.push_back(rightSplit);
+    if (rightSplit->size() > splitThreshold) queue.emplace_back(0, rightSplit);
     else{
         //copy section of vec2 back to vec 1;
 
@@ -360,24 +375,24 @@ inline std::pair<TreeLeaf*, TreeLeaf*> AddLeaves(TreeRef& nodeRef,
         if (result != splitIndicies.end()) queue.push_back(nodeRef.refNode);
         return retPtrs;
     }
-    if(numTrue == (nodeRef.refNode->splitRange.second - nodeRef.refNode->splitRange.first)){
+    if(numTrue == nodeRef.refNode->size()){
         nodeRef.refNode->splittingIndex = nodeRef.refNode->splittingIndex * 2 + 1;
         auto result = splitIndicies.find(nodeRef.refNode->splittingIndex);
         if (result != splitIndicies.end()) queue.push_back(nodeRef.refNode);
         return retPtrs;
     }
 
-    TreeLeaf* leftSplit = nodeRef.AddLeftLeaf(std::pair<size_t, size_t>(nodeRef.refNode->splitRange.first, nodeRef.refNode->splitRange.first + numTrue),
+    TreeLeaf* leftSplit = nodeRef.AddLeftLeaf(std::pair<size_t, size_t>(nodeRef.refNode->begin(), nodeRef.refNode->begin() + numTrue),
                                                         nodeRef.refNode->splittingIndex * 2 + 1);
 
     auto result = splitIndicies.find(leftSplit->splittingIndex);
-    if ((result == splitIndicies.end()) || ((leftSplit->splitRange.second - leftSplit->splitRange.first) == 1)){
+    if ((result == splitIndicies.end()) || (leftSplit->size() == 1)){
         
         if (result != splitIndicies.end()) retPtrs.first = leftSplit;
         
-        auto fromIt = workSpace.begin()+leftSplit->splitRange.first;
-        auto endFrom = workSpace.begin()+leftSplit->splitRange.second;
-        auto toIt = samples.begin()+leftSplit->splitRange.first;
+        auto fromIt = workSpace.begin()+leftSplit->begin();
+        auto endFrom = workSpace.begin()+leftSplit->end();
+        auto toIt = samples.begin()+leftSplit->begin();
 
         std::copy(fromIt, endFrom, toIt);  
     } else{ 
@@ -390,7 +405,7 @@ inline std::pair<TreeLeaf*, TreeLeaf*> AddLeaves(TreeRef& nodeRef,
         nodeRef.refNode->splittingIndex * 2 + 2);
         
     result = splitIndicies.find(rightSplit->splittingIndex);
-    if ((result == splitIndicies.end()) || ((rightSplit->splitRange.second - rightSplit->splitRange.first) == 1)){
+    if ((result == splitIndicies.end()) || (rightSplit->size() == 1)){
         
         if (result != splitIndicies.end()) retPtrs.second = rightSplit;
         
@@ -450,8 +465,8 @@ RandomProjectionForest ForestBuilder<SplittingScheme>::operator()(ann::dynamic_a
 
     TreeRef builder(forest);
 
-    std::vector<TreeLeaf*> splitQueue1 = {&forest.topNode};
-    std::vector<TreeLeaf*> splitQueue2;
+    std::vector<std::pair<std::size_t, TreeLeaf*>> splitQueue1 = {{0, &forest.topNode}};
+    std::vector<std::pair<std::size_t, TreeLeaf*>> splitQueue2;
     //auto splittingFunction;
 
     //size_t beginIndex(0), endIndex(samples.size() - 1);
@@ -460,10 +475,10 @@ RandomProjectionForest ForestBuilder<SplittingScheme>::operator()(ann::dynamic_a
         
         while(splitQueue1.size() > 0){
             //builder, samples, this
-            builder.refNode = splitQueue1.back();
+            builder.refNode = splitQueue1.back().second;
 
             
-            rngFunctor.SetRange(builder.refNode->splitRange.first, builder.refNode->splitRange.second - 1);
+            rngFunctor.SetRange(builder.refNode->begin(), builder.refNode->end() - 1);
 
             auto [index1, index2] = UnequalIndecies(rngFunctor);
             index1 = samples[index1];
@@ -471,36 +486,34 @@ RandomProjectionForest ForestBuilder<SplittingScheme>::operator()(ann::dynamic_a
 
             auto splittingFunction = getSplitComponents(builder.refNode->splittingIndex, std::pair<size_t, size_t>(index1, index2));
             
+            if (splittingFunction != std::nullopt){
 
-            auto beginIt = samples.begin() + builder.refNode->splitRange.first;
-            auto endIt = samples.begin() + builder.refNode->splitRange.second;
-            auto toBegin = workSpace.begin() + builder.refNode->splitRange.first;
-            auto toRev = workSpace.rbegin() + workSpace.size()-builder.refNode->splitRange.second;
-            
-
-            size_t numSplit = Split(beginIt, endIt, toBegin, toRev, splittingFunction);
-            size_t splitRange = builder.refNode->splitRange.second - builder.refNode->splitRange.first;
-            SplitQuality splitQual = EvaluateSplit(this->heurisitics, splitRange, numSplit);
-            switch(splitQual){
-                case SplitQuality::accept:
-                    AddLeaves(builder, samples, workSpace, numSplit, splitQueue2, heurisitics.splitThreshold);
-                    break;
-                case SplitQuality::reject:
-                    splitQueue2.push_back(builder.refNode);
-                    break;
-                default:
-                    break;
-            }
-            /*
-            if (numSplit>heurisitics.childThreshold &&
-                (builder.refNode->splitRange.second - builder.refNode->splitRange.first - numSplit)>heurisitics.childThreshold){
-
-                AddLeaves(builder, samples, workSpace, numSplit, splitQueue2, heurisitics.splitThreshold);
+                auto beginIt = samples.begin() + builder.refNode->begin();
+                auto endIt = samples.begin() + builder.refNode->end();
+                auto toBegin = workSpace.begin() + builder.refNode->begin();
+                auto toRev = workSpace.rbegin() + workSpace.size()-builder.refNode->end();
                 
-            } else if ((builder.refNode->splitRange.second - builder.refNode->splitRange.first) > heurisitics.maxTreeSize){
-                splitQueue2.push_back(builder.refNode);
+
+                size_t numSplit = Split(beginIt, endIt, toBegin, toRev, *splittingFunction);
+                size_t splitRange = builder.refNode->splitRange.second - builder.refNode->splitRange.first;
+                SplitQuality splitQual = EvaluateSplit(this->heurisitics, splitRange, numSplit);
+                switch(splitQual){
+                    case SplitQuality::accept:
+                        AddLeaves(builder, samples, workSpace, numSplit, splitQueue2, heurisitics.splitThreshold);
+                        break;
+                    case SplitQuality::reject:
+                        if(splitQueue1.back().first < heurisitics.max_retry){
+                            splitQueue2.emplace_back(splitQueue1.back().first+1, builder.refNode);
+                        }
+                        break;
+                    default:
+                        break;
+                }
+            } else {
+                if(splitQueue1.back().first < heurisitics.max_retry){
+                    splitQueue2.emplace_back(splitQueue1.back().first+1, builder.refNode);
+                }
             }
-            */
             splitQueue1.pop_back();
 
         } //end while
@@ -514,8 +527,8 @@ RandomProjectionForest ForestBuilder<SplittingScheme>::operator()(ann::dynamic_a
             };
         }
 
-    } //end for
-    // ...Is this comparison UB?
+    }
+
     if (samples.data() == workSpaceArr.data()){
         std::swap(forest.indecies, workSpaceArr);
         //std::swap(forest.indecies, workSpaceArr);
@@ -539,36 +552,43 @@ RandomProjectionForest ForestBuilder<SplittingScheme>::operator()(ann::dynamic_a
 
     TreeRef builder(forest);
 
-    std::vector<TreeLeaf*> splitQueue1 = {&forest.topNode};
-    std::vector<TreeLeaf*> splitQueue2;
+    std::vector<std::pair<std::size_t, TreeLeaf*>> splitQueue1 = {{0, &forest.topNode}};
+    std::vector<std::pair<std::size_t, TreeLeaf*>> splitQueue2;
 
     size_t topIters = std::bit_width(std::bit_ceil(threadPool.ThreadCount()));
 
     for (size_t i = 0; i < topIters; i+=1){
-        std::vector<std::pair<TreeLeaf*, std::unique_ptr<SplitState>>> pendingResults;
-        for (auto ptr: splitQueue1){
+        std::vector<std::tuple<std::size_t, TreeLeaf*, std::unique_ptr<SplitState>>> pendingResults;
+        for (auto [retry_count, ptr]: splitQueue1){
             builder.refNode = ptr;
 
             rngFunctor.SetRange(builder.refNode->splitRange.first, builder.refNode->splitRange.second - 1);
-
+            
+            
             auto [index1, index2] = UnequalIndecies(rngFunctor);
             index1 = samples[index1];
             index2 = samples[index2];
             
 
-            auto splittingFunction = getSplitComponents(builder.refNode->splittingIndex, std::pair<size_t, size_t>(index1, index2));
+            auto predicate_opt = getSplitComponents(builder.refNode->splittingIndex, std::pair<size_t, size_t>(index1, index2));
+            
+            if (predicate_opt){
+                size_t* beginIt = samples.data() + builder.refNode->splitRange.first;
+                size_t* endIt = samples.data() + builder.refNode->splitRange.second;
+                size_t* toBegin = workSpace.data() + builder.refNode->splitRange.first;
+                size_t* toEnd = workSpace.data() + builder.refNode->splitRange.second;
 
-
-            size_t* beginIt = samples.data() + builder.refNode->splitRange.first;
-            size_t* endIt = samples.data() + builder.refNode->splitRange.second;
-            size_t* toBegin = workSpace.data() + builder.refNode->splitRange.first;
-            size_t* toEnd = workSpace.data() + builder.refNode->splitRange.second;
-
-            pendingResults.push_back({ptr, Split(beginIt, endIt, toBegin, toEnd, splittingFunction, threadPool)});
+                pendingResults.push_back({retry_count, ptr, Split(beginIt, endIt, toBegin, toEnd, *predicate_opt, threadPool)});
+            }else {
+                if(splitQueue1.back().first < heurisitics.max_retry){
+                    splitQueue2.push_back({retry_count+1, builder.refNode});
+                }
+            }
         }
+
         
 
-        for (auto& [nodePtr, splitState]: pendingResults){
+        for (auto& [retry_count, nodePtr, splitState]: pendingResults){
             std::future<size_t> result = splitState->result.get_future();
             size_t numSplit = result.get();
             builder.refNode = nodePtr;
@@ -579,7 +599,9 @@ RandomProjectionForest ForestBuilder<SplittingScheme>::operator()(ann::dynamic_a
                     AddLeaves(builder, samples, workSpace, numSplit, splitQueue2, heurisitics.splitThreshold);
                     break;
                 case SplitQuality::reject:
-                    splitQueue2.push_back(builder.refNode);
+                    if(splitQueue1.back().first < heurisitics.max_retry){
+                        splitQueue2.push_back({retry_count+1, builder.refNode});
+                    }
                     break;
                 default:
                     break;
@@ -608,21 +630,22 @@ RandomProjectionForest ForestBuilder<SplittingScheme>::operator()(ann::dynamic_a
         
     }
 
-    AsyncQueue<TreeLeaf*> incomingNodes;
-    auto splitTaskGenerator = [&](TreeLeaf* nodeToSplit)->auto{
+    AsyncQueue<std::pair<std::size_t, TreeLeaf*>> incomingNodes;
+    auto splitTaskGenerator = [&](std::size_t retry_count, TreeLeaf* nodeToSplit)->auto{
         auto splitTask = [&getSplitComponents =this->getSplitComponents,
-                          &incomingNodes, 
+                          &incomingNodes,
+                          retry_count, 
                           nodeToSplit, 
                           samples, 
                           workSpace,
                           heurisitics = this->heurisitics,
                           rngFunctor = this->rngFunctor] (TreeRef& nodeBuilder) mutable ->void{
-            std::vector<TreeLeaf*> splitQueue1 = {nodeToSplit};
-            std::vector<TreeLeaf*> splitQueue2;
+            std::vector<std::pair<std::size_t, TreeLeaf*>> splitQueue1 = {{retry_count, nodeToSplit}};
+            std::vector<std::pair<std::size_t, TreeLeaf*>> splitQueue2;
             for(size_t i = 0; i<2; i+=1){
                 while(splitQueue1.size() > 0){
                     //builder, samples, this
-                    nodeBuilder.refNode = splitQueue1.back();
+                    nodeBuilder.refNode = splitQueue1.back().second;
 
                     retry:
                     //This is bootleg af, need to refactor how I do rng.
@@ -634,28 +657,38 @@ RandomProjectionForest ForestBuilder<SplittingScheme>::operator()(ann::dynamic_a
                     index2 = samples[index2];
 
                     // Get the splitting vector, this can be fed into this function in the parallel/distributed case.
-                    auto splittingFunction = getSplitComponents(nodeBuilder.refNode->splittingIndex, std::pair<size_t, size_t>(index1, index2));
+                    auto opt_predicate = getSplitComponents(nodeBuilder.refNode->splittingIndex, std::pair<size_t, size_t>(index1, index2));
 
+                    if (opt_predicate != std::nullopt){
 
-                    auto beginIt = samples.begin() + nodeBuilder.refNode->splitRange.first;
-                    auto endIt = samples.begin() + nodeBuilder.refNode->splitRange.second;
-                    auto toBegin = workSpace.begin() + nodeBuilder.refNode->splitRange.first;
-                    auto toRev = workSpace.rbegin() + workSpace.size()-nodeBuilder.refNode->splitRange.second;
-                    
+                        auto beginIt = samples.begin() + nodeBuilder.refNode->splitRange.first;
+                        auto endIt = samples.begin() + nodeBuilder.refNode->splitRange.second;
+                        auto toBegin = workSpace.begin() + nodeBuilder.refNode->splitRange.first;
+                        auto toRev = workSpace.rbegin() + workSpace.size()-nodeBuilder.refNode->splitRange.second;
+                        
 
-                    size_t numSplit = Split(beginIt, endIt, toBegin, toRev, splittingFunction);
+                        size_t numSplit = Split(beginIt, endIt, toBegin, toRev, *opt_predicate);
 
-                    size_t splitRange = nodeBuilder.refNode->splitRange.second - nodeBuilder.refNode->splitRange.first;
-                    SplitQuality splitQual = EvaluateSplit(heurisitics, splitRange, numSplit);
-                    switch(splitQual){
-                        case SplitQuality::accept:
-                            AddLeaves(nodeBuilder, samples, workSpace, numSplit, splitQueue2, heurisitics.splitThreshold);
-                            break;
-                        case SplitQuality::reject:
+                        size_t splitRange = nodeBuilder.refNode->splitRange.second - nodeBuilder.refNode->splitRange.first;
+                        SplitQuality splitQual = EvaluateSplit(heurisitics, splitRange, numSplit);
+                        switch(splitQual){
+                            case SplitQuality::accept:
+                                AddLeaves(nodeBuilder, samples, workSpace, numSplit, splitQueue2, heurisitics.splitThreshold);
+                                break;
+                            case SplitQuality::reject:
+                                if(splitQueue1.back().first < heurisitics.max_retry){
+                                    ++splitQueue1.back().first;
+                                    goto retry;
+                                }
+                                break;
+                            default:
+                                break;
+                        }
+                    } else {
+                        if(splitQueue1.back().first < heurisitics.max_retry){
+                            ++splitQueue1.back().first;
                             goto retry;
-                            break;
-                        default:
-                            break;
+                        }
                     }
                     /*
                     if (numSplit>heurisitics.childThreshold &&
@@ -679,19 +712,19 @@ RandomProjectionForest ForestBuilder<SplittingScheme>::operator()(ann::dynamic_a
         return splitTask;
     };
 
-    for(auto ptr: splitQueue1) threadPool.DelegateTask(splitTaskGenerator(ptr));
+    for(auto& [retry, ptr]: splitQueue1) threadPool.DelegateTask(splitTaskGenerator(retry, ptr));
     getSplitComponents.ConsumeNewVectors();
     while(true){
         while(threadPool.TaskCount() > 0){
-            std::list<TreeLeaf*> newPtrs = incomingNodes.TryTakeAll();
-            for (auto ptr: newPtrs) threadPool.DelegateTask(splitTaskGenerator(ptr));
+            std::list<std::pair<std::size_t, TreeLeaf*>> newPtrs = incomingNodes.TryTakeAll();
+            for (auto [retry, ptr]: newPtrs) threadPool.DelegateTask(splitTaskGenerator(retry, ptr));
             getSplitComponents.ConsumeNewVectors([](const size_t num){ return num > 10;});
         }
 
         threadPool.Latch();
-        std::list<TreeLeaf*> newPtrs = incomingNodes.TryTakeAll();
+         std::list<std::pair<std::size_t, TreeLeaf*>> newPtrs = incomingNodes.TryTakeAll();
         if(newPtrs.size() != 0){
-            for (auto ptr: newPtrs) threadPool.DelegateTask(splitTaskGenerator(ptr));
+            for (auto [retry, ptr]: newPtrs) threadPool.DelegateTask(splitTaskGenerator(retry, ptr));
             getSplitComponents.ConsumeNewVectors([](const size_t num){ return num > 10;});
         }else{
             getSplitComponents.ConsumeNewVectors();

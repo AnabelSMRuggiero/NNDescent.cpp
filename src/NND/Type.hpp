@@ -13,9 +13,10 @@
 namespace nnd{
 
 struct SplittingHeurisitcs{
-    uint32_t splitThreshold = 80;
-    uint32_t childThreshold = 32;
-    uint32_t maxTreeSize = 130;
+    std::uint32_t splitThreshold = 80;
+    std::uint32_t childThreshold = 32;
+    std::uint32_t maxTreeSize = 130;
+    std::size_t max_retry = std::size_t(-1);
     float maxSplitFraction = 0.0f;
 };
 

@@ -325,7 +325,7 @@ auto bind_angular_predicate(std::random_access_iterator auto data, auto splittin
 }
 
 template<std::random_access_iterator IterType, std::ranges::contiguous_range VectorType>
-using angular_predicate = decltype(bind_euclidean_predicate(std::declval<IterType>(),
+using angular_predicate = decltype(bind_angular_predicate(std::declval<IterType>(),
                                                             std::declval<VectorType>()));
 
 template<typename DataType, typename SplittingVector>
