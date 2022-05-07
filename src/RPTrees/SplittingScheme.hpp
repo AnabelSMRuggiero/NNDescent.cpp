@@ -47,12 +47,14 @@ enum struct splitting_scheme{
 template<typename Metric>
 constexpr splitting_scheme choose_scheme = splitting_scheme::euclidean;
 
+template<typename DistanceType>
+using euclidean_splitting_vectors = std::unordered_map<size_t, std::pair<ann::aligned_array<DistanceType>, DistanceType>>;
 
-using euclidean_splitting_vectors = std::unordered_map<size_t, std::pair<ann::aligned_array<float>, float>>;
+template<typename DistanceType>
+using angular_splitting_vectors = std::unordered_map<size_t, ann::aligned_array<DistanceType>>;
 
-using angular_splitting_vectors = std::unordered_map<size_t, ann::aligned_array<float>>;
-
-using splitting_vectors = std::variant<euclidean_splitting_vectors, angular_splitting_vectors>;
+template<typename DistanceType>
+using splitting_vectors = std::variant<euclidean_splitting_vectors<DistanceType>, angular_splitting_vectors<DistanceType>>;
 
 template<typename DataEntry, typename DistType>
 std::optional<ann::aligned_array<DistType>> euclidean_splitting_plane(const DataEntry& point_a, const DataEntry& point_b){
@@ -275,10 +277,10 @@ template<typename DataType, typename SplittingVector>
 auto borrowed_euclidean(const DataSet<DataType>& data, const euclidean_vector_map<SplittingVector>& splitting_vectors){
 
     using offset_type = typename SplittingVector::value_type;
-    return [&](size_t splitIndex, TransformTag){
+    return [&, data_iter = data.begin()](size_t splitIndex, TransformTag){
         const std::pair<SplittingVector, offset_type>& splitPair = splitting_vectors.at(splitIndex);
         
-        return bind_euclidean_predicate(data.begin(), make_splitting_view(splitPair.first), splitPair.second);
+        return bind_euclidean_predicate(data_iter, make_splitting_view(splitPair.first), splitPair.second);
     
     };
 }
@@ -415,7 +417,7 @@ struct parallel_angular_scheme{
         if constexpr(is_aligned_contiguous_range_v<SplittingVector>){
             
             auto comparisonFunction =
-                bind_angular_predicate(std::as_const(dataSource).begin(), SplittingView(splittingVectors[splitIndex]));
+                bind_angular_predicate(std::as_const(dataSource).begin(), SplittingView(splittingVector));
             
             generatedVectors.Put({splitIndex, std::move(splittingVector)});
             return comparisonFunction;
@@ -424,7 +426,7 @@ struct parallel_angular_scheme{
         } else {
 
             auto comparisonFunction =
-                bind_angular_predicate(std::as_const(dataSource).begin(), SplittingView(splittingVectors[splitIndex].begin(), splittingVectors[splitIndex].end()));
+                bind_angular_predicate(std::as_const(dataSource).begin(), SplittingView(splittingVector.begin(), splittingVector.end()));
             
             generatedVectors.Put({splitIndex, std::move(splittingVector)});
             return comparisonFunction;
@@ -468,6 +470,25 @@ struct parallel_angular_scheme{
 
 
 
+template<typename SplittingVector>
+using angular_vector_map = std::unordered_map<size_t, SplittingVector>;
+
+template<typename DataType, typename SplittingVector>
+auto borrowed_angular(const DataSet<DataType>& data, const angular_vector_map<SplittingVector>& splitting_vectors){
+
+    return [&, data_iter = data.begin()](size_t splitIndex, TransformTag){
+        const SplittingVector& splitter = splitting_vectors.at(splitIndex);
+        
+        return bind_angular_predicate(data_iter, make_splitting_view(splitter));
+    
+    };
+}
+
+template<typename DataType, typename SplittingVector>
+using borrowed_angular_scheme = decltype(borrowed_angular(std::declval<DataSet<DataType>>(), std::declval<angular_vector_map<SplittingVector>>()));
+
+
+
 template<splitting_scheme SchemeType, typename DataType, typename SplittingVector>
 struct serial_splitting_scheme;
 
@@ -507,11 +528,18 @@ struct borrowed_splitting_scheme;
 template<typename DataType, typename SplittingVector>
 struct borrowed_splitting_scheme<splitting_scheme::euclidean, DataType, SplittingVector>{
     template<typename... Args>
-    auto bind(Args&&... args){
+    static auto bind(Args&&... args){
         return borrowed_euclidean(std::forward<Args>(args)...);
     }
 };
 
+template<typename DataType, typename SplittingVector>
+struct borrowed_splitting_scheme<splitting_scheme::angular, DataType, SplittingVector>{
+    template<typename... Args>
+    static auto bind(Args&&... args){
+        return borrowed_angular(std::forward<Args>(args)...);
+    }
+};
 
 }
 #endif //RPT_SPLITTINGSCHEME_HPP

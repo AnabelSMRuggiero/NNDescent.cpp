@@ -57,20 +57,31 @@ int main(int argc, char* argv[]) {
     SearchParameters search_parameters{ 10, 6, 10 };
 
 
-    bool parallelSearch = false;
+    bool parallelSearch = true;
 
 
-
+    /*
     std::filesystem::path indexLocation("./Saved-Indecies/SIFT");
 
     std::string testDataFilePath("./TestData/SIFT-Test.bin");
     std::string testNeighborsFilePath("./TestData/SIFT-Neighbors.bin");
     DataSet<float> test_data_set(testDataFilePath, 128, 10'000);
     DataSet<std::uint32_t, ann::align_val_of<std::uint32_t>> test_neighbors(testNeighborsFilePath, 100, 10'000);
+    using metric = euclidean_metric_pair;
+    */
+    
+    std::filesystem::path indexLocation("./Saved-Indecies/NYTimes");
+    
+    std::string testDataFilePath("./TestData/NYTimes-Angular-Test.bin");
+    std::string testNeighborsFilePath("./TestData/NYTimes-Angular-Neighbors.bin");
+    DataSet<float> test_data_set(testDataFilePath, 128, 10'000);
+    DataSet<std::uint32_t, ann::align_val_of<std::uint32_t>> test_neighbors(testNeighborsFilePath, 100, 10'000);
+    using metric = inner_product_pair;
+    
 
     nnd::index<float> index = open_index<float>(indexLocation);
     index.search_parameters = search_parameters;
-    fixed_block_binder searchDist(euclidean_metric_pair{}, test_data_set, std::span<const DataBlock<float>>{ std::as_const(index.data_points) });
+    fixed_block_binder searchDist(metric{}, test_data_set, std::span<const DataBlock<float>>{ std::as_const(index.data_points) });
     erased_unary_binder<float> searchFunctor(searchDist);
 
     for (auto& context : index.query_contexts) {

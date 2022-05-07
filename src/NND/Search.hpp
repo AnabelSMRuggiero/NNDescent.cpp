@@ -12,6 +12,7 @@ https://github.com/AnabelSMRuggiero/NNDescent.cpp
 #define NND_SEARCH_HPP
 
 #include <new>
+#include <variant>
 #include <vector>
 #include <algorithm>
 #include <execution>
@@ -26,6 +27,7 @@ https://github.com/AnabelSMRuggiero/NNDescent.cpp
 #include "MetaGraph.hpp"
 #include "NND/MetricHelpers.hpp"
 #include "RPTrees/Forest.hpp"
+#include "RPTrees/SplittingScheme.hpp"
 #include "SearchContexts.hpp"
 #include "Type.hpp"
 #include "Parallelization/AsyncQueue.hpp"
@@ -460,13 +462,38 @@ void ParallelSearch(
 }
 
 template<typename DistanceType>
+constexpr auto select_parallel_transform = []<typename VectorMap>(const DataSet<DistanceType>& search_data,
+                                                                  const std::unordered_set<size_t>& splits_to_do,
+                                                                  auto num_threads, 
+                                                                  const VectorMap& splitting_vectors){
+
+    constexpr splitting_scheme scheme = std::same_as<VectorMap, euclidean_splitting_vectors<DistanceType>> 
+                                        ? splitting_scheme::euclidean
+                                        : splitting_scheme::angular;
+
+    using splitting_scheme = borrowed_splitting_scheme<scheme, DistanceType, ann::aligned_array<DistanceType>>;
+
+    return RPTransformData(search_data.size(),
+                           splits_to_do,
+                           splitting_scheme::bind(search_data, splitting_vectors),
+                           num_threads);
+    
+};
+
+template<typename DistanceType>
 std::vector<std::vector<std::size_t>> search(const DataSet<DistanceType>& search_data, const index<DistanceType>& index, std::size_t num_threads){
     
+
+    
+    
+    auto bound_transform = std::bind_front(select_parallel_transform<DistanceType>, std::ref(search_data), std::ref(index.splits_to_do), num_threads);
+    RandomProjectionForest rp_trees = std::visit(bound_transform, index.splits);
+    /*
     RandomProjectionForest rpTreesTest = RPTransformData(search_data.size(),
                                                          index.splits_to_do,
                                                          borrowed_euclidean(search_data, index.splitting_vectors),
                                                          num_threads);
-
+    */
     size_t numberSearchBlocks = index.data_points.size();
 
     
@@ -479,7 +506,7 @@ std::vector<std::vector<std::size_t>> search(const DataSet<DistanceType>& search
     std::span<const ann::dynamic_array<size_t>> indexMappingView(index.block_idx_to_source_idx);
 
     auto [searchContexts, mappings] =
-        block_search_set(search_data, rpTreesTest, index.search_parameters, index.graph_neighbors.size(), index.split_idx_to_block_idx);
+        block_search_set(search_data, rp_trees, index.search_parameters, index.graph_neighbors.size(), index.split_idx_to_block_idx);
 
     ParallelSearch(searchPool, index.search_parameters.maxSearchesQueued, std::span{searchContexts}, as_const_span(index.query_contexts), as_const_span(index.graph_neighbors));
 
@@ -502,24 +529,40 @@ std::vector<std::vector<std::size_t>> search(const DataSet<DistanceType>& search
     return results;
 }
 
+template<typename DistanceType>
+constexpr auto select_transform = []<typename VectorMap>(const DataSet<DistanceType>& search_data,
+                                                         const std::unordered_set<size_t>& splits_to_do,
+                                                         const VectorMap& splitting_vectors){
+
+    constexpr splitting_scheme scheme = std::same_as<VectorMap, euclidean_splitting_vectors<DistanceType>> 
+                                        ? splitting_scheme::euclidean
+                                        : splitting_scheme::angular;
+
+    using splitting_scheme = borrowed_splitting_scheme<scheme, DistanceType, ann::aligned_array<DistanceType>>;
+
+    return RPTransformData(search_data,
+                               splits_to_do,
+                               splitting_scheme::bind(search_data, splitting_vectors));
+    
+};
 
 
-
-
-template< typename DistanceType >
+template< typename DistanceType>
 std::vector<std::vector<std::size_t>> search(const DataSet<DistanceType>& search_data, const nnd::index<DistanceType>& index){
 
     
-
+    //using splitting_scheme = borrowed_splitting_scheme<choose_scheme<Metric>, DistanceType, ann::aligned_array<DistanceType>>;
     
 
-    fixed_block_binder searchDist(euclidean_metric_pair{}, search_data, as_const_span(index.data_points));
-    erased_unary_binder<float> searchFunctor(searchDist);
+    //fixed_block_binder searchDist(Metric{}, search_data, as_const_span(index.data_points));
+    //erased_unary_binder<float> searchFunctor(searchDist);
 
     std::vector<std::vector<size_t>> results(search_data.size());
     IndexMaps<size_t> testMappings;
 
-    RandomProjectionForest rpTreesTest = RPTransformData(search_data, index.splits_to_do, borrowed_euclidean(search_data, index.splitting_vectors));
+    auto bound_transform = std::bind_front(select_transform<DistanceType>, std::ref(search_data), std::ref(index.splits_to_do));
+    RandomProjectionForest rp_trees = std::visit(bound_transform, index.splits);
+    //RandomProjectionForest rpTreesTest = RPTransformData(search_data, index.splits_to_do, splitting_scheme::bind(search_data, index.splitting_vectors));
     DataMapper<float, void, void> testMapper(search_data);
     std::vector<ContextBlock<float>> searchContexts;
     auto searcherConstructor =
@@ -535,7 +578,7 @@ std::vector<std::vector<std::size_t>> search(const DataSet<DistanceType>& search
         testMapper(splittingIndex, indicies);
     };
 
-    CrawlTerminalLeaves(rpTreesTest, searcherConstructor);
+    CrawlTerminalLeaves(rp_trees, searcherConstructor);
 
 
     testMappings = { std::move(testMapper.splitToBlockNum),
@@ -546,13 +589,13 @@ std::vector<std::vector<std::size_t>> search(const DataSet<DistanceType>& search
     std::span<const IndexBlock> indexView{ std::as_const(index.graph_neighbors) };
 
     SearchQueue searchHints =
-        FirstBlockSearch(searchContexts, searchFunctor, as_const_span(index.query_contexts), indexView, index.search_parameters.maxSearchesQueued);
+        FirstBlockSearch(searchContexts, index.distance_metric, as_const_span(index.query_contexts), indexView, index.search_parameters.maxSearchesQueued);
 
 
     QueueView hintView = { searchHints.data(), searchHints.size() };
 
     SearchLoop(
-        searchFunctor, hintView, searchContexts, as_const_span(index.query_contexts), indexView, index.search_parameters.maxSearchesQueued, search_data.size());
+        index.distance_metric, hintView, searchContexts, as_const_span(index.query_contexts), indexView, index.search_parameters.maxSearchesQueued, search_data.size());
 
 
 

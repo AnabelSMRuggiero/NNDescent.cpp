@@ -168,18 +168,20 @@ void SerializeFragmentIndex(std::span<const DataBlock<DistType>> dataBlocks, std
     }
 }
 
-void SerializeSplittingVectors(const splitting_vectors& splittingVectors, std::filesystem::path filePath){
+template<typename DistanceType>
+void SerializeSplittingVectors(const splitting_vectors<DistanceType>& splittingVectors, std::filesystem::path filePath){
     std::ofstream vectorFile{filePath, std::ios_base::binary | std::ios_base::trunc};
     serialize(splittingVectors, vectorFile);
 }
 
 constexpr SplittingHeurisitcs seed_parameters{
     .splitThreshold = 10,
-    .childThreshold = 4,
+    .childThreshold = 1,
     .maxTreeSize = 22,
+    .max_retry = 12,
     .maxSplitFraction = 0.0f,
 };
-
+std::atomic<std::size_t> candidate_count = 0;
 constexpr auto add_candidates = [] (auto&& candidates, auto&& index_maps, std::size_t splitIdx, std::span<const size_t> indecies){
     constexpr std::size_t buffer_size = sizeof(BlockIndecies) * seed_parameters.maxTreeSize * 4;
     std::byte stack_buffer[buffer_size];
@@ -201,6 +203,7 @@ constexpr auto add_candidates = [] (auto&& candidates, auto&& index_maps, std::s
         if (candidates_vec.size()>seed_parameters.childThreshold){
             candidates_vec.resize(seed_parameters.childThreshold);
         }
+        candidate_count += candidates_vec.size();
     }
 };
 
@@ -224,7 +227,7 @@ auto seed_candidates(const DataSet<DistanceType>& training_data, const IndexMaps
     };
 
     CrawlTerminalLeaves(rp_trees, candidate_task);
-
+    std::cout << candidate_count << std::endl;
     return candidates;
 }
 
@@ -250,6 +253,8 @@ auto seed_candidates(const DataSet<DistanceType>& training_data, const IndexMaps
     };
 
     threaded_region(assemble_candidates, [&](){CrawlTerminalLeaves(rp_trees, add_task);});
+
+    std::cout << candidate_count << std::endl;
 
     return candidates;
 }
@@ -435,7 +440,8 @@ int main(int argc, char *argv[]){
     size_t maxNewSearches = 10;
 
     //SplittingHeurisitcs splitParams= {1250, 750, 1750, 0.0f};
-    SplittingHeurisitcs splitParams= {2500, 1500, 3500, 0.0f};
+    //SplittingHeurisitcs splitParams= {2500, 1500, 3500, 50, 0.0f};
+    SplittingHeurisitcs splitParams= {1000, 600, 1600, 50, 0.0f};
     //SplittingHeurisitcs splitParams= {205, 123, 287, 0.0f};
 
     //SplittingHeurisitcs splitParams= {20, 12, 28, 0.0f};
@@ -561,7 +567,7 @@ int main(int argc, char *argv[]){
 
         /*
         std::string trainDataFilePath("./TestData/SIFT-Train.bin");
-        DataSet<float> mnistFashionTrain(trainDataFilePath, 128, 1'000'000);
+        DataSet<float> training_data(trainDataFilePath, 128, 1'000'000);
         std::filesystem::path indexLocation("./Saved-Indecies/SIFT");
         using metric = euclidean_metric_pair;
         */

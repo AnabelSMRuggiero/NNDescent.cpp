@@ -83,7 +83,7 @@ struct index {
     ann::dynamic_array<ann::dynamic_array<size_t>> block_idx_to_source_idx;
 
     std::unordered_set<size_t> splits_to_do;
-    splitting_vectors splits;
+    splitting_vectors<DistanceType> splits;
     std::unordered_map<size_t, size_t> split_idx_to_block_idx;
 
     erased_unary_binder<DistanceType> distance_metric;
@@ -94,9 +94,9 @@ struct index {
 template<typename DistanceType>
 index<DistanceType> open_index(const std::filesystem::path& index_directory){
 
-    auto splitting_vectors = [&]() {
+    auto splits = [&]() {
         std::ifstream vecFile(index_directory / "SplittingVectors.bin", std::ios_base::binary);
-        return extract<std::unordered_map<size_t, std::pair<ann::aligned_array<DistanceType>, DistanceType>>>(vecFile);
+        return extract<splitting_vectors<DistanceType>>(vecFile);
     }();
 
     auto split_idx_to_block_idx = [&]() {
@@ -109,16 +109,16 @@ index<DistanceType> open_index(const std::filesystem::path& index_directory){
         return extract<ann::dynamic_array<ann::dynamic_array<size_t>>>(mappingFile);
     }();
 
-    auto splits_to_do = [&]{
+    auto splits_to_do = std::visit([&](const auto& vectors){
         std::unordered_set<size_t> splitting_indicies;
-        for (const auto& [key, value] : splitting_vectors)
+        for (const auto& [key, value] : vectors)
             splitting_indicies.insert(key);
 
         for (const auto& [key, value] : split_idx_to_block_idx)
             splitting_indicies.erase(key);
         
         return splitting_indicies;
-    }();
+    }, splits);
 
     return index<DistanceType> {
         .data_points                = OpenDataBlocks<float>(index_directory),
@@ -126,7 +126,7 @@ index<DistanceType> open_index(const std::filesystem::path& index_directory){
         .graph_neighbors            = OpenIndexBlocks(index_directory),
         .block_idx_to_source_idx    = std::move(block_idx_to_source_idx),
         .splits_to_do               = std::move(splits_to_do),
-        .splitting_vectors          = std::move(splitting_vectors),
+        .splits                     = std::move(splits),
         .split_idx_to_block_idx     = std::move(split_idx_to_block_idx),
         .distance_metric            = {},
         .search_parameters          = {}
