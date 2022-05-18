@@ -8,6 +8,7 @@ Please refer to the project repo for any updates regarding liscensing.
 https://github.com/AnabelSMRuggiero/NNDescent.cpp
 */
 
+#include <cstddef>
 #include <filesystem>
 #include <unordered_map>
 #include <unordered_set>
@@ -54,7 +55,7 @@ int main(int argc, char* argv[]) {
 
 
 
-    SearchParameters search_parameters{ 10, 6, 10 };
+    SearchParameters search_parameters{ 15, 6, 15 };
 
 
     bool parallelSearch = true;
@@ -74,10 +75,11 @@ int main(int argc, char* argv[]) {
     
     std::string testDataFilePath("./TestData/NYTimes-Angular-Test.bin");
     std::string testNeighborsFilePath("./TestData/NYTimes-Angular-Neighbors.bin");
-    DataSet<float> test_data_set(testDataFilePath, 128, 10'000);
+    DataSet<float> test_data_set(testDataFilePath, 256, 10'000);
     DataSet<std::uint32_t, ann::align_val_of<std::uint32_t>> test_neighbors(testNeighborsFilePath, 100, 10'000);
     using metric = inner_product_pair;
     
+    NormalizeDataSet(test_data_set);
 
     nnd::index<float> index = open_index<float>(indexLocation);
     index.search_parameters = search_parameters;
@@ -88,8 +90,31 @@ int main(int argc, char* argv[]) {
         context.querySearchDepth = index.search_parameters.searchDepth;
         context.querySize = index.search_parameters.searchNeighbors;
     }
-
+    
     index.distance_metric = searchFunctor;
+    /*
+    for (std::size_t i = 0; i<index.graph_neighbors.size(); ++i){
+        for (std::size_t j = 0; j<index.graph_neighbors[i].size(); ++j){
+            for (std::size_t k = 0; k<index.graph_neighbors[i][j].size(); ++k){
+                auto neighbor = index.graph_neighbors[i][j][k];
+                if (neighbor.dataIndex >= index.data_points[neighbor.blockNumber].size()){
+                    std::cout << "Buggy Index: {" << neighbor.blockNumber << ", " << neighbor.dataIndex << "}" << std::endl; 
+                }
+            }   
+        }   
+    }
+    */
+    /*
+    for (const auto& index_block : index.graph_neighbors){
+        for (const auto& neighbors : index_block){
+            for (const auto& neighbor : neighbors){
+                if (neighbor.dataIndex >= index.data_points[neighbor.blockNumber].size()){
+                    std::cout << "Buggy Index: {" << neighbor.blockNumber << ", " << neighbor.dataIndex << "}" << std::endl; 
+                }
+            }
+        }
+    }
+    */
 
 
     for (size_t i = 0; i < 10; i += 1) {
@@ -102,23 +127,24 @@ int main(int argc, char* argv[]) {
 
         std::chrono::time_point<std::chrono::steady_clock> runEnd2 = std::chrono::steady_clock::now();
         std::cout << std::chrono::duration_cast<std::chrono::duration<float>>(runEnd2 - runStart2).count() << std::endl;
-
-        size_t numNeighborsCorrect(0);
-        std::vector<size_t> correctNeighborsPerIndex(results.size());
-        for (size_t i = 0; const auto& result : results) {
-            for (size_t j = 0; const auto& neighbor : result) {
-                auto findItr = std::find(std::begin(test_neighbors[i]), std::begin(test_neighbors[i]) + 10, neighbor);
-                if (findItr != (std::begin(test_neighbors[i]) + 10)) {
-                    numNeighborsCorrect++;
-                    correctNeighborsPerIndex[i]++;
+        {
+            size_t numNeighborsCorrect(0);
+            std::vector<size_t> correctNeighborsPerIndex(results.size());
+            for (size_t i = 0; const auto& result : results) {
+                for (size_t j = 0; const auto& neighbor : result) {
+                    auto findItr = std::find(std::begin(test_neighbors[i]), std::begin(test_neighbors[i]) + 10, neighbor);
+                    if (findItr != (std::begin(test_neighbors[i]) + 10)) {
+                        numNeighborsCorrect++;
+                        correctNeighborsPerIndex[i]++;
+                    }
+                    j++;
                 }
-                j++;
+                i++;
             }
-            i++;
+            //for (const auto& numCorrect : correctNeighborsPerIndex) std::cout << numCorrect << std::endl;
+            double recall = double(numNeighborsCorrect) / double(10 * test_neighbors.size());
+            std::cout << (recall * 100) << std::endl;
         }
-
-        double recall = double(numNeighborsCorrect) / double(10 * test_neighbors.size());
-        std::cout << (recall * 100) << std::endl;
     }
     return 0;
 }

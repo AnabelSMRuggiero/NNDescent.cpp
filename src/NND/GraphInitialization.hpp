@@ -426,9 +426,16 @@ ann::dynamic_array<BlockUpdateContext<DistType>> BuildGraphRedux(const ann::dyna
     ann::dynamic_array<BlockUpdateContext<DistType>> blockUpdateContexts = InitializeBlockContexts<DistType>(blockGraphs,
                                                                                          queryHints,
                                                                                          hyperParams.indexParams.queryDepth);
-    
+    for(std::size_t i = 0; i<candidates.size(); ++i){
+        for (std::size_t j = 0; j<candidates[i].size(); ++j){
+            for(const auto candidate : candidates[i][j]){
+                add_candidate(blockUpdateContexts[i].joinsToDo, j, candidate);
+            }
+        }
+    }
+
     std::span<BlockUpdateContext<DistType>> blockSpan{blockUpdateContexts};
-    std::span<const BlockUpdateContext<DistType>> constBlockSpan(blockUpdateContexts.data(), blockUpdateContexts.size());
+    //std::span<const BlockUpdateContext<DistType>> constBlockSpan(blockUpdateContexts.data(), blockUpdateContexts.size());
     cache_state<float> cache(hyperParams.splitParams.maxTreeSize, hyperParams.indexParams.blockGraphNeighbors);
 
      
@@ -446,7 +453,7 @@ ann::dynamic_array<BlockUpdateContext<DistType>> BuildGraphRedux(const ann::dyna
         for (auto& context: blockSpan){
             context.SetNextJoins();
         }
-
+        std::cout << graphUpdates <<std::endl;
     }
 
     return blockUpdateContexts;

@@ -176,10 +176,10 @@ void SerializeSplittingVectors(const splitting_vectors<DistanceType>& splittingV
 
 constexpr SplittingHeurisitcs seed_parameters{
     .splitThreshold = 10,
-    .childThreshold = 1,
-    .maxTreeSize = 22,
-    .max_retry = 12,
-    .maxSplitFraction = 0.0f,
+    .childThreshold = 6,
+    .maxTreeSize = 16,
+    .max_retry = 24,
+    .maxSplitFraction = 0.33f,
 };
 std::atomic<std::size_t> candidate_count = 0;
 constexpr auto add_candidates = [] (auto&& candidates, auto&& index_maps, std::size_t splitIdx, std::span<const size_t> indecies){
@@ -200,9 +200,11 @@ constexpr auto add_candidates = [] (auto&& candidates, auto&& index_maps, std::s
         std::ranges::copy_if(block_indecies, std::back_inserter(candidates_vec), [&](const auto current_candidate){
             return current_candidate.blockNumber != element.blockNumber;
         });
+        /*
         if (candidates_vec.size()>seed_parameters.childThreshold){
             candidates_vec.resize(seed_parameters.childThreshold);
         }
+        */
         candidate_count += candidates_vec.size();
     }
 };
@@ -425,7 +427,7 @@ int main(int argc, char *argv[]){
     constexpr size_t numThreads = 12;
 
     //IndexParameters indexParams{12, 40, 35, 8};
-    IndexParameters indexParams{12, 20, 15, 6};
+    IndexParameters indexParams{12, 20, 15, 8};
 
     size_t numBlockGraphNeighbors = 12;
     //size_t numCOMNeighbors = 40;
@@ -441,7 +443,7 @@ int main(int argc, char *argv[]){
 
     //SplittingHeurisitcs splitParams= {1250, 750, 1750, 0.0f};
     //SplittingHeurisitcs splitParams= {2500, 1500, 3500, 50, 0.0f};
-    SplittingHeurisitcs splitParams= {1000, 600, 1600, 50, 0.0f};
+    SplittingHeurisitcs splitParams= {725, 435, 1160, 50, 0.4f};
     //SplittingHeurisitcs splitParams= {205, 123, 287, 0.0f};
 
     //SplittingHeurisitcs splitParams= {20, 12, 28, 0.0f};
@@ -458,7 +460,7 @@ int main(int argc, char *argv[]){
     // max block size must be < <DataIndex_t>::max()
     // max fragment size must be <  dataSet size (min num fragments * min block size)
 
-    bool parallelIndexBuild = false;
+    bool parallelIndexBuild = true;
     bool parallelSearch = true;
 
 
@@ -577,6 +579,7 @@ int main(int argc, char *argv[]){
         std::filesystem::path indexLocation("./Saved-Indecies/NYTimes");
         using metric = inner_product_pair;
         
+        NormalizeDataSet(training_data);
 
         /*
         std::string testDataFilePath("./TestData/SIFT-Test.bin");
@@ -607,7 +610,7 @@ int main(int argc, char *argv[]){
         //std::cout << std::chrono::duration_cast<std::chrono::duration<float>>(runEnd - runStart).count() << "s total for index building " << std::endl;
         std::cout << std::chrono::duration_cast<std::chrono::duration<float>>(runEnd - runStart).count() << std::endl;
         //std::chrono::time_point<std::chrono::steady_clock> finalizationStart = std::chrono::steady_clock::now();
-
+        
         SerializeSplittingVectors(built_index.splits, indexLocation / "SplittingVectors.bin");
 
         [&, &split_idx_to_block_idx = built_index.split_idx_to_block_idx](){
@@ -630,7 +633,7 @@ int main(int argc, char *argv[]){
                             as_const_span(built_index.query_contexts),
                             as_const_span(built_index.graph_neighbors),
                             indexLocation);
-        
+            
     }
 
     return 0;

@@ -11,10 +11,12 @@ https://github.com/AnabelSMRuggiero/NNDescent.cpp
 #ifndef NND_SUBGRAPHQUERY_HPP
 #define NND_SUBGRAPHQUERY_HPP
 
+#include <algorithm>
 #include <cassert>
 #include <concepts>
 #include <cstdint>
 #include <functional>
+#include <iostream>
 #include <iterator>
 #include <limits>
 #include <memory_resource>
@@ -26,6 +28,7 @@ https://github.com/AnabelSMRuggiero/NNDescent.cpp
 #include <utility>
 #include <vector>
 
+#include "NND/GraphStructures/UndirectedGraph.hpp"
 #include "ann/Data.hpp"
 #include "ann/DataDeserialization.hpp"
 #include "ann/DataSerialization.hpp"
@@ -171,7 +174,7 @@ GraphVertex<IndexType, DistType> RandomQueryHint(std::size_t block_size, std::si
     
     std::pmr::unordered_set<IndexType>& selected_indecies = *allocator.new_object<std::pmr::unordered_set<IndexType>>();
 
-    RngFunctor rng{0, block_size};
+    RngFunctor rng{0, block_size-1};
 
     while (selected_indecies.size()<num_candidates){
         selected_indecies.insert(rng());
@@ -186,6 +189,118 @@ GraphVertex<IndexType, DistType> RandomQueryHint(std::size_t block_size, std::si
     return result;
 }
 
+/*
+struct get_arg {
+    std::size_t& number_to_generate;
+    constexpr bool await_ready() const noexcept {return false;} //Call await_suspend
+
+    template<typename PromiseType>
+    bool await_suspend(std::coroutine_handle<PromiseType> h) {
+        return true; //Don't suspend; call await_resume()
+    }
+    std::size_t await_resume() const noexcept {return number_to_generate;}
+};
+
+struct query_generator{
+    struct promise_type{
+        std::vector<int> return_value;
+        std::size_t number_to_generate;
+        ~promise_type(){
+            //std::cout << "promise_type destroyed" << std::endl;
+        }
+        query_generator get_return_object(){ return {std::coroutine_handle<promise_type>::from_promise(*this)};}
+        std::suspend_never initial_suspend() {return {};}
+        std::suspend_always final_suspend() noexcept {return {};}
+        void unhandled_exception() {}
+
+        
+        get_arg yield_value(std::vector<int>&& geneterated_vector){
+            return_value = std::move(geneterated_vector);
+            return get_arg{number_to_generate};
+        }
+        template<typename T>
+        get_arg await_transform(T&&) { return get_arg{number_to_generate};}
+
+    };
+
+    std::vector<int> operator()(std::size_t number_of_elements){
+        
+        if (h.done()) throw "Something";
+        
+        h.promise().number_to_generate = number_of_elements;
+        h();
+        return std::move(h.promise().return_value);
+    }
+
+    std::coroutine_handle<promise_type> h;
+};
+
+query_generator make_vectors(){
+    std::size_t vector_size = co_await 1;
+    std::mt19937 rng_eng{};
+    std::uniform_int_distribution<int> dist;
+    while(true){
+        std::vector<int> coret_vec(vector_size, 0);
+        for (auto& element : coret_vec){
+            element = dist(rng_eng);
+        }
+        vector_size = co_yield std::move(coret_vec);
+    }
+}
+
+
+some_promise generate_queries( NodeTrackerImpl<TrackerAlloc>& nodesVisited) {
+
+        constexpr size_t bufferSize = sizeof(size_t) * (internal::maxBatch + 5);
+        char stackBuffer[bufferSize];
+        std::pmr::monotonic_buffer_resource stackResource(stackBuffer, bufferSize);
+
+        std::pmr::vector<size_t> joinQueue(&stackResource);
+        constexpr size_t maxBatch = internal::maxBatch; // Compile time constant
+        joinQueue.reserve(maxBatch);
+
+        NodeTrackerImpl<std::pmr::polymorphic_allocator<bool>> nodesCompared(blockSize, internal::GetThreadResource());
+
+        auto notVisited = [&](const auto index) { return !nodesVisited[index]; };
+
+        auto notCompared = [&](const auto index) -> bool {
+            return (nodesCompared[index]) ? false
+                                          : !(nodesCompared[index] = std::none_of(
+                                                  std::make_reverse_iterator(subGraph[index].end()),
+                                                  std::make_reverse_iterator(subGraph[index].begin()),
+                                                  notVisited));
+        };
+        auto toNeighborView = [&](const auto index) { return subGraph[index]; }; // returns a view into a data block
+
+        auto toNeighbor = [&](const auto edge) { return edge.first; };
+
+        auto nodes_to_compare = std::span{ initVertex.cbegin(), querySearchDepth } | std::views::reverse
+                                                                                   | std::views::filter([&](const auto& index){ return !nodes_compared[index]});
+
+        std::unordered_map<std::size_t, std::span<IndexType>> stored_views;
+        auto itr = std::ranges::find_if(nodes_to_compare, [&](const auto& index){ return !nodes_compared[index]});
+        if (itr != nodes_to_compare.end())
+        bool breakVar = true;
+        while (breakVar) {
+            
+
+            auto view = (stored_views.contains(*itr)) ? stored_views.at(*itr)
+                                                      : stored_views[*itr] = subGraph[*itr];
+            
+            span
+
+            joinQueue.resize(maxBatch); 
+            auto [ignore, outItr] = std::ranges::transform(
+                nodesToCompare | std::views::transform(toNeighbor) | std::views::filter(notCompared) | std::views::transform(toNeighborView)
+                    | std::views::join | std::views::filter(notVisited) | std::views::take(maxBatch),
+                joinQueue.begin(),
+                [&](const auto joinTarget) {
+                    nodesVisited[joinTarget] = true;
+                    return joinTarget;
+                });
+            joinQueue.resize(outItr - joinQueue.begin());
+    
+*/
 
 template<std::unsigned_integral IndexType, std::totally_ordered DistType>
 struct QueryContext {
@@ -262,7 +377,7 @@ struct QueryContext {
         NodeTrackerImpl<std::pmr::polymorphic_allocator<bool>> nodesCompared(blockSize, internal::GetThreadResource());
 
         auto notVisited = [&](const auto index) { return !nodesVisited[index]; };
-
+        /*
         auto notCompared = [&](const auto index) -> bool {
             return (nodesCompared[index]) ? false
                                           : !(nodesCompared[index] = std::none_of(
@@ -270,6 +385,7 @@ struct QueryContext {
                                                   std::make_reverse_iterator(subGraph[index].begin()),
                                                   notVisited));
         };
+        */
         auto toNeighborView = [&](const auto index) { return subGraph[index]; }; // returns a view into a data block
 
         auto toNeighbor = [&](const auto edge) { return edge.first; };
@@ -291,10 +407,49 @@ struct QueryContext {
         auto toNeighbor = [&](const auto edge) { return edge.first; };
         */
         std::span<const typename Vertex::EdgeType> nodesToCompare{ initVertex.begin(), querySearchDepth };
+        
+        //constexpr size_t bufferSize = sizeof(size_t) * (internal::maxBatch + 5);
+        std::byte mapBuffer[5'000];
+        std::pmr::monotonic_buffer_resource mapResource(mapBuffer, 5'000);
 
+        std::pmr::unordered_map<IndexType, typename UndirectedGraph<IndexType>::const_reference> stored_views{&mapResource};
+        auto notCompared = [&](const auto& edge) -> bool {
+            if (stored_views.contains(edge.first)){
+                return stored_views[edge.first].size() > 0;
+            } else {
+                stored_views[edge.first] = subGraph[edge.first];
+                return true;
+            }
+        };
+        
         bool breakVar = true;
         while (breakVar) {
-
+            
+            [&]{
+            joinQueue.resize(maxBatch);
+            auto beginItr = joinQueue.begin();
+            auto endItr = joinQueue.end();
+            for(auto& candidates : nodesToCompare | std::views::filter(notCompared)
+                                                  | std::views::transform([&](const auto& edge)-> auto&{return stored_views[edge.first];})){
+                //std::ranges::copy(candidates | std::views::filter())
+                auto canBegin = candidates.begin();
+                auto canEnd = candidates.end();
+                canBegin = std::find_if(canBegin, canEnd, notVisited);
+                while(canBegin != canEnd && beginItr != endItr){
+                    *beginItr = *canBegin;
+                    nodesVisited[*canBegin] = true;
+                    ++beginItr;
+                    canBegin = std::find_if(++canBegin, canEnd, notVisited);
+                }
+                candidates = {canBegin, canEnd};
+                if (beginItr == endItr) break;
+            }
+            joinQueue.resize(beginItr - joinQueue.begin());
+            }();
+            
+            //joinQueue.resize(outItr - joinQueue.begin());
+            /*
+            [&]{
             joinQueue.resize(maxBatch);
             auto [ignore, outItr] = std::ranges::transform(
                 nodesToCompare | std::views::transform(toNeighbor) | std::views::filter(notCompared) | std::views::transform(toNeighborView)
@@ -305,7 +460,8 @@ struct QueryContext {
                     return joinTarget;
                 });
             joinQueue.resize(outItr - joinQueue.begin());
-
+            }();
+            */
             /*
             std::span<const typename Vertex::EdgeType> nodesToPickFrom{ initVertex.begin(), querySearchDepth };
             std::vector<IndexType> nodesToCompare(querySearchDepth);
@@ -355,10 +511,16 @@ struct QueryContext {
         const size_t queryIndex, // Can realistically be any parameter passed through to the Functor
         QueryFunctor& queryFunctor) const
         -> std::pair<GraphVertex<IndexType, DistType, PolymorphicAllocator>, NodeTrackerImpl<std::pmr::polymorphic_allocator<bool>>> {
-
+        //std::cout << "Block Number: " << this->blockNumber << "/n" << "Block Size: " << this->blockSize << std::endl;
+        /*
+        if (this->blockNumber == 192){
+            std::cout << "Block Number: " << this->blockNumber << "\n" << "Block Size: " << this->blockSize << std::endl;
+        }
+        */
         NodeTrackerImpl<std::pmr::polymorphic_allocator<bool>> nodesJoined(blockSize, internal::GetThreadResource());
-        for (const auto& hint : startHint)
+        for (const auto& hint : startHint){
             nodesJoined[hint] = true;
+        }
 
         constexpr size_t bufferSize = sizeof(size_t) * (internal::maxBatch * 3);
         char stackBuffer[bufferSize];
@@ -386,6 +548,12 @@ struct QueryContext {
         if (initDestinations.size() < querySize) {
             padIndecies(queryHint | std::views::transform([&](const auto& pair) { return pair.first; }));
             [[unlikely]] if (initDestinations.size() < querySize) padIndecies(std::views::iota(size_t{ 0 }, blockSize));
+        }
+
+        for (const auto& hint : initDestinations){
+            if(hint >= blockSize){
+                std::cout << "Buggy Index: " << hint << std::endl;
+            }
         }
 
         std::ranges::contiguous_range auto initDistances = queryFunctor(queryIndex, initDestinations);

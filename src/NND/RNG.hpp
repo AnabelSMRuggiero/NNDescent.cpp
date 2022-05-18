@@ -41,8 +41,8 @@ struct RngFunctor{
     std::uniform_int_distribution<size_t> functorDistribution;
     // (size_t{0}, mnistFashionTrain.size()-1)
    
-    //RngFunctor(size_t min, size_t max): functorEngine(seed_engine<std::mt19937_64>()), functorDistribution(min, max){};
-    RngFunctor(size_t min, size_t max): functorEngine(0), functorDistribution(min, max){};
+    RngFunctor(size_t min, size_t max): functorEngine(seed_engine<std::mt19937_64>()), functorDistribution(min, max){};
+    //RngFunctor(size_t min, size_t max): functorEngine(0), functorDistribution(min, max){};
     //    functorEngine(std::move(engine)), functorDistribution(std::move(distribution)){};
 
     RngFunctor(const RngFunctor&) = default;
