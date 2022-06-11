@@ -189,7 +189,7 @@ constexpr auto add_candidates = [] (auto&& candidates, auto&& index_maps, std::s
 
     ann::pmr::dynamic_array<BlockIndecies> block_indecies{ 
         indecies | std::views::transform([&](const auto& index){
-            return index_maps.sourceToBlockIndex[index];
+            return index_maps.sourceToBlockIndex.at(index);
         }), 
         &stack_resource
     };
@@ -197,7 +197,7 @@ constexpr auto add_candidates = [] (auto&& candidates, auto&& index_maps, std::s
     for (const auto& element : block_indecies){
         auto& candidates_vec = candidates[element.blockNumber][element.dataIndex];
         candidates_vec.reserve(block_indecies.size());
-        std::ranges::copy_if(block_indecies, std::back_inserter(candidates_vec), [&](const auto current_candidate){
+        std::ranges::copy_if(block_indecies, std::back_inserter(candidates_vec), [&](const auto& current_candidate){
             return current_candidate.blockNumber != element.blockNumber;
         });
         /*
@@ -229,7 +229,6 @@ auto seed_candidates(const DataSet<DistanceType>& training_data, const IndexMaps
     };
 
     CrawlTerminalLeaves(rp_trees, candidate_task);
-    std::cout << candidate_count << std::endl;
     return candidates;
 }
 
@@ -255,8 +254,6 @@ auto seed_candidates(const DataSet<DistanceType>& training_data, const IndexMaps
     };
 
     threaded_region(assemble_candidates, [&](){CrawlTerminalLeaves(rp_trees, add_task);});
-
-    std::cout << candidate_count << std::endl;
 
     return candidates;
 }
@@ -579,7 +576,7 @@ int main(int argc, char *argv[]){
         std::filesystem::path indexLocation("./Saved-Indecies/NYTimes");
         using metric = inner_product_pair;
         
-        NormalizeDataSet(training_data);
+        //NormalizeDataSet(training_data);
 
         /*
         std::string testDataFilePath("./TestData/SIFT-Test.bin");
@@ -600,17 +597,19 @@ int main(int argc, char *argv[]){
         
         //std::cout << "I/O done." << std::endl;
 
-
-        std::chrono::time_point<std::chrono::steady_clock> runStart = std::chrono::steady_clock::now();
-        
-        nnd::index built_index = parallelIndexBuild 
-                                    ? build_index(training_data, metric{}, numThreads, parameters)
-                                    : build_index(training_data, metric{}, parameters);
-        std::chrono::time_point<std::chrono::steady_clock> runEnd = std::chrono::steady_clock::now();
-        //std::cout << std::chrono::duration_cast<std::chrono::duration<float>>(runEnd - runStart).count() << "s total for index building " << std::endl;
-        std::cout << std::chrono::duration_cast<std::chrono::duration<float>>(runEnd - runStart).count() << std::endl;
+        for (std::size_t i = 0; i< 50; ++i)
+        {
+            std::chrono::time_point<std::chrono::steady_clock> runStart = std::chrono::steady_clock::now();
+            
+            nnd::index built_index = parallelIndexBuild 
+                                        ? build_index(training_data, metric{}, numThreads, parameters)
+                                        : build_index(training_data, metric{}, parameters);
+            std::chrono::time_point<std::chrono::steady_clock> runEnd = std::chrono::steady_clock::now();
+            //std::cout << std::chrono::duration_cast<std::chrono::duration<float>>(runEnd - runStart).count() << "s total for index building " << std::endl;
+            std::cout << std::chrono::duration_cast<std::chrono::duration<float>>(runEnd - runStart).count() << std::endl;
+        }
         //std::chrono::time_point<std::chrono::steady_clock> finalizationStart = std::chrono::steady_clock::now();
-        
+        /*
         SerializeSplittingVectors(built_index.splits, indexLocation / "SplittingVectors.bin");
 
         [&, &split_idx_to_block_idx = built_index.split_idx_to_block_idx](){
@@ -633,7 +632,7 @@ int main(int argc, char *argv[]){
                             as_const_span(built_index.query_contexts),
                             as_const_span(built_index.graph_neighbors),
                             indexLocation);
-            
+        */  
     }
 
     return 0;

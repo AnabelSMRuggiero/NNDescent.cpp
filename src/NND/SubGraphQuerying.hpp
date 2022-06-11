@@ -28,6 +28,7 @@ https://github.com/AnabelSMRuggiero/NNDescent.cpp
 #include <utility>
 #include <vector>
 
+#include "ann/DelayConstruct.hpp"
 #include "NND/GraphStructures/UndirectedGraph.hpp"
 #include "ann/Data.hpp"
 #include "ann/DataDeserialization.hpp"
@@ -411,8 +412,10 @@ struct QueryContext {
         //constexpr size_t bufferSize = sizeof(size_t) * (internal::maxBatch + 5);
         std::byte mapBuffer[5'000];
         std::pmr::monotonic_buffer_resource mapResource(mapBuffer, 5'000);
+        std::pmr::polymorphic_allocator alloc{&mapResource};
+        using SubGraphView = typename UndirectedGraph<IndexType>::const_reference;
 
-        std::pmr::unordered_map<IndexType, typename UndirectedGraph<IndexType>::const_reference> stored_views{&mapResource};
+        auto& stored_views = *alloc.new_object<std::pmr::unordered_map<IndexType, SubGraphView>>();
         auto notCompared = [&](const auto& edge) -> bool {
             if (stored_views.contains(edge.first)){
                 return stored_views[edge.first].size() > 0;
@@ -422,6 +425,13 @@ struct QueryContext {
             }
         };
         
+        auto getView = [&](const auto& edge) -> SubGraphView& {
+            auto [iter, inserted] = stored_views.insert(
+                std::pair{ edge.first, subGraph[edge.first]}
+            );
+            return iter->second;
+        };
+
         bool breakVar = true;
         while (breakVar) {
             
@@ -429,9 +439,11 @@ struct QueryContext {
             joinQueue.resize(maxBatch);
             auto beginItr = joinQueue.begin();
             auto endItr = joinQueue.end();
-            for(auto& candidates : nodesToCompare | std::views::filter(notCompared)
-                                                  | std::views::transform([&](const auto& edge)-> auto&{return stored_views[edge.first];})){
-                //std::ranges::copy(candidates | std::views::filter())
+//            for(auto& candidates : nodesToCompare | std::views::filter(notCompared)
+//                                                  | std::views::transform([&](const auto& edge)-> auto&{return stored_views[edge.first];})){
+            for(auto& candidates : nodesToCompare | std::views::transform(getView)
+                                                  | std::views::filter([](auto& span){return span.size() > 0;})){
+
                 auto canBegin = candidates.begin();
                 auto canEnd = candidates.end();
                 canBegin = std::find_if(canBegin, canEnd, notVisited);
@@ -548,12 +560,6 @@ struct QueryContext {
         if (initDestinations.size() < querySize) {
             padIndecies(queryHint | std::views::transform([&](const auto& pair) { return pair.first; }));
             [[unlikely]] if (initDestinations.size() < querySize) padIndecies(std::views::iota(size_t{ 0 }, blockSize));
-        }
-
-        for (const auto& hint : initDestinations){
-            if(hint >= blockSize){
-                std::cout << "Buggy Index: " << hint << std::endl;
-            }
         }
 
         std::ranges::contiguous_range auto initDistances = queryFunctor(queryIndex, initDestinations);

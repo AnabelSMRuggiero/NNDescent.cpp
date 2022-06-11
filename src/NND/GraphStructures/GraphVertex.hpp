@@ -163,7 +163,7 @@ struct GraphVertex{
 
     //template<typename PairReferenceType>
     constexpr void push_back(std::pair<IndexType, FloatType>&& value){
-        neighbors.push_back(std::forward<std::pair<IndexType, FloatType>>(value));
+        neighbors.push_back(std::move(value));
     }
 
     constexpr std::pair<IndexType, FloatType>& operator[](size_t i){

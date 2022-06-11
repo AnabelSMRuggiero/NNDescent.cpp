@@ -138,8 +138,8 @@ constexpr splitting_scheme choose_scheme<euclidean_metric_pair> = splitting_sche
 
 struct inner_product_pair {
     using DistType = float;
-    float operator()(const AlignedSpan<const float> lhsVector, const AlignedSpan<const float> rhsVector) const {
-        return ann::inner_product<AlignedSpan<const float>, AlignedSpan<const float>, float>(lhsVector, rhsVector);
+    float operator()(AlignedSpan<const float> lhsVector, AlignedSpan<const float> rhsVector) const {
+        return ann::inner_product(ann::vector_span{lhsVector}, ann::vector_span{rhsVector});
     };
 
     template<size_t numPoints>

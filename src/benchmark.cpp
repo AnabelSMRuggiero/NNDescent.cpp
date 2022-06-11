@@ -29,6 +29,7 @@ https://github.com/AnabelSMRuggiero/NNDescent.cpp
 
 #include "ann/Metrics/SpaceMetrics.hpp"
 #include "ann/Metrics/Euclidean.hpp"
+#include "ann/Metrics/Angular.hpp"
 #include "ann/Data.hpp"
 #include "ann/DataDeserialization.hpp"
 
@@ -111,7 +112,7 @@ struct SortedVertex{
         //auto insertionPoint = std::upper_bound(neighbors.begin(), neighbors.end()-1, neighbors.back(), NeighborDistanceComparison<IndexType, FloatType>);
         size_t index = neighbors.size();
         for ( ; index>0; index -= 1){
-            if (edge_ops::lessThan) break;
+            //if (edge_ops::lessThan) break;
         }
         
         neighbors.push_back(newNeighbor);
@@ -126,14 +127,14 @@ struct SortedVertex{
         neighbors.pop_back();
         return true;
     };
-
+    
     std::pair<IndexType, FloatType> PushNeighbor(std::pair<IndexType, FloatType> newNeighbor, ReturnRemoved){
         if (newNeighbor.second > neighbors[0].second) return newNeighbor;
         //neighbors.push_back(newNeighbor);
 
         size_t index = neighbors.size();
         for ( ; index>0; index -= 1){
-            if (edge_ops::lessThan) break;
+            //if (edge_ops::lessThan) break;
         }
 
         neighbors.push_back(newNeighbor);
@@ -264,11 +265,13 @@ int main(){
     static const std::endian dataEndianness = std::endian::big;
     
 
-    std::string trainDataFilePath("./TestData/SIFT-Train.bin");
-    DataSet<float> mnistFashionTrain(trainDataFilePath, 128, 1'000'000);
+    //std::string trainDataFilePath("./TestData/SIFT-Train.bin");
+    //DataSet<float> mnistFashionTrain(trainDataFilePath, 128, 1'000'000);
 
-
-
+    std::string trainDataFilePath("./TestData/NYTimes-Angular-Train.bin");
+    DataSet<float> mnistFashionTrain(trainDataFilePath, 256, 290'000);
+    NormalizeDataSet(mnistFashionTrain);
+    
     
     std::mt19937_64 rngEngine(0);
     std::uniform_int_distribution<size_t> rngDist(0, 300);
@@ -378,7 +381,7 @@ int main(){
 
             std::vector<size_t> targetPoints(numberPointsTo);
 
-            std::vector<vector_span<const float>> vecSpans;
+            std::vector<ann::vector_span<const float>> vecSpans;
             for (auto& point: targetPoints){
                 point = rngDist(rngEngine);
                 vecSpans.push_back(mnistFashionTrain[point]);
@@ -387,11 +390,30 @@ int main(){
 
             
 
-
-
             std::vector<float> vecSpanResults(numberPointsTo);
-            BatchVecSpan<numberPointsTo>(mnistFashionTrain[startPoint], std::span<vector_span<const float>, numberPointsTo>(vecSpans), std::span<float,numberPointsTo>(vecSpanResults));
-
+            
+            
+            //for (std::size_t j = 0; j<numberPointsTo; ++j){
+                //vecSpanResults[j] = old_inner_product(mnistFashionTrain[startPoint], vecSpans[j]);
+                //vecSpanResults[j] = inner_product(ann::vector_span{mnistFashionTrain[startPoint]}, ann::vector_span{vecSpans[j]});
+            //}
+            
+            /*
+            std::vector<float> newVecSpanResults(numberPointsTo);
+            for (std::size_t j = 0; j<numberPointsTo; ++j){
+                newVecSpanResults[j] = inner_product(ann::vector_span{mnistFashionTrain[startPoint]}, ann::vector_span{vecSpans[j]});
+            }
+            */
+            batch_inner_product<numberPointsTo>(mnistFashionTrain[startPoint], std::span<vector_span<const float>, numberPointsTo>(vecSpans), std::span<float,numberPointsTo>(vecSpanResults));
+            /*
+            if(!discard){
+                for (std::size_t j = 0; j<numberPointsTo; ++j){
+                    std::cout << "Batch function result = " << vecSpanResults[j] << std::endl;
+                              //<< "Single function result = " << newVecSpanResults[j] << std::endl
+                              //<< "Percent difference = " << (std::abs(vecSpanResults[j] - newVecSpanResults[j])/vecSpanResults[j]) << std::endl;
+                }   
+            }
+            */
             escape(vecSpanResults.data());
         }
         auto runEnd = std::chrono::steady_clock::now();
@@ -402,6 +424,7 @@ int main(){
                   << std::endl;
         //std::cout << std::chrono::duration_cast<std::chrono::duration<float>>(runEnd - runStart).count()/numberPointsTo << "s total per dist at a time (tmp)" << std::endl;
     };
+    //test(std::integral_constant<size_t, 3>{});
     
     test(std::integral_constant<size_t, 3>{}, true);
     test(std::integral_constant<size_t, 3>{}, true);
@@ -420,13 +443,15 @@ int main(){
     test(std::integral_constant<size_t, 12>{});
     test(std::integral_constant<size_t, 13>{});
     test(std::integral_constant<size_t, 14>{});
+    
+    /*
     test(std::integral_constant<size_t, 15>{});
     test(std::integral_constant<size_t, 16>{});
     test(std::integral_constant<size_t, 17>{});
     test(std::integral_constant<size_t, 18>{});
     test(std::integral_constant<size_t, 19>{});
     test(std::integral_constant<size_t, 20>{});
-    
+    */
     /*
     rngEngine.seed(0);
     runStart = std::chrono::steady_clock::now();
