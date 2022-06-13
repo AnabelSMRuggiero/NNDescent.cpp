@@ -168,8 +168,14 @@ struct RandomProjectionForest{
         topNode(std::move(other.topNode)),
         memManager(std::move(other.memManager)){
             //memManager->Put(other.memManager.TryTakeAll());
-            topNode.children.first->parent = &topNode;
-            topNode.children.second->parent = &topNode;
+            if (topNode.children.first != nullptr)
+            {
+                topNode.children.first->parent = &topNode;
+            }
+            if (topNode.children.second != nullptr)
+            {
+                topNode.children.second->parent = &topNode;
+            }
         }
     
     RandomProjectionForest(ann::dynamic_array<size_t>&& index_array): 
@@ -531,7 +537,6 @@ RandomProjectionForest ForestBuilder<SplittingScheme>::operator()(ann::dynamic_a
 
     if (samples.data() == workSpaceArr.data()){
         std::swap(forest.indecies, workSpaceArr);
-        //std::swap(forest.indecies, workSpaceArr);
     }
     return forest;
 } //end operator()
@@ -544,7 +549,7 @@ RandomProjectionForest ForestBuilder<SplittingScheme>::operator()(ann::dynamic_a
     threadPool.RebuildStates(std::reference_wrapper(forest));
     std::span<size_t> samples = forest.GetView();
 
-    ann::dynamic_array<size_t> workSpaceArr(forest.indecies.size(), forest.indecies.get_allocator());
+    ann::dynamic_array<size_t> workSpaceArr(forest.indecies, forest.indecies.get_allocator());
     std::span<size_t> workSpace = {workSpaceArr.data(), workSpaceArr.size()};
     
     size_t sum(0);
@@ -580,6 +585,7 @@ RandomProjectionForest ForestBuilder<SplittingScheme>::operator()(ann::dynamic_a
 
                 pendingResults.push_back({retry_count, ptr, Split(beginIt, endIt, toBegin, toEnd, *predicate_opt, threadPool)});
             }else {
+                std::copy(samples.begin() + builder.refNode->begin(), samples.begin() + builder.refNode->end(), workSpace.begin() + builder.refNode->begin());
                 if(splitQueue1.back().first < heurisitics.max_retry){
                     splitQueue2.push_back({retry_count+1, builder.refNode});
                 }
@@ -599,6 +605,7 @@ RandomProjectionForest ForestBuilder<SplittingScheme>::operator()(ann::dynamic_a
                     AddLeaves(builder, samples, workSpace, numSplit, splitQueue2, heurisitics.splitThreshold);
                     break;
                 case SplitQuality::reject:
+                    std::copy(samples.begin() + builder.refNode->begin(), samples.begin() + builder.refNode->end(), workSpace.begin() + builder.refNode->begin());
                     if(splitQueue1.back().first < heurisitics.max_retry){
                         splitQueue2.push_back({retry_count+1, builder.refNode});
                     }
@@ -648,7 +655,6 @@ RandomProjectionForest ForestBuilder<SplittingScheme>::operator()(ann::dynamic_a
                     nodeBuilder.refNode = splitQueue1.back().second;
 
                     retry:
-                    //This is bootleg af, need to refactor how I do rng.
                     
                     rngFunctor.SetRange(nodeBuilder.refNode->splitRange.first, nodeBuilder.refNode->splitRange.second - 1);
 
@@ -679,6 +685,12 @@ RandomProjectionForest ForestBuilder<SplittingScheme>::operator()(ann::dynamic_a
                                 if(splitQueue1.back().first < heurisitics.max_retry){
                                     ++splitQueue1.back().first;
                                     goto retry;
+                                }else{
+                                    std::copy(
+                                        samples.begin() + nodeBuilder.refNode->begin(),
+                                        samples.begin() + nodeBuilder.refNode->end(),
+                                        workSpace.begin() + nodeBuilder.refNode->begin()
+                                    );
                                 }
                                 break;
                             default:
@@ -688,6 +700,12 @@ RandomProjectionForest ForestBuilder<SplittingScheme>::operator()(ann::dynamic_a
                         if(splitQueue1.back().first < heurisitics.max_retry){
                             ++splitQueue1.back().first;
                             goto retry;
+                        } else{
+                            std::copy(
+                                samples.begin() + nodeBuilder.refNode->begin(),
+                                samples.begin() + nodeBuilder.refNode->end(),
+                                workSpace.begin() + nodeBuilder.refNode->begin()
+                            );
                         }
                     }
                     /*
@@ -732,6 +750,10 @@ RandomProjectionForest ForestBuilder<SplittingScheme>::operator()(ann::dynamic_a
         }
     }
 
+    if (samples.data() == workSpaceArr.data()){
+        std::swap(forest.indecies, workSpaceArr);
+    }
+    
     if constexpr(debugRPTrees){
         size_t tmpSum = std::accumulate(samples.begin(), samples.end(), 0);
         if (sum != tmpSum){
@@ -1013,7 +1035,7 @@ RandomProjectionForest transform(ann::dynamic_array<size_t>&& indecies,
     
 
 template<typename Functor>
-void CrawlTerminalLeaves(const RandomProjectionForest& forest, Functor& terminalFunctor){
+void CrawlTerminalLeaves(const RandomProjectionForest& forest, Functor&& terminalFunctor){
 
 
     std::vector<char> pathState;

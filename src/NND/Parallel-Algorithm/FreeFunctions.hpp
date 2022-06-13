@@ -302,18 +302,18 @@ ann::dynamic_array<BlockUpdateContext<DistType>> BuildGraphRedux( // std::vector
     auto [blocks, is_ready] =
         InitializeBlockContexts<DistType>(candidates.size(), 0, sizes, parameters, pool);
 
-    auto add_candidates = [&] (std::size_t idx, const auto&){
-        if (is_ready[idx] != true){
-            is_ready[idx].wait(false);
+    auto add_candidates = [&, block_span = std::span{blocks}, block_ready = is_ready.get()] (std::size_t idx, const auto&){
+        if (block_ready[idx] != true){
+            block_ready[idx].wait(false);
         }
-        is_ready[idx] = false;
+        block_ready[idx] = false;
         for (std::size_t j = 0; j<candidates[idx].size(); ++j){
             for(const auto candidate : candidates[idx][j]){
-                add_candidate(blocks[idx].joinsToDo, j, candidate);
+                add_candidate(block_span[idx].joinsToDo, j, candidate);
             }
         }
-        is_ready[idx] = true;
-        is_ready[idx].notify_one();
+        block_ready[idx] = true;
+        block_ready[idx].notify_one();
     };
 
     for(std::size_t i = 0; i<blocks.size(); ++i){

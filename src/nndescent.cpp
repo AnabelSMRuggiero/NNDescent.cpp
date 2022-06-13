@@ -189,7 +189,7 @@ constexpr auto add_candidates = [] (auto&& candidates, auto&& index_maps, std::s
 
     ann::pmr::dynamic_array<BlockIndecies> block_indecies{ 
         indecies | std::views::transform([&](const auto& index){
-            return index_maps.sourceToBlockIndex.at(index);
+            return index_maps.sourceToBlockIndex[index];
         }), 
         &stack_resource
     };
@@ -246,6 +246,8 @@ auto seed_candidates(const DataSet<DistanceType>& training_data, const IndexMaps
     ann::dynamic_array<ann::dynamic_array<std::vector<BlockIndecies>>> candidates{seed_arrays};
 
     ThreadPool<void> assemble_candidates(num_threads);
+    
+    
 
     auto add_task = [&](std::size_t splitIdx, std::span<const size_t> indecies){
         assemble_candidates.DelegateTask([&, splitIdx, indecies]{
@@ -253,7 +255,7 @@ auto seed_candidates(const DataSet<DistanceType>& training_data, const IndexMaps
         });
     };
 
-    threaded_region(assemble_candidates, [&](){CrawlTerminalLeaves(rp_trees, add_task);});
+    threaded_region(assemble_candidates, [&, &rp_tree = rp_trees](){CrawlTerminalLeaves(rp_tree, add_task);});
 
     return candidates;
 }
