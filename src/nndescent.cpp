@@ -599,7 +599,7 @@ int main(int argc, char *argv[]){
         
         //std::cout << "I/O done." << std::endl;
 
-        for (std::size_t i = 0; i< 50; ++i)
+        //for (std::size_t i = 0; i< 50; ++i)
         {
             std::chrono::time_point<std::chrono::steady_clock> runStart = std::chrono::steady_clock::now();
             
