@@ -1,10 +1,15 @@
+#include <algorithm>
+#include <concepts>
 #include <cstddef>
 #include <iterator>
 #include <memory>
+#include <tuple>
 #include <type_traits>
 #include <utility>
 
 #include <filesystem>
+#include <vector>
+#include <xutility>
 
 #include "ann/AlignedMemory/ContainerHelpers.hpp"
 
@@ -46,6 +51,12 @@ struct bind_allocator{
             alloc_traits::construct(alloc, ptr, std::forward<Types>(args)...);
         };
     };
+
+    inline static constexpr auto bind_destroy = []<typename... Types>(allocator_type& alloc) noexcept{
+        return [&] <typename Pointer> (Pointer ptr) noexcept{
+            alloc_traits::destroy(alloc, ptr);
+        };
+    };
     
     
     inline static constexpr auto bind_copy_construct = [](allocator_type & alloc) noexcept -> auto {
@@ -56,14 +67,14 @@ struct bind_allocator{
     };
 
     inline static constexpr auto bind_move_construct = [](allocator_type & alloc) noexcept -> auto {
-        return [&alloc](pointer to, auto&& from) noexcept(noexcept_construct<value_type&&>) 
-            requires constructible_by_alloc<element<Pointer>, allocator_type, element<Pointer>&&> { 
+        return [&alloc]<typename Pointer, typename IterOther>(Pointer to, IterOther&& from) noexcept(noexcept_construct<std::iter_rvalue_reference_t<IterOther>>) 
+            requires constructible_by_alloc<element<Pointer>, allocator_type, std::iter_rvalue_reference_t<IterOther>> { 
                 construct(alloc, to, std::ranges::iter_move(from)); 
         };
     };
 
     template<typename Range>
-    static constexpr auto bind_forward_construct = [](allocator_type & alloc) noexcept -> auto {
+    inline static constexpr auto bind_forward_construct = [](allocator_type & alloc) noexcept -> auto {
         return [&alloc] <typename Pointer> (Pointer to, auto&& from)
                     noexcept(noexcept_construct<range_forward_reference<Range>>) 
                     requires constructible_by_alloc<element<Pointer>, allocator_type, range_forward_reference<Range>> { 
@@ -72,7 +83,65 @@ struct bind_allocator{
     };
     
 };
+template<typename OtherIter, typename Pointer, typename Alloc, auto Binder>
+constexpr bool bound_alloc_operation_check = requires(OtherIter&& iter, Pointer&& pointer, Alloc&& alloc){
+    Binder(alloc)(pointer, iter);
+};
+template<typename OtherIter, typename Pointer, typename Alloc>
+concept bound_copyable = //bound_alloc_operation_check<OtherIter, Pointer, Alloc, bind_allocator<Alloc>::bind_copy_construct>;
+requires(OtherIter&& iter, Pointer&& pointer, Alloc&& alloc){
+    typename bind_allocator<Alloc>;
+    bind_allocator<Alloc>::bind_copy_construct(alloc)(pointer, iter);
+};
+template<std::input_iterator InIter, std::sentinel_for<InIter> InSent, typename OutPtr, typename Alloc>
+auto uninitialized_alloc_copy(InIter in_iter, InSent in_sent, OutPtr out_ptr, Alloc& allocator){
+    OutPtr out_begin = out_ptr;
+    auto bound_copy = bind_allocator<Alloc>::bind_copy_construct(allocator);
+    try{
+        for (; in_iter != in_sent; ++out_ptr, ++in_iter ){
+            bound_copy(out_ptr, in_iter);
+        }
+    } catch(...){
+        auto bound_destroy = bind_allocator<Alloc>::bind_destroy(allocator);
+        while( out_ptr!=out_begin){
+            bound_destroy(--out_ptr);
+        }
+        throw;
+    }
+    return std::ranges::in_out_result<InIter, OutPtr>{in_iter, out_ptr};
+};
 
+template<std::input_iterator InIter, std::sentinel_for<InIter> InSent, typename OutPtr, typename Alloc>
+    requires std::is_trivially_copyable_v<std::iter_value_t<OutPtr>>
+auto uninitialized_alloc_copy(InIter in_iter, InSent in_sent, OutPtr out_ptr, Alloc& allocator){
+    std::ranges::copy(in_iter, in_sent, out_ptr);
+};
+
+template<std::input_iterator InIter, std::sentinel_for<InIter> InSent, typename OutPtr, typename Alloc>
+auto uninitialized_alloc_move(InIter in_iter, InSent in_sent, OutPtr out_ptr, Alloc& allocator){
+    OutPtr out_begin = out_ptr;
+    auto bound_move = bind_allocator<Alloc>::bind_move_construct(allocator);
+    try{
+        for (; in_iter != in_sent; ++out_ptr, ++in_iter ){
+            bound_move(out_ptr, in_iter);
+        }
+    } catch(...){
+        auto bound_destroy = bind_allocator<Alloc>::bind_destroy(allocator);
+        while( out_ptr!=out_begin){
+            bound_destroy(--out_ptr);
+        }
+        throw;
+    }
+    return std::ranges::in_out_result<InIter, OutPtr>{in_iter, out_ptr};
+};
+
+template<typename Pointer, typename Alloc>
+auto alloc_destroy(Pointer begin, Pointer end, Alloc& alloc){
+    auto bound_destroy = bind_allocator<Alloc>::bind_destroy(alloc);
+    for(; begin != end; ++begin){
+        bound_destroy(begin);
+    }
+}
 
 template<typename FirstType, typename SecondType, typename Allocator = std::allocator<std::pair<FirstType, SecondType>>>
 struct dual_vector{
@@ -87,23 +156,25 @@ struct dual_vector{
     using pointer = typename alloc_traits::pointer;
 
     using layout = layout_order<FirstType, SecondType>;
-    using first = typename layout_order::first;
+    using first = typename layout::first;
     using alloc_first = typename std::allocator_traits<allocator_type>::template rebind_alloc<first>;
     using alloc_traits_first = std::allocator_traits<alloc_first>;
     using pointer_first = typename alloc_traits_first::pointer;
+    using const_pointer_first = typename alloc_traits_first::const_pointer;
 
-    using second = typename layout_order::second;
+    using second = typename layout::second;
     using alloc_second = typename std::allocator_traits<allocator_type>::template rebind_alloc<second>;
     using alloc_traits_second = std::allocator_traits<alloc_second>;
     using pointer_second = typename alloc_traits_second::pointer;
+    using const_pointer_second = typename alloc_traits_second::const_pointer;
 
     using bind = bind_allocator<alloc>;
 
     static constexpr std::size_t num_arrays = 2;
 
-    static constexpr sum_of_sizes = sizeof(FirstType) + sizeof(SecondType);
+    static constexpr std::size_t sum_of_sizes = sizeof(FirstType) + sizeof(SecondType);
 
-    static constexpr adjust_alloc_size = [](std::size_t size){ return size * sum_of_sizes/sizeof(typename layout::first) + 1; };
+    static constexpr auto adjust_alloc_size = [](std::size_t size){ return size * sum_of_sizes/sizeof(typename layout::first) + 1; };
 
     static constexpr auto allocate = [](alloc_first& allocator, std::size_t size)->pointer_first{
         std::size_t array_elements = adjust_alloc_size(size);
@@ -133,15 +204,29 @@ struct dual_vector{
 
     constexpr dual_vector(std::size_t size_in, std::convertible_to<value_type> auto&& pair_like, const allocator_type& alloc = {}): 
         allocator{alloc},
-        buffer{allocate(alloc, size_in)},
+        buffer{allocate(allocator, size_in)},
         capacity{size_in},
         size{size_in} {
             const auto& [first, second] = pair_like;
             initalize(bind::bind_construct(allocator, first), bind::bind_construct(allocator, second));
     }
 
+    constexpr dual_vector(const dual_vector& other):
+        allocator{alloc_traits_first::select_on_container_copy_construction(other.allocator)},
+        buffer{allocate(allocator, other.size)},
+        capacity{other.size},
+        size{other.size} {}
+
+    constexpr dual_vector(dual_vector&& other) noexcept:
+        allocator{other.allocator},
+        buffer{std::exchange(other.buffer, nullptr)},
+        capacity{std::exchange(other.capacity, 0)},
+        size{std::exchange(other.size, 0)} {}
+
+
     constexpr ~dual_vector(){
         if(buffer != nullptr){
+            destroy_elements();
             deallocate(allocator, buffer, size);
         }
     }
@@ -170,8 +255,8 @@ struct dual_vector{
     }
     */
     
-    template<typename Functor, typename Functor>
-        requires (std::invocable<Functor, pointer_first> and std::invocable<Functor, pointer_second>)
+    template<typename Functor>
+        requires (std::invocable<Functor&, pointer_first> and std::invocable<Functor&, pointer_second>)
     void initalize(Functor&& initializer)   {
         initalize(initializer, initializer);
     }
@@ -190,9 +275,9 @@ struct dual_vector{
             for (; first_current != first_end; ++first_current) {
                 first_initializer(first_current);
             }
-            auto second_begin = begin_second();
+            auto second_begin = unclean_begin_second();
             auto second_current = second_begin;
-            auto second_end = end_second();
+            auto second_end = unclean_end_second();
             try{
                 for (; second_current != second_end; ++second_current) {
                     second_initializer(second_current);
@@ -212,6 +297,11 @@ struct dual_vector{
             size = 0;
             throw;
         }
+    }
+
+    void destroy_elements(){
+        alloc_destroy(begin_first(), end_first(), allocator);
+        alloc_destroy(begin_second(), end_second(), allocator);
     }
     /*
     template<std::size_t index, Functor>
@@ -242,18 +332,75 @@ struct dual_vector{
         return buffer + size;
     }
 
-    pointer_second begin_second(){
+    pointer_second unclean_begin_second(){
         first* raw_ptr = std::to_address(buffer);
-        return std::launder((second *) raw_ptr + capacity)
+        return (second *) (raw_ptr + capacity);
+    }
+
+    pointer_second unclean_end_second(){
+        return unclean_begin_second() + size;
+    }
+
+    pointer_second begin_second(){
+        return std::launder(std::to_address(unclean_begin_second()));
     }
 
     pointer_second end_second(){
         return begin_second() + size;
     }
     
-    
+    static constexpr bool alloc_always_equal = alloc_traits::is_always_equal::value;
+    static constexpr bool alloc_prop_copyassign = alloc_traits::propagate_on_container_copy_assignment::value && !alloc_always_equal;
+    static constexpr bool alloc_prop_moveassign = alloc_traits::propagate_on_container_move_assignment::value && !alloc_always_equal;
 
+    static constexpr bool nonprop_nothrow_element_move =
+            !(alloc_always_equal || alloc_prop_moveassign) && std::is_nothrow_move_constructible_v<value_type>;
+    template<bool propagate>
+        requires propagate
+    alloc_first alloc_assign_select(const dual_vector& other){
+        return other.allocator;
+    }
+    template<bool propagate>
+        requires (!propagate)
+    alloc_first alloc_assign_select(const dual_vector& other){
+        return allocator;
+    }
+    pointer_first new_copy_assign(alloc_first& new_alloc, const dual_vector& other){
+        pointer_first new_buffer = allocate(new_alloc, other.size);
+        pointer_first first_begin = new_buffer;
+        pointer_second second_begin = (second *) (std::to_address(new_buffer) + other.size);
+        try{
+            std::tie(std::ignore, new_buffer) = uninitialized_alloc_copy(other.begin_first(), other.end_first(), new_buffer, new_alloc);
+            uninitialized_alloc_copy(other.begin_second(), other.end_second(), second_begin, new_alloc);
+        } catch(...){
+            auto bound_destroy = bind::bind_destroy(new_alloc);
+            while(new_buffer != first_begin){
+                bound_destroy(--new_buffer);
+            }
+            deallocate(new_alloc, first_begin, other.size);
+            throw;
+        }
+        return first_begin; 
+    }
+    public:
+    dual_vector& operator=(const dual_vector& other) requires (alloc_always_equal || alloc_prop_copyassign) {
+        if (capacity < other.size){
+            alloc_first new_alloc = alloc_assign_select<alloc_prop_copyassign>(other);
+            
+            pointer_first new_buffer = new_copy_assign(new_alloc, other);
+            destroy_elements();
+            deallocate(allocator, buffer, capacity);
+            allocator = new_alloc;
+            buffer = new_buffer;
+            size = other.size;
+            capacity = other.size;
+        } else {
+            alloc_first new_alloc = alloc_assign_select<alloc_prop_copyassign>(other);
+        }
+        return *this;
+    }
 
+    dual_vector& operator=(dual_vector&& other);
     
 
     private:
