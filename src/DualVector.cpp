@@ -86,16 +86,24 @@ struct bind_allocator{
     };
     
 };
+/*
 template<typename OtherIter, typename Pointer, typename Alloc, auto Binder>
 constexpr bool bound_alloc_operation_check = requires(OtherIter&& iter, Pointer&& pointer, Alloc&& alloc){
     Binder(alloc)(pointer, iter);
 };
+*/
 template<typename OtherIter, typename Pointer, typename Alloc>
-concept bound_copyable = //bound_alloc_operation_check<OtherIter, Pointer, Alloc, bind_allocator<Alloc>::bind_copy_construct>;
-requires(OtherIter&& iter, Pointer&& pointer, Alloc&& alloc){
+concept bound_copyable = requires(OtherIter&& iter, Pointer&& pointer, Alloc&& alloc){
     typename bind_allocator<Alloc>;
     bind_allocator<Alloc>::bind_copy_construct(alloc)(pointer, iter);
 };
+
+template<typename OtherType, typename ValueType, typename Alloc>
+concept alloc_constructable = requires(OtherType&& other_object, Alloc&& allocator, ValueType* ptr){
+    typename std::allocator_traits<Alloc>;
+    std::allocator_traits<Alloc>::construct(allocator, ptr, std::forward<OtherType>(other_object));
+};
+
 template<std::input_iterator InIter, std::sentinel_for<InIter> InSent, typename OutPtr, typename Alloc>
 auto uninitialized_alloc_copy(InIter in_iter, InSent in_sent, OutPtr out_ptr, Alloc& allocator){
     OutPtr out_begin = out_ptr;
@@ -282,8 +290,10 @@ struct dual_vector{
     using bind = bind_allocator<alloc>;
 
     public:
-    using iterator = dual_vector_iterator<pointer_first, pointer_second>;
-    using const_iterator = dual_vector_iterator<const_pointer_first, const_pointer_second>;
+    using iterator = std::conditional_t<layout::reversed, dual_vector_iterator<pointer_second, pointer_first>,
+                                                          dual_vector_iterator<pointer_first, pointer_second>>;
+    using const_iterator = std::conditional_t<layout::reversed, dual_vector_iterator<const_pointer_second, const_pointer_first>,
+                                                                dual_vector_iterator<const_pointer_first, const_pointer_second>>;
     private:
 
     static constexpr std::size_t num_arrays = 2;
@@ -696,6 +706,7 @@ struct dual_vector{
         deallocate(allocator, buffer, buffer_capacity);
         buffer = new_buffer;
         buffer_capacity = new_capacity;
+        ++array_size;
     }
 
     public:
@@ -812,7 +823,7 @@ struct dual_vector{
         return *--end();
     }
 
-    iterator begin(){
+    iterator begin() noexcept{
         if constexpr (layout::reversed){
             return {begin_second(), begin_first()};
         } else {
@@ -820,7 +831,7 @@ struct dual_vector{
         }
     }
 
-    const_iterator begin() const {
+    const_iterator begin() const noexcept {
         if constexpr (layout::reversed){
             return {begin_second(), begin_first()};
         } else {
@@ -828,7 +839,7 @@ struct dual_vector{
         }
     }
 
-    iterator end(){
+    iterator end() noexcept{
         if constexpr (layout::reversed){
             return {end_second(), end_first()};
         } else {
@@ -836,7 +847,7 @@ struct dual_vector{
         }
     }
 
-    const_iterator end() const {
+    const_iterator end() const noexcept {
         if constexpr (layout::reversed){
             return {end_second(), end_first()};
         } else {
@@ -844,26 +855,118 @@ struct dual_vector{
         }
     }
 
-    bool empty() const{
+    bool empty() const noexcept{
         return array_size == 0;
     }
 
-    size_type size() const {
+    size_type size() const noexcept {
         return array_size;
     }
 
-    difference_type max_size() const {
+    difference_type max_size() const noexcept {
         return std::numeric_limits<difference_type>::max();
     }
 
-    // void reserve()
+    void reserve(std::size_t new_capacity){
+        if(new_capacity > buffer_capacity){
+            relocate(buffer_capacity);
+        }
+    }
 
-    size_type capacity(){
+    size_type capacity() noexcept{
         return buffer_capacity;
     }
 
-    // void shrink_to_fit()
+    void shrink_to_fit(){
+        if(buffer_capacity > array_size){
+            relocate(array_size);
+        }
+    }
 
+    void clear() noexcept{
+        destroy_elements();
+        array_size = 0;
+    }
+    private:
+
+                      // args denote the gap as a half-open range
+    void shift_elements(size_type gap_begin, size_type gap_end) requires (std::is_nothrow_move_constructible_v<first> && std::is_nothrow_move_constructible_v<second>) {
+        size_type shift_amount = gap_end - gap_begin;
+        auto move_construct = bind::bind_move_construct(allocator);
+        auto destroy = bind::bind_destroy(allocator);
+
+        auto shift_imp = [&](auto shift_begin, auto shift_end){
+            auto shift_destination = shift_end - 1 + shift_amount;
+
+            while(shift_end != shift_begin){
+                move_construct(shift_destination, shift_end);
+                destroy(shift_end);
+                --shift_end;
+                --shift_destination;
+            }
+        };
+        shift_imp(begin_first() + gap_begin, end_first());
+        shift_imp(begin_second() + gap_begin, end_second());
+    }
+
+    void unshift_elements(size_type gap_begin, size_type gap_end) requires (std::is_nothrow_move_constructible_v<first> && std::is_nothrow_move_constructible_v<second>) {
+        size_type shift_amount = gap_end - gap_begin;
+        auto move_construct = bind::bind_move_construct(allocator);
+        auto destroy = bind::bind_destroy(allocator);
+
+        auto unshift_imp = [&](auto shift_begin, auto shift_end){
+            auto shift_destination = shift_begin - shift_amount;
+
+            while(shift_end != shift_begin){
+                move_construct(shift_destination, shift_begin);
+                destroy(shift_begin);
+                ++shift_begin;
+                ++shift_destination;
+            }
+        };
+        unshift_imp(begin_first() + gap_end, end_first()+shift_amount);
+        unshift_imp(begin_second() + gap_end, end_second()+shift_amount);
+    }
+
+    template<typename FirstArg, typename SecondArg>
+        requires (std::is_nothrow_move_constructible_v<first> && std::is_nothrow_move_constructible_v<second>)
+    void insert_imp(size_type index, FirstArg&& first_arg, SecondArg&& second_arg){
+        if(array_size + 1 <= buffer_capacity){
+            shift_elements(index, index + 1);
+            try{
+                insert_at(index, std::forward<FirstArg>(first_arg), index, std::forward<SecondArg>(second_arg));
+            } catch(...){
+                unshift_elements(index, index + 1);
+                throw;
+            }
+            ++array_size;
+        } else {
+            insert_relocate(buffer_capacity + buffer_capacity/2, index, std::forward<FirstArg>(first_arg), std::forward<SecondArg>(second_arg));
+        }
+    }
+
+    template<typename FirstArg, typename SecondArg>
+    void insert_imp(size_type index, FirstArg&& first_arg, SecondArg&& second_arg){
+        size_type new_capacity = (array_size + 1 <= buffer_capacity) ? buffer_capacity 
+                                                                     : buffer_capacity + buffer_capacity/2;
+
+        insert_relocate(new_capacity, index, std::forward<FirstArg>(first_arg), std::forward<SecondArg>(second_arg));
+    }
+
+    public:
+    template<alloc_constructable<FirstType, allocator_type> FirstArg, alloc_constructable<FirstType, allocator_type> SecondArg>
+        requires (!layout::reversed)
+    iterator insert(const_iterator position, FirstArg&& first_arg, SecondArg&& second_arg){
+        auto index = position.first_ptr - buffer;
+        insert_imp(index, std::forward<FirstArg>(first_arg), std::forward<SecondArg>(second_arg));
+        return begin() + index;
+    }
+    template<alloc_constructable<FirstType, allocator_type> FirstArg, alloc_constructable<FirstType, allocator_type> SecondArg>
+    iterator insert(const_iterator position, FirstArg&& first_arg, SecondArg&& second_arg){
+        auto index = position.second_ptr - buffer;
+        insert_imp(index, std::forward<FirstArg>(first_arg), std::forward<SecondArg>(second_arg));
+        return begin() + index;
+    }
     private:
     [[no_unique_address]] alloc_first allocator;
     pointer_first buffer;
