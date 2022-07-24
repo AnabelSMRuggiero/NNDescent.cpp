@@ -27,7 +27,7 @@ struct layout_order{
                                       SecondType,
                                       FirstType>;
 
-    static constexpr bool reversed = alignof(FirstType) >= alignof(SecondType);
+    static constexpr bool reversed = alignof(FirstType) < alignof(SecondType);
 
 };
 
@@ -146,6 +146,33 @@ auto uninitialized_alloc_move(InIter in_iter, InSent in_sent, OutPtr out_ptr, Al
     return std::ranges::in_out_result<InIter, OutPtr>{in_iter, out_ptr};
 };
 
+template<std::input_iterator InIter, std::sentinel_for<InIter> InSent, typename OutPtr, typename Alloc>
+auto uninitialized_alloc_construct(InIter begin, InSent end, Alloc& allocator){
+    InIter original_begin = begin;
+    auto bound_construct = bind_allocator<Alloc>::bind_construct(allocator);
+    try{
+        for (; begin != end; ++begin){
+            bound_construct(begin);
+        }
+    } catch(...){
+        auto bound_destroy = bind_allocator<Alloc>::bind_destroy(allocator);
+        while( begin!=original_begin){
+            bound_destroy(--begin);
+        }
+        throw;
+    }
+    return std::ranges::in_out_result<InIter, OutPtr>{in_iter, out_ptr};
+};
+
+template<typename Alloc, typename Value>
+decltype(auto) move_if_safe(Value& value){
+    if constexpr (detect_noexcept_construct<std::remove_cvref_t<Value>, allocator_type, Value>()){
+        return std::forward<Value>(value);
+    } else {
+        return static_cast<std::remove_reference_t<Value>&>(value);
+    }
+}
+
 template<typename Pointer, typename Alloc>
 auto alloc_destroy(Pointer begin, Pointer end, Alloc& alloc){
     auto bound_destroy = bind_allocator<Alloc>::bind_destroy(alloc);
@@ -256,6 +283,7 @@ template<typename FirstPointer, typename SecondPointer>
 dual_vector_iterator<FirstPointer, SecondPointer> operator-(std::ptrdiff_t inc, const dual_vector_iterator<FirstPointer, SecondPointer>& iter){
     return iter - inc;
 }
+
 
 
 template<typename FirstType, typename SecondType, typename Allocator = std::allocator<std::pair<FirstType, SecondType>>>
@@ -890,7 +918,7 @@ struct dual_vector{
     private:
 
                       // args denote the gap as a half-open range
-    void shift_elements(size_type gap_begin, size_type gap_end) requires (std::is_nothrow_move_constructible_v<first> && std::is_nothrow_move_constructible_v<second>) {
+    void shift_elements(size_type gap_begin, size_type gap_end) requires (std::is_move_constructible_v<first> && std::is_move_constructible_v<second>) {
         size_type shift_amount = gap_end - gap_begin;
         auto move_construct = bind::bind_move_construct(allocator);
         auto destroy = bind::bind_destroy(allocator);
@@ -899,14 +927,44 @@ struct dual_vector{
             auto shift_destination = shift_end - 1 + shift_amount;
 
             while(shift_end != shift_begin){
-                move_construct(shift_destination, shift_end);
+                move_construct(shift_destination, --shift_end);
                 destroy(shift_end);
-                --shift_end;
                 --shift_destination;
             }
         };
         shift_imp(begin_first() + gap_begin, end_first());
         shift_imp(begin_second() + gap_begin, end_second());
+    }
+
+     void shift_elements(size_type gap_begin, size_type gap_end) {
+        size_type shift_amount = gap_end - gap_begin;
+        auto shift_construct = bind::bind_copy_construct(allocator);
+        auto destroy = bind::bind_destroy(allocator);
+
+        auto shift_imp = [&](auto shift_begin, auto shift_end){
+            auto original_end = shift_end;
+            auto shift_destination = shift_end - 1 + shift_amount;
+            try{
+                while(shift_end != shift_begin){
+                    copy_construct(shift_destination, --shift_end);
+                    destroy(shift_end);
+                    --shift_destination;
+                }
+            }catch(...){
+                alloc_destroy(++shift_destination, original_end+shift_amount, allocator);
+                uninitialized_alloc_construct(++shift_end, std::min(shift_destination, original_end), allocator);
+
+                throw;
+            }
+        };
+        shift_imp(begin_first() + gap_begin, end_first());
+        try{
+            shift_imp(begin_second() + gap_begin, end_second());
+        } catch(...){
+            uninitialized_alloc_construct(begin_first()+gap_begin, begin_first()+gap_end);
+            alloc_destroy(end_first(), end_first()+(gap_end-gap_begin));
+            throw;
+        }
     }
 
     void unshift_elements(size_type gap_begin, size_type gap_end) requires (std::is_nothrow_move_constructible_v<first> && std::is_nothrow_move_constructible_v<second>) {
@@ -929,28 +987,26 @@ struct dual_vector{
     }
 
     template<typename FirstArg, typename SecondArg>
-        requires (std::is_nothrow_move_constructible_v<first> && std::is_nothrow_move_constructible_v<second>)
     void insert_imp(size_type index, FirstArg&& first_arg, SecondArg&& second_arg){
-        if(array_size + 1 <= buffer_capacity){
+        if(array_size < buffer_capacity){
             shift_elements(index, index + 1);
             try{
                 insert_at(index, std::forward<FirstArg>(first_arg), index, std::forward<SecondArg>(second_arg));
             } catch(...){
-                unshift_elements(index, index + 1);
+                if constexpr (std::is_nothrow_move_constructible_v<first> && std::is_nothrow_move_constructible_v<second>){
+                    unshift_elements(index, index + 1);
+                } else {
+                    alloc_traits_first::construct(allocator, begin_first()+index);
+                    alloc_traits_first::construct(allocator, begin_second()+index);
+                    alloc_traits_first::destroy(allocator, end_first());
+                    alloc_traits_first::destroy(allocator, end_second());
+                }
                 throw;
             }
             ++array_size;
         } else {
             insert_relocate(buffer_capacity + buffer_capacity/2, index, std::forward<FirstArg>(first_arg), std::forward<SecondArg>(second_arg));
         }
-    }
-
-    template<typename FirstArg, typename SecondArg>
-    void insert_imp(size_type index, FirstArg&& first_arg, SecondArg&& second_arg){
-        size_type new_capacity = (array_size + 1 <= buffer_capacity) ? buffer_capacity 
-                                                                     : buffer_capacity + buffer_capacity/2;
-
-        insert_relocate(new_capacity, index, std::forward<FirstArg>(first_arg), std::forward<SecondArg>(second_arg));
     }
 
     public:
@@ -964,9 +1020,117 @@ struct dual_vector{
     template<alloc_constructable<FirstType, allocator_type> FirstArg, alloc_constructable<FirstType, allocator_type> SecondArg>
     iterator insert(const_iterator position, FirstArg&& first_arg, SecondArg&& second_arg){
         auto index = position.second_ptr - buffer;
-        insert_imp(index, std::forward<FirstArg>(first_arg), std::forward<SecondArg>(second_arg));
+        insert_imp(index, std::forward<SecondArg>(second_arg), std::forward<FirstArg>(first_arg));
         return begin() + index;
     }
+
+    iterator erase(const_iterator pos){
+        auto index = pos - begin();
+        std::move(begin_first()+index+1, end_first(), begin_first()+index);
+        std::move(begin_second()+index+1, end_second(), begin_second()+index);
+        alloc_traits_first::destroy(allocator, --end_first());
+        alloc_traits_first::destroy(allocator, --end_second());
+        --array_size;
+        return begin()+index;
+    }
+
+    iterator erase(const_iterator first, const_iterator end){
+        if (first == end){
+            return end;
+        }
+
+        auto begin_index = first-begin();
+        auto end_index = end-begin();
+        pointer_first destroy_first = std::rotate(begin_first()+begin_index, begin_first()+end_index, end_first());
+        pointer_second destroy_second = std::rotate(begin_second()+begin_index, begin_second()+end_index, end_second());
+
+        alloc_destroy(destroy_first, end_first(), allocator);
+        alloc_destroy(destroy_second, end_second(), allocator);
+        array_size = destroy_first - begin_first();
+        return begin() + begin_index;
+    }
+    private:
+    template<typename FirstArg, typename SecondArg>
+        requires std::same_as<std::remove_cvref_t<FirstArg>, first> && std::same_as<std::remove_cvref_t<SecondArg>, second>
+    void push_back_imp(FirstArg&& first_arg, SecondArg&& second_arg){
+        auto construct = bind::bind_construct(allocator);
+
+        if (array_size == buffer_capacity){
+            relocate(buffer_capacity + buffer_capacity/2);
+        }
+
+        if constexpr (!element_no_throw_move<SecondArg>){
+            construct(end_second(), second_arg);
+            try{
+                construct(end_first(), move_if_safe<alloc_first, FirstArg>(first_arg));
+            } catch(...){
+                auto destroy = bind::bind_destroy(allocator);
+                destroy(end_second());
+                throw;
+            }
+        } else {
+            construct(end_first(), move_if_safe<alloc_first, FirstArg>(first_arg));
+            try{
+                construct(end_second(), move_if_safe<alloc_first, SecondArg>(second_arg));
+            } catch (...){
+                auto destroy = bind::bind_destroy(allocator);
+                destroy(end_first());
+                throw;
+            }
+        }
+        ++array_size;
+    }
+
+    void check_relocate(size_type target_size){
+        if (buffer_capacity < target_size){
+            relocate(std::max(buffer_capacity + buffer_capacity/2, target_size));
+        }
+    }
+    public:
+    template<typename FirstArg, typename SecondArg>
+        requires std::same_as<std::remove_cvref_t<FirstArg>, FirstType> && std::same_as<std::remove_cvref_t<SecondArg>, SecondType>
+    void push_back(FirstArg&& first_arg, SecondArg&& second_arg){
+        if constexpr(layout::reversed){
+            push_back_imp(std::forward<SecondArg>(second_arg), std::forward<FirstArg>(first_arg));
+        } else {
+            push_back_imp(std::forward<FirstArg>(first_arg), std::forward<SecondArg>(second_arg));
+        }
+    }
+
+    template<std::convertible_to<value_type> PairLike> 
+    void push_back(PairLike&& pair_like){
+        auto&& [first_arg, second_arg] = std::forward<PairLike>(pair_like);
+        push_back(std::forward<decltype(first_arg)>(first_arg), std::forward<decltype(second_arg)>(second_arg));
+    }
+    //reference emplace_back(...)
+    void resize(size_type new_size){
+        if(new_size< array_size){
+            alloc_destroy(begin_first() + new_size, end_first(), allocator);
+            alloc_destroy(begin_second() + new_size, end_second(), allocator);
+            array_size = new_size;
+            return;
+        }
+        if(new_size>array_size){
+            check_relocate(new_size);
+            uninitialized_alloc_construct(end_first(), begin_first()+new_size, allocator);
+            uninitialized_alloc_construct(end_second(), begin_second()+new_size, allocator);
+            array_size = new_size;
+            return;
+        }
+    }
+
+    //void resize(size_type new_size, ValueType value)
+    void swap(dual_vector& other){
+        using std::ranges::swap;
+        if constexpr (alloc_traits::propagate_on_container_swap::value){
+            swap(allocator, other.allocator);
+        }
+        swap(buffer, other.buffer);
+        swap(buffer_capacity, other.buffer_capacity);
+        swap(array_size, other.array_size);
+
+    }
+
     private:
     [[no_unique_address]] alloc_first allocator;
     pointer_first buffer;
