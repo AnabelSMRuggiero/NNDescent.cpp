@@ -33,7 +33,7 @@ https://github.com/AnabelSMRuggiero/NNDescent.cpp
 #include "Parallelization/AsyncQueue.hpp"
 #include "Parallelization/ThreadPool.hpp"
 
-#include "../ann/Data.hpp"
+#include "ann/Data.hpp"
 #include "FunctorErasure.hpp"
 
 namespace nnd{

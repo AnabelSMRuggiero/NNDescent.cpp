@@ -19,9 +19,9 @@ https://github.com/AnabelSMRuggiero/NNDescent.cpp
 #include <execution>
 #include <algorithm>
 
-#include "../ann/Data.hpp"
-#include "../ann/DataSerialization.hpp"
-#include "../ann/AlignedMemory/DynamicArray.hpp"
+#include "ann/Data.hpp"
+#include "ann/DataSerialization.hpp"
+#include "ann/AlignedMemory/DynamicArray.hpp"
 
 #include "Type.hpp"
 #include "GraphStructures.hpp"

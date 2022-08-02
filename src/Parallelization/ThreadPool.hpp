@@ -21,7 +21,6 @@ https://github.com/AnabelSMRuggiero/NNDescent.cpp
 #include <thread>
 #include <type_traits>
 
-#include "ann/UniqueFunction.hpp"
 #include "ann/MemoryResources.hpp"
 #include "ann/AlignedMemory/DynamicArray.hpp"
 #include "ann/DelayConstruct.hpp"

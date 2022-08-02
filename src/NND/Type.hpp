@@ -5,10 +5,10 @@
 #include <memory_resource>
 #include <vector>
 #include <concepts>
-#include "../ann/Type.hpp"
-#include "../ann/Data.hpp"
+#include "ann/Type.hpp"
+#include "ann/Data.hpp"
 #include <cstdint>
-//#include <memory>
+
 
 namespace nnd{
 

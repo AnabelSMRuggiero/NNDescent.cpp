@@ -18,8 +18,8 @@ https://github.com/AnabelSMRuggiero/NNDescent.cpp
 #include <type_traits>
 
 #include "../UtilityFunctions.hpp"
-#include "../../ann/Type.hpp"
-#include "../../ann/DataSerialization.hpp"
+#include "ann/Type.hpp"
+#include "ann/DataSerialization.hpp"
 #include "../Type.hpp"
 
 namespace nnd{

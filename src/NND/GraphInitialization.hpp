@@ -18,15 +18,15 @@ https://github.com/AnabelSMRuggiero/NNDescent.cpp
 #include <future>
 #include <memory>
 
-#include "../RPTrees/Forest.hpp"
+#include "RPTrees/Forest.hpp"
 
-#include "./Type.hpp"
+#include "Type.hpp"
 
-#include "./GraphStructures.hpp"
-#include "./MetaGraph.hpp"
-#include "./BlockwiseAlgorithm.hpp"
+#include "GraphStructures.hpp"
+#include "MetaGraph.hpp"
+#include "BlockwiseAlgorithm.hpp"
 
-#include "../ann/Data.hpp"
+#include "ann/Data.hpp"
 #include "FunctorErasure.hpp"
 #include "MetricHelpers.hpp"
 #include "NND/GraphStructures/CachingFunctor.hpp"

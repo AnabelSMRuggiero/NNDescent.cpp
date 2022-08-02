@@ -20,11 +20,11 @@ https://github.com/AnabelSMRuggiero/NNDescent.cpp
 #include <type_traits>
 #include <vector>
 
-#include "../ann/Data.hpp"
-#include "../ann/Metrics/SpaceMetrics.hpp"
-#include "../ann/NestedRanges.hpp"
-#include "../ann/TemplateManipulation.hpp"
-#include "../ann/Type.hpp"
+#include "ann/Data.hpp"
+#include "ann/Metrics/SpaceMetrics.hpp"
+#include "ann/NestedRanges.hpp"
+#include "ann/TemplateManipulation.hpp"
+#include "ann/Type.hpp"
 #include "Type.hpp"
 
 namespace nnd {

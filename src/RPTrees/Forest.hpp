@@ -30,14 +30,14 @@ https://github.com/AnabelSMRuggiero/NNDescent.cpp
 #include <vector>
 
 
-#include "../ann/Type.hpp"
-#include "../ann/AlignedMemory/DynamicArray.hpp"
+#include "ann/Type.hpp"
+#include "ann/AlignedMemory/DynamicArray.hpp"
 #include "NND/MemoryInternals.hpp"
 #include "NND/Type.hpp"
 #include "Parallelization/AsyncQueue.hpp"
 #include "Parallelization/ThreadPool.hpp"
-#include "../NND/RNG.hpp"
-#include "./SplittingScheme.hpp"
+#include "NND/RNG.hpp"
+#include "SplittingScheme.hpp"
 
 namespace nnd{
 

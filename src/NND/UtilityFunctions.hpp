@@ -12,7 +12,7 @@ https://github.com/AnabelSMRuggiero/NNDescent.cpp
 #define NND_UTILITYFUNCTIONS_H
 #include <utility>
 
-#include "../ann/DataDeserialization.hpp"
+#include "ann/DataDeserialization.hpp"
 
 namespace nnd{
 

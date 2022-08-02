@@ -19,7 +19,7 @@ https://github.com/AnabelSMRuggiero/NNDescent.cpp
 #include <functional>
 #include <memory>
 
-#include "../ann/Data.hpp"
+#include "ann/Data.hpp"
 
 #include "MemoryInternals.hpp"
 #include "GraphStructures.hpp"
