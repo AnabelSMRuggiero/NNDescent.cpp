@@ -20,3 +20,5 @@ perf.data
 perf.data.old
 workspace.code-workspace
 /Saved-Indecies
+/build
+/ext/catch2/*
