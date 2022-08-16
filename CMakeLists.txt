@@ -7,8 +7,12 @@
 # https://github.com/AnabelSMRuggiero/NNDescent.cpp
 
 cmake_minimum_required(VERSION 3.24)
+list(APPEND CMAKE_MODULE_PATH ${CMAKE_CURRENT_LIST_DIR}/CMake)
 
 project(nndescent.cpp)
+
+add_compile_options("-fsanitize=address" "-Zi")
+add_link_options("-fsanitize=address")
 
 add_subdirectory(ext)
 
