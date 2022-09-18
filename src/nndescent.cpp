@@ -84,7 +84,8 @@ std::vector<BlockIndecies> VertexToIndex(const GraphVertex<BlockIndecies, DistTy
     return result;
 }
 
-
+template<typename>
+constexpr bool dependent_false = false;
 
 template<typename DistType>
 ann::dynamic_array<IndexBlock> IndexFinalization(std::span<BlockUpdateContext<DistType>> blocks, std::pmr::memory_resource* resource = std::pmr::get_default_resource()){
@@ -109,8 +110,8 @@ ann::dynamic_array<IndexBlock> IndexFinalization(std::span<BlockUpdateContext<Di
 
             return std::transform_reduce(vertex.begin(), 
                                          vertex.end(),
-                                         size_t{0},
-                                         std::plus<size_t>{},
+                                         std::size_t{0},
+                                         std::plus<>{},
                                          outOfBlock);
         });
 

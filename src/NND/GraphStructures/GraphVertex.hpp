@@ -17,9 +17,11 @@ https://github.com/AnabelSMRuggiero/NNDescent.cpp
 #include <memory>
 #include <type_traits>
 
-#include "../UtilityFunctions.hpp"
-#include "ann/Type.hpp"
+#include "ann/AlignedMemory/DualVector.hpp"
 #include "ann/DataSerialization.hpp"
+#include "ann/Type.hpp"
+
+#include "../UtilityFunctions.hpp"
 #include "../Type.hpp"
 
 namespace nnd{
@@ -38,12 +40,13 @@ struct GraphVertex{
     using EdgeType = std::pair<IndexType, FloatType>;
     using Index_t = IndexType;
     using Distance_t = FloatType;
-    using iterator = typename std::vector<std::pair<IndexType, FloatType>, Alloc<EdgeType>>::iterator;
-    using const_iterator = typename std::vector<std::pair<IndexType, FloatType>, Alloc<EdgeType>>::const_iterator;
-
+    using iterator = typename ann::dual_vector<IndexType, FloatType, Alloc<EdgeType>>::iterator;
+    using const_iterator = typename ann::dual_vector<IndexType, FloatType, Alloc<EdgeType>>::const_iterator;
+    using reference = typename ann::dual_vector<IndexType, FloatType, Alloc<EdgeType>>::reference;
+    using const_reference = typename ann::dual_vector<IndexType, FloatType, Alloc<EdgeType>>::const_reference;
     using allocator_type = Alloc<EdgeType>;
 
-    std::vector<std::pair<IndexType, FloatType>, Alloc<EdgeType>> neighbors;
+    ann::dual_vector<IndexType, FloatType, Alloc<EdgeType>> neighbors;
     //std::vector<size_t> reverseNeighbor;
 
     GraphVertex(allocator_type allocator = allocator_type{}): neighbors(0, allocator){};
@@ -87,7 +90,8 @@ struct GraphVertex{
         }
         
         neighbors.push_back(newNeighbor);
-        std::memmove(&neighbors[index+1], &neighbors[index], sizeof(std::pair<IndexType, FloatType>)*(neighbors.size()-1 - index));
+        std::move_backward(neighbors.begin() + index, neighbors.end()-2, --neighbors.end());
+        //std::memmove(&neighbors[index+1], &neighbors[index], sizeof(std::pair<IndexType, FloatType>)*(neighbors.size()-1 - index));
         neighbors[index] = newNeighbor;
         
         neighbors.pop_back();
@@ -103,7 +107,8 @@ struct GraphVertex{
         }
 
         neighbors.push_back(newNeighbor);
-        std::memmove(&neighbors[index+1], &neighbors[index], sizeof(std::pair<IndexType, FloatType>)*(neighbors.size()-1 - index));
+        std::move_backward(neighbors.begin() + index, neighbors.end()-2, --neighbors.end());
+        //std::memmove(&neighbors[index+1], &neighbors[index], sizeof(std::pair<IndexType, FloatType>)*(neighbors.size()-1 - index));
         neighbors[index] = newNeighbor;
 
         std::pair<IndexType, FloatType> retValue = neighbors.back();
@@ -113,7 +118,7 @@ struct GraphVertex{
     };
 
     void JoinPrep(){
-        std::sort(neighbors.begin(), neighbors.end(), edge_ops::lessThan);
+        std::ranges::sort(neighbors, edge_ops::lessThan);
     }
 
     void UnPrep(){
@@ -157,29 +162,24 @@ struct GraphVertex{
         neighbors.pop_back();
     }
 
-    constexpr void push_back(const std::pair<IndexType, FloatType>& value){
-        neighbors.push_back(value);
-    }
-
-    //template<typename PairReferenceType>
-    constexpr void push_back(std::pair<IndexType, FloatType>&& value){
+    constexpr void push_back(std::pair<IndexType, FloatType> value){
         neighbors.push_back(std::move(value));
     }
 
-    constexpr std::pair<IndexType, FloatType>& operator[](size_t i){
+    constexpr reference operator[](size_t i){
         return neighbors[i];
     }
 
-    constexpr const std::pair<IndexType, FloatType>& operator[](size_t i) const{
+    constexpr const_reference operator[](size_t i) const{
         return neighbors[i];
     }
 
-    constexpr std::pair<IndexType, FloatType>& operator[](BlockIndecies i){
+    constexpr reference operator[](BlockIndecies i){
         // I'm assuming the block number is correct
         return neighbors[i.dataIndex];
     }
 
-    constexpr const std::pair<IndexType, FloatType>& operator[](BlockIndecies i) const{
+    constexpr const_reference operator[](BlockIndecies i) const{
         // I'm assuming the block number is correct
         return neighbors[i.dataIndex];
     }
@@ -218,6 +218,10 @@ struct GraphVertex{
 
     constexpr iterator erase(const_iterator first, const_iterator last) {
         return neighbors.erase(first, last);
+    }
+
+    constexpr auto view_first(){
+        return neighbors.view_first();
     }
 
 
@@ -289,7 +293,7 @@ unsigned int ConsumeVertex(Consumer& consumer, OtherVertex& consumee, size_t con
     using ConsumerDist = typename Consumer::Distance_t;
     consumee.UnPrep();
     unsigned int neighborsAdded(0);
-    for (auto& pair: consumee){
+    for (auto&& pair: consumee){
         if (pair.second >= consumer.PushThreshold()) return neighborsAdded;
         consumer.PushNeighbor({{consumeeFragment, consumeeBlock, pair.first}, static_cast<ConsumerDist>(pair.second)});
         neighborsAdded++;
@@ -304,7 +308,7 @@ unsigned int ConsumeVertex(GraphVertex<std::pair<BlockIndecies, bool>, ConsumerD
     //std::sort(consumee.begin(), consumee.end(), NeighborDistanceComparison<OtherIndex, OtherDist>);
     consumee.UnPrep();
     unsigned int neighborsAdded(0);
-    for (auto& pair: consumee){
+    for (auto&& pair: consumee){
         if (pair.second >= consumer.PushThreshold()) return neighborsAdded;
         consumer.PushNeighbor({{{consumeeBlockNum, pair.first}, false}, static_cast<ConsumerDist>(pair.second)});
         neighborsAdded++;

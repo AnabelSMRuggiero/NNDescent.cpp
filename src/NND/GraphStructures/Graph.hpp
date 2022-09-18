@@ -122,7 +122,7 @@ Graph<BlockIndecies, DistType> ToBlockIndecies(const Graph<DataIndexType, DistTy
     for (size_t j = 0; const auto& vertex: blockGraph){
         newGraph[j].resize(blockGraph[j].size());
         for(size_t k = 0; const auto& neighbor: vertex){
-            newGraph[j][k] = {{fragmentNum, blockNum, neighbor.first}, neighbor.second};
+            newGraph[j][k] = std::pair{BlockIndecies{fragmentNum, blockNum, neighbor.first}, neighbor.second};
             k++;
         }   
         j++;

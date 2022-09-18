@@ -22,8 +22,7 @@ bool constexpr NeighborDistanceComparison(const std::pair<IndexType, FloatType>&
 };
 
 struct EdgeLessThan{
-    template<TriviallyCopyable LHSIndexType, TriviallyCopyable RHSIndexType, typename FloatType>
-    constexpr bool operator()(const std::pair<LHSIndexType, FloatType>& neighborA, const std::pair<RHSIndexType, FloatType>& neighborB) const noexcept{
+    constexpr bool operator()(const auto& neighborA, const auto& neighborB) const noexcept{
         return neighborA.second < neighborB.second;
     }
 };

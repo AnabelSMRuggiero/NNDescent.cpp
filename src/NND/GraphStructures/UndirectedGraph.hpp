@@ -132,7 +132,7 @@ UndirectedGraph<IndexType> BuildUndirectedGraph(Graph<IndexType, DistType> direc
 
     IndexType* indexStart = retGraph.graphBlock.firstIndex;
     for (auto& vertex: directedGraph){
-        std::sort(vertex.begin(), vertex.end(), edge_ops::lessThan);
+        std::ranges::sort(vertex, edge_ops::lessThan);
         std::transform(vertex.begin(), vertex.end(), indexStart, [](const auto& neighbor){ return neighbor.first; });
         indexStart += vertex.size();
     }

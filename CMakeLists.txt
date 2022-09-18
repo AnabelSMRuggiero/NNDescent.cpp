@@ -11,8 +11,8 @@ list(APPEND CMAKE_MODULE_PATH ${CMAKE_CURRENT_LIST_DIR}/CMake)
 
 project(nndescent.cpp)
 
-add_compile_options("-fsanitize=address" "-Zi")
-add_link_options("-fsanitize=address")
+#add_compile_options("-fsanitize=address" "-Zi")
+#add_link_options("-fsanitize=address")
 
 add_subdirectory(ext)
 

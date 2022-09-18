@@ -407,7 +407,7 @@ struct QueryContext {
 
         auto toNeighbor = [&](const auto edge) { return edge.first; };
         */
-        std::span<const typename Vertex::EdgeType> nodesToCompare{ initVertex.begin(), querySearchDepth };
+        std::span<const IndexType> nodesToCompare = initVertex.view_first().subspan(0, querySearchDepth);
         
         //constexpr size_t bufferSize = sizeof(size_t) * (internal::maxBatch + 5);
         std::byte mapBuffer[5'000];
@@ -417,17 +417,17 @@ struct QueryContext {
 
         auto& stored_views = *alloc.new_object<std::pmr::unordered_map<IndexType, SubGraphView>>();
         auto notCompared = [&](const auto& edge) -> bool {
-            if (stored_views.contains(edge.first)){
-                return stored_views[edge.first].size() > 0;
+            if (stored_views.contains(edge)){
+                return stored_views[edge].size() > 0;
             } else {
-                stored_views[edge.first] = subGraph[edge.first];
+                stored_views[edge] = subGraph[edge];
                 return true;
             }
         };
         
         auto getView = [&](const auto& edge) -> SubGraphView& {
             auto [iter, inserted] = stored_views.insert(
-                std::pair{ edge.first, subGraph[edge.first]}
+                std::pair{ edge, subGraph[edge]}
             );
             return iter->second;
         };
