@@ -8,6 +8,8 @@
 
 add_subdirectory(ann)
 
+include(FindThreads)
+
 set(
     GRAPH_STRUCTURE_HEADERS
     ${CMAKE_CURRENT_SOURCE_DIR}/NND/GraphStructures/CachingFunctor.hpp
@@ -75,17 +77,26 @@ target_sources(
 target_include_directories(
     nndescent
     INTERFACE
-        ${CMAKE_CURRENT_SOURCE_DIR}/NND
-        ${CMAKE_CURRENT_SOURCE_DIR}/Parallelization
-        ${CMAKE_CURRENT_SOURCE_DIR}/RPTrees
+        ${CMAKE_CURRENT_SOURCE_DIR}
 )
 
 target_link_libraries(
     nndescent
     INTERFACE anns_numerical_nonsense
+              Threads::Threads
 )
 
 target_compile_features(nndescent INTERFACE cxx_std_20)
+
+add_library(instruction_set_flag INTERFACE)
+
+# Todo: set up better ways to detect instruction set during build
+if(MSVC)
+    target_compile_options(instruction_set_flag INTERFACE "/arch:AVX2")
+else()
+    target_compile_options(instruction_set_flag INTERFACE "-march=x86-64-v3")
+endif()
+
 
 add_executable(
     nndescent_index_build
@@ -94,11 +105,26 @@ add_executable(
 
 target_link_libraries(
     nndescent_index_build
-    nndescent
-    anns_numerical_nonsense
+    PUBLIC
+        nndescent
+        anns_numerical_nonsense
+    PRIVATE
+        instruction_set_flag
 )
 
-# Todo: set up ways to detect instruction set during build
-if(MSVC)
-    target_compile_options(nndescent_index_build PRIVATE "/arch:AVX2")
-endif()
+add_executable(
+    nndescent_index_build_test
+    TestIndexBuild.cpp
+)
+
+target_compile_options(nndescent_index_build_test PRIVATE "-fconcepts-diagnostics-depth=2")
+
+target_link_libraries(
+    nndescent_index_build_test
+    PUBLIC
+        nndescent
+        anns_numerical_nonsense
+    PRIVATE
+        instruction_set_flag
+)
+

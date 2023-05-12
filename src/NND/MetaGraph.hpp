@@ -118,11 +118,11 @@ struct MetaGraph{
 };
 
 template<typename COMExtent, typename DataType, typename MetricSet, typename COMFunctor>
-MetaGraph<COMExtent> BuildMetaGraphFragment(const std::vector<DataBlock<DataType>>& dataBlocks, const IndexParameters& params, const size_t fragmentNumber, MetricSet metricSet, COMFunctor COMCalculator){
+MetaGraph<COMExtent> BuildMetaGraphFragment(const std::vector<DataBlock<DataType>>& dataBlocks, const index_parameters& params, const size_t fragmentNumber, MetricSet metricSet, COMFunctor COMCalculator){
     std::vector<size_t> weights(0);
     weights.reserve(dataBlocks.size());
     DataBlock<COMExtent> points(dataBlocks.size(), dataBlocks[0].entryLength, fragmentNumber);
-    Graph<BlockNumber_t, COMExtent> verticies(dataBlocks.size(), params.COMNeighbors);
+    Graph<BlockNumber_t, COMExtent> verticies(dataBlocks.size(), params.COM_neighbors);
     //SinglePointFunctor<COMExtent> functor(DataComDistance<DataEntry, COMExtent, MetricPair>(*this, dataBlocks, metricFunctor));
     weights.reserve(dataBlocks.size());
     for (size_t i = 0; const auto& dataBlock: dataBlocks){
@@ -134,7 +134,7 @@ MetaGraph<COMExtent> BuildMetaGraphFragment(const std::vector<DataBlock<DataType
     ann::aligned_array<COMExtent> centerOfMass(dataBlocks[0].entryLength);
     COMCalculator(points, {MakeAlignedPtr(centerOfMass.begin(), centerOfMass), centerOfMass.size()});
 
-    BruteForceGraph<COMExtent>(verticies, params.COMNeighbors, points, metricSet.dataToData);
+    BruteForceGraph<COMExtent>(verticies, params.COM_neighbors, points, metricSet.dataToData);
     for(auto& vertex: verticies){
         std::sort(vertex.begin(), vertex.end(), edge_ops::lessThan);
     }
@@ -142,11 +142,11 @@ MetaGraph<COMExtent> BuildMetaGraphFragment(const std::vector<DataBlock<DataType
     auto neighborFunctor = [&](size_t, size_t pointIndex){
         return metricSet.comToCom({MakeAlignedPtr(centerOfMass.begin(), centerOfMass), centerOfMass.size()}, points[pointIndex]);
     };
-    GraphVertex<BlockNumber_t, COMExtent> queryHint = QueryCOMNeighbors<COMExtent, DataType, BlockNumber_t>(0, verticies, params.COMNeighbors, neighborFunctor);
+    GraphVertex<BlockNumber_t, COMExtent> queryHint = QueryCOMNeighbors<COMExtent, DataType, BlockNumber_t>(0, verticies, params.COM_neighbors, neighborFunctor);
 
     QueryContext<BlockNumber_t,COMExtent> queryContext(verticies,
                                          std::move(queryHint),
-                                         params.queryDepth,
+                                         params.query_depth,
                                          fragmentNumber,
                                          BlockNumber_t{std::numeric_limits<BlockNumber_t>::max()},
                                          points.size());
@@ -304,7 +304,7 @@ using UnweightedGraphEdges = std::unordered_map<size_t, std::unordered_map<size_
 
 using WeightedGraphEdges = std::unordered_map<size_t, std::vector<std::pair<size_t, double>>>;
 
-void SerializeMetaGraph(const WeightedGraphEdges& readGraph, const std::string& outputFile){
+inline void SerializeMetaGraph(const WeightedGraphEdges& readGraph, const std::string& outputFile){
     std::ofstream outStream(outputFile, std::ios_base::binary);
 
     SerializeData<size_t, std::endian::big>(outStream, readGraph.size());
@@ -321,7 +321,7 @@ void SerializeMetaGraph(const WeightedGraphEdges& readGraph, const std::string& 
 }
 
 
-WeightedGraphEdges NeighborsOutOfBlock(const DataSet<int32_t>& groundTruth,
+inline WeightedGraphEdges NeighborsOutOfBlock(const DataSet<int32_t>& groundTruth,
     const std::vector<BlockIndecies>& trainClassifications,
     const std::vector<size_t>& testClassifications){
         UnweightedGraphEdges unweightedGraph;

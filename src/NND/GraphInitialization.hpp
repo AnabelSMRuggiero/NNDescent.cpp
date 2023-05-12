@@ -173,7 +173,6 @@ ann::dynamic_array<BlockUpdateContext<DistType>> InitializeBlockContexts(std::ve
 
         QueryContext<DataIndex_t, DistType> queryContext(blockGraphs[i],
                                             std::move(queryHints[i]),
-                                            queryDepth,
                                             fragment_number,
                                             i,
                                             blockGraphs[i].size());
@@ -371,22 +370,22 @@ ann::dynamic_array<BlockUpdateContext<DistType>> BuildGraph(const MetaGraph<COME
                                                            erased_unary_binder<COMExtent> comFunctor){
 
 
-    std::vector<Graph<DataIndex_t, float>> blockGraphs = InitializeBlockGraphs<float>(metaGraph.size(), metaGraph.weights, hyperParams.indexParams.blockGraphNeighbors, dispatch);
+    std::vector<Graph<DataIndex_t, float>> blockGraphs = InitializeBlockGraphs<float>(metaGraph.size(), metaGraph.weights, hyperParams.index_params.block_graph_neighbors, dispatch);
 
     std::span<Graph<DataIndex_t, float>> blockGraphView = {blockGraphs.begin(), blockGraphs.size()};
 
-    Graph<DataIndex_t, float> queryHints = old_GenerateQueryHints<float, float>(blockGraphView, hyperParams.indexParams.blockGraphNeighbors, comFunctor);
+    Graph<DataIndex_t, float> queryHints = old_GenerateQueryHints<float, float>(blockGraphView, hyperParams.index_params.block_graph_neighbors, comFunctor);
 
 
     ann::dynamic_array<BlockUpdateContext<DistType>> blockUpdateContexts = InitializeBlockContexts<DistType>(blockGraphs,
                                                                                          queryHints,
-                                                                                         hyperParams.indexParams.queryDepth);
+                                                                                         hyperParams.index_params.query_depth);
     
     std::span<BlockUpdateContext<DistType>> blockSpan{blockUpdateContexts};
     std::span<const BlockUpdateContext<DistType>> constBlockSpan(blockUpdateContexts.data(), blockUpdateContexts.size());
-    cache_state<float> cache(hyperParams.splitParams.maxTreeSize, hyperParams.indexParams.blockGraphNeighbors);
+    cache_state<float> cache(hyperParams.split_params.max_tree_size, hyperParams.index_params.block_graph_neighbors);
 
-    auto [nearestNodeDistances, stitchHints] = NearestNodeDistances(constBlockSpan, metaGraph, hyperParams.indexParams.nearestNodeNeighbors, dispatch);
+    auto [nearestNodeDistances, stitchHints] = NearestNodeDistances(constBlockSpan, metaGraph, hyperParams.index_params.nearest_node_neighbors, dispatch);
     StitchBlocks(nearestNodeDistances, stitchHints, blockSpan, metaGraph.FragmentNumber(), dispatch, cache);
     
     
@@ -396,7 +395,7 @@ ann::dynamic_array<BlockUpdateContext<DistType>> BuildGraph(const MetaGraph<COME
         graphUpdates = 0;
         for(size_t i = 0; i<blockSpan.size(); i+=1){
             for (auto& joinList: blockSpan[i].joinsToDo){
-                graphUpdates += UpdateBlocks(blockSpan[i], blockSpan[joinList.first], dispatch, cache);
+                graphUpdates += UpdateBlocks(hyperParams.index_params, blockSpan[i], blockSpan[joinList.first], dispatch, cache);
                 blockSpan[joinList.first].joinsToDo.erase(i);
             }
         }
@@ -409,6 +408,87 @@ ann::dynamic_array<BlockUpdateContext<DistType>> BuildGraph(const MetaGraph<COME
     return blockUpdateContexts;
 }
 
+
+constexpr splitting_heurisitcs seed_parameters{
+    .split_threshold = 10,
+    .child_threshold = 6,
+    .max_tree_size = 16,
+    .max_retry = 24,
+    .max_split_fraction = 0.33f,
+};
+constexpr auto add_candidates = [] (auto&& candidates, auto&& index_maps, std::size_t splitIdx, std::span<const size_t> indecies){
+    constexpr std::size_t buffer_size = sizeof(BlockIndecies) * seed_parameters.max_tree_size * 4;
+    std::byte stack_buffer[buffer_size];
+    std::pmr::monotonic_buffer_resource stack_resource{stack_buffer, buffer_size};
+
+    ann::pmr::dynamic_array<BlockIndecies> block_indecies{ 
+        indecies | std::views::transform([&](const auto& index){
+            return index_maps.sourceToBlockIndex[index];
+        }), 
+        &stack_resource
+    };
+
+    for (const auto& element : block_indecies){
+        auto& candidates_vec = candidates[element.blockNumber][element.dataIndex];
+        candidates_vec.reserve(block_indecies.size());
+        std::ranges::copy_if(block_indecies, std::back_inserter(candidates_vec), [&](const auto& current_candidate){
+            return current_candidate.blockNumber != element.blockNumber;
+        });
+
+    }
+};
+
+template<typename SplittingScheme, typename DistanceType>
+auto seed_candidates(const DataSet<DistanceType>& training_data, const IndexMaps<std::size_t>& index_maps){
+    
+    auto [rp_trees, splitting_vectors] = BuildRPForest<SplittingScheme>(training_data, seed_parameters);
+
+    auto seed_arrays = index_maps.blockIndexToSource 
+                       | std::views::transform(
+                           [](const auto& block){
+                               return ann::dynamic_array<std::vector<BlockIndecies>>{block.size()};
+                         });
+
+    ann::dynamic_array<ann::dynamic_array<std::vector<BlockIndecies>>> candidates{seed_arrays};
+
+    
+
+    auto candidate_task = [&](std::size_t splitIdx, std::span<const size_t> indecies){
+        add_candidates(candidates, index_maps, splitIdx, indecies);
+    };
+
+    CrawlTerminalLeaves(rp_trees, candidate_task);
+    return candidates;
+}
+
+template<typename SplittingScheme, typename DistanceType>
+auto seed_candidates(const DataSet<DistanceType>& training_data, const IndexMaps<std::size_t>& index_maps, std::size_t num_threads){
+    
+    auto [rp_trees, splitting_vectors] = BuildRPForest<SplittingScheme>(training_data, seed_parameters, num_threads);
+
+    auto seed_arrays = index_maps.blockIndexToSource 
+                       | std::views::transform(
+                           [](const auto& block){
+                               return ann::dynamic_array<std::vector<BlockIndecies>>{block.size()};
+                         });
+
+    ann::dynamic_array<ann::dynamic_array<std::vector<BlockIndecies>>> candidates{seed_arrays};
+
+    ThreadPool<void> assemble_candidates(num_threads);
+    
+    
+
+    auto add_task = [&](std::size_t splitIdx, std::span<const size_t> indecies){
+        assemble_candidates.DelegateTask([&, splitIdx, indecies]{
+            add_candidates(candidates, index_maps, splitIdx, indecies);
+        });
+    };
+
+    threaded_region(assemble_candidates, [&, &rp_tree = rp_trees](){CrawlTerminalLeaves(rp_tree, add_task);});
+
+    return candidates;
+}
+
 template<typename DistType>
 ann::dynamic_array<BlockUpdateContext<DistType>> BuildGraphRedux(const ann::dynamic_array<candidate_set>& candidates,
                                                            erased_binary_binder<DistType> dispatch,
@@ -416,16 +496,16 @@ ann::dynamic_array<BlockUpdateContext<DistType>> BuildGraphRedux(const ann::dyna
 
     ann::dynamic_array<std::size_t> sizes{ candidates | std::views::transform([](const auto& array){return array.size();})};
 
-    std::vector<Graph<DataIndex_t, float>> blockGraphs = InitializeBlockGraphs<float>(candidates.size(), sizes, hyperParams.indexParams.blockGraphNeighbors, dispatch);
+    std::vector<Graph<DataIndex_t, float>> blockGraphs = InitializeBlockGraphs<float>(candidates.size(), sizes, hyperParams.index_params.block_graph_neighbors, dispatch);
 
     std::span<Graph<DataIndex_t, float>> blockGraphView = {blockGraphs.begin(), blockGraphs.size()};
 
-    Graph<DataIndex_t, float> queryHints = GenerateQueryHints(blockGraphView, hyperParams.indexParams.blockGraphNeighbors);
+    Graph<DataIndex_t, float> queryHints = GenerateQueryHints(blockGraphView, hyperParams.index_params.block_graph_neighbors);
 
 
     ann::dynamic_array<BlockUpdateContext<DistType>> blockUpdateContexts = InitializeBlockContexts<DistType>(blockGraphs,
                                                                                          queryHints,
-                                                                                         hyperParams.indexParams.queryDepth);
+                                                                                         hyperParams.index_params.query_depth);
     for(std::size_t i = 0; i<candidates.size(); ++i){
         for (std::size_t j = 0; j<candidates[i].size(); ++j){
             for(const auto candidate : candidates[i][j]){
@@ -436,7 +516,7 @@ ann::dynamic_array<BlockUpdateContext<DistType>> BuildGraphRedux(const ann::dyna
 
     std::span<BlockUpdateContext<DistType>> blockSpan{blockUpdateContexts};
     //std::span<const BlockUpdateContext<DistType>> constBlockSpan(blockUpdateContexts.data(), blockUpdateContexts.size());
-    cache_state<float> cache(hyperParams.splitParams.maxTreeSize, hyperParams.indexParams.blockGraphNeighbors);
+    cache_state<float> cache(hyperParams.split_params.max_tree_size, hyperParams.index_params.block_graph_neighbors);
 
      
     
@@ -446,7 +526,7 @@ ann::dynamic_array<BlockUpdateContext<DistType>> BuildGraphRedux(const ann::dyna
         graphUpdates = 0;
         for(size_t i = 0; i<blockSpan.size(); i+=1){
             for (auto& joinList: blockSpan[i].joinsToDo){
-                graphUpdates += UpdateBlocks(blockSpan[i], blockSpan[joinList.first], dispatch, cache);
+                graphUpdates += UpdateBlocks(hyperParams.index_params, blockSpan[i], blockSpan[joinList.first], dispatch, cache);
                 blockSpan[joinList.first].joinsToDo.erase(i);
             }
         }

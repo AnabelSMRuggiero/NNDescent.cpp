@@ -12,12 +12,12 @@
 
 namespace nnd{
 
-struct SplittingHeurisitcs{
-    std::uint32_t splitThreshold = 80;
-    std::uint32_t childThreshold = 32;
-    std::uint32_t maxTreeSize = 130;
+struct splitting_heurisitcs{
+    std::uint32_t split_threshold = 80;
+    std::uint32_t child_threshold = 32;
+    std::uint32_t max_tree_size = 130;
     std::size_t max_retry = std::size_t(-1);
-    float maxSplitFraction = 0.0f;
+    float max_split_fraction = 0.0f;
 };
 
 using DataIndex_t = uint32_t;
@@ -114,26 +114,24 @@ bool operator==(comparison_key<IndexType> lhs, comparison_key<IndexType> rhs){
 }
 
 
-struct IndexParameters{
-    size_t blockGraphNeighbors;
-    size_t COMNeighbors;
-    size_t nearestNodeNeighbors;
-    size_t queryDepth;
+struct index_parameters{
+    std::size_t block_graph_neighbors;
+    std::size_t COM_neighbors;
+    std::size_t nearest_node_neighbors;
+    std::size_t query_depth;
 };
 
-struct SearchParameters{
-    size_t searchNeighbors;
-    size_t searchDepth;
-    size_t maxSearchesQueued;
+struct search_parameters{
+    std::size_t search_neighbors;
+    std::size_t search_depth;
+    std::size_t max_searches_queued;
 };
-
-
 
 
 struct hyper_parameters{
-    SplittingHeurisitcs splitParams;
-    IndexParameters indexParams;
-    SearchParameters searchParams;
+    splitting_heurisitcs split_params;
+    index_parameters index_params;
+    search_parameters search_params;
 };
 
 //using IndexBlock = std::vector<std::vector<BlockIndecies>>;

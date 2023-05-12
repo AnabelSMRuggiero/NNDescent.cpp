@@ -49,13 +49,13 @@ BlocksAndState<DistType> InitializeBlockContexts(
         auto task = [=, blockLocation = &(blockView[blockNum]), blockState = &(stateView[blockNum])](
                         typename Pool::state& functors) mutable {
             Graph<DataIndex_t, DistType> blockGraph =
-                BruteForceBlock(params.indexParams.blockGraphNeighbors, blockSize, functors.dispatchFunctor(blockNum, blockNum));
+                BruteForceBlock(params.index_params.block_graph_neighbors, blockSize, functors.dispatchFunctor(blockNum, blockNum));
 
             //GraphVertex<DataIndex_t, DistType> queryHint =
             //    QueryHintFromCOM(blockNum, blockGraph, params.indexParams.blockGraphNeighbors, functors.comDistFunctor(blockNum));
-            GraphVertex<DataIndex_t, DistType> queryHint = RandomQueryHint<DataIndex_t, DistType>(blockSize, params.indexParams.blockGraphNeighbors);
+            GraphVertex<DataIndex_t, DistType> queryHint = RandomQueryHint<DataIndex_t, DistType>(blockSize, params.index_params.block_graph_neighbors);
             QueryContext<DataIndex_t, DistType> queryContext(
-                blockGraph, std::move(queryHint), params.indexParams.queryDepth, graphFragment, blockNum, blockSizes[blockNum]);
+                blockGraph, std::move(queryHint), graphFragment, blockNum, blockSizes[blockNum]);
             blockLocation->~BlockUpdateContext<DistType>();
             new (blockLocation) BlockUpdateContext<DistType>(std::move(blockGraph), std::move(queryContext), numBlocks);
 
@@ -119,14 +119,14 @@ NearestNodesToDo(const MetaGraph<COMExtent>& metaGraph, Pool& threadPool) {
 }
 
 template<typename DistType, typename Pool>
-void ParallelBlockJoins(
+void ParallelBlockJoins( const index_parameters& index_params,
     std::span<BlockUpdateContext<DistType>> blocks, std::span<std::atomic<bool>> blockStates,
     Pool& pool) {
 
     std::atomic<size_t> doneBlocks = 0;
     auto updateGenerator = [&](const size_t lhsNum, const size_t rhsNum) -> auto {
         auto updateTask = [&, lhsPtr = &(blocks[lhsNum]), rhsPtr = &(blocks[rhsNum])](typename Pool::state& functors) {
-            UpdateBlocks(*lhsPtr, *rhsPtr, functors.dispatchFunctor, functors.cache);
+            UpdateBlocks(index_params,*lhsPtr, *rhsPtr, functors.dispatchFunctor, functors.cache);
             lhsPtr->joinsToDo.erase(rhsPtr->queryContext.blockNumber);
             size_t doneInc{ 0 };
             if (lhsPtr->joinsToDo.size() == 0) {
@@ -246,7 +246,7 @@ ann::dynamic_array<BlockUpdateContext<DistType>> BuildGraph( // std::vector<size
 
     auto nnBuilder = GenerateTaskBuilder<NNTask<DistType, COMExtent>>(
         std::tuple{ blockSpan, blockState },
-        std::tuple{ std::move(nnToDo.second), metaGraph.size(), parameters.indexParams.nearestNodeNeighbors });
+        std::tuple{ std::move(nnToDo.second), metaGraph.size(), parameters.index_params.nearest_node_neighbors });
     auto initJoinBuilder =
         GenerateTaskBuilder<InitJoinTask<DistType, COMExtent>>(std::tuple{ blockSpan, blockState }, std::tuple{ updateSpan });
     auto updateBuilder = GenerateTaskBuilder<UpdateTask<DistType, COMExtent>>(
@@ -322,7 +322,7 @@ ann::dynamic_array<BlockUpdateContext<DistType>> BuildGraphRedux( // std::vector
 
     pool.Latch();
 
-    ParallelBlockJoins(std::span{blocks}, std::span{is_ready.get(), blocks.size()}, pool);
+    ParallelBlockJoins(parameters.index_params, std::span{blocks}, std::span{is_ready.get(), blocks.size()}, pool);
 
     // pool.Latch();
 

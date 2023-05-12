@@ -16,6 +16,7 @@ https://github.com/AnabelSMRuggiero/NNDescent.cpp
 #include <vector>
 
 #include "ann/AlignedMemory/DynamicArray.hpp"
+#include "ann/AlignedMemory/DualVector.hpp"
 #include "ann/Data.hpp"
 #include "ann/DataDeserialization.hpp"
 #include "ann/DelayConstruct.hpp"
@@ -40,22 +41,13 @@ using namespace nnd;
 
 
 
-namespace nnd {
-
-
-
-
-
-
-} // namespace nnd
-
 int main(int argc, char* argv[]) {
 
     constexpr size_t numThreads = 12;
 
 
 
-    SearchParameters search_parameters{ 15, 6, 15 };
+    search_parameters search_parameters{ 15, 6, 15 };
 
 
     bool parallelSearch = true;
@@ -82,39 +74,17 @@ int main(int argc, char* argv[]) {
     NormalizeDataSet(test_data_set);
 
     nnd::index<float> index = open_index<float>(indexLocation);
-    index.search_parameters = search_parameters;
+    index.search_params = search_parameters;
     fixed_block_binder searchDist(metric{}, test_data_set, std::span<const DataBlock<float>>{ std::as_const(index.data_points) });
     erased_unary_binder<float> searchFunctor(searchDist);
 
     for (auto& context : index.query_contexts) {
-        context.querySearchDepth = index.search_parameters.searchDepth;
-        context.querySize = index.search_parameters.searchNeighbors;
+        context.querySearchDepth = index.search_parameters.search_depth;
+        context.querySize = index.search_parameters.search_neighbors;
     }
     
     index.distance_metric = searchFunctor;
-    /*
-    for (std::size_t i = 0; i<index.graph_neighbors.size(); ++i){
-        for (std::size_t j = 0; j<index.graph_neighbors[i].size(); ++j){
-            for (std::size_t k = 0; k<index.graph_neighbors[i][j].size(); ++k){
-                auto neighbor = index.graph_neighbors[i][j][k];
-                if (neighbor.dataIndex >= index.data_points[neighbor.blockNumber].size()){
-                    std::cout << "Buggy Index: {" << neighbor.blockNumber << ", " << neighbor.dataIndex << "}" << std::endl; 
-                }
-            }   
-        }   
-    }
-    */
-    /*
-    for (const auto& index_block : index.graph_neighbors){
-        for (const auto& neighbors : index_block){
-            for (const auto& neighbor : neighbors){
-                if (neighbor.dataIndex >= index.data_points[neighbor.blockNumber].size()){
-                    std::cout << "Buggy Index: {" << neighbor.blockNumber << ", " << neighbor.dataIndex << "}" << std::endl; 
-                }
-            }
-        }
-    }
-    */
+
 
 
     for (size_t i = 0; i < 10; i += 1) {

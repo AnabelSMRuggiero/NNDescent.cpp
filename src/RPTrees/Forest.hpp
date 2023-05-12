@@ -273,16 +273,16 @@ enum class SplitQuality{
     reject
 };
 
-inline SplitQuality EvaluateSplit(const SplittingHeurisitcs& heuristics, const size_t rangeSize, const size_t splitSize){
+inline SplitQuality EvaluateSplit(const splitting_heurisitcs& heuristics, const size_t rangeSize, const size_t splitSize){
     size_t smallerSide = std::min(splitSize, rangeSize-splitSize);
     double splitFraction = double(smallerSide)/double(rangeSize);
 
-    if (smallerSide>heuristics.childThreshold && splitFraction>heuristics.maxSplitFraction){
+    if (smallerSide>heuristics.child_threshold && splitFraction>heuristics.max_split_fraction){
 
         return SplitQuality::accept;
         //done/accept rightSplit->splitRange.second - rightSplit->splitRange.first > splitThreshold
                 
-    } else if (rangeSize < heuristics.maxTreeSize){
+    } else if (rangeSize < heuristics.max_tree_size){
         return SplitQuality::done;
     } else {
         return SplitQuality::reject;
@@ -298,11 +298,11 @@ struct ForestBuilder{
 
     //std::vector<size_t> indexArray;
     RngFunctor rngFunctor;
-    SplittingHeurisitcs heurisitics;
+    splitting_heurisitcs heurisitics;
     SplittingScheme& getSplitComponents;
     
 
-    ForestBuilder(RngFunctor&& rngFunctor, const SplittingHeurisitcs heurisitics, SplittingScheme& scheme):
+    ForestBuilder(RngFunctor&& rngFunctor, const splitting_heurisitcs heurisitics, SplittingScheme& scheme):
         rngFunctor(std::move(rngFunctor)),
         heurisitics(heurisitics),
         getSplitComponents(scheme) {};
@@ -505,7 +505,7 @@ RandomProjectionForest ForestBuilder<SplittingScheme>::operator()(ann::dynamic_a
                 SplitQuality splitQual = EvaluateSplit(this->heurisitics, splitRange, numSplit);
                 switch(splitQual){
                     case SplitQuality::accept:
-                        AddLeaves(builder, samples, workSpace, numSplit, splitQueue2, heurisitics.splitThreshold);
+                        AddLeaves(builder, samples, workSpace, numSplit, splitQueue2, heurisitics.split_threshold);
                         break;
                     case SplitQuality::reject:
                         if(splitQueue1.back().first < heurisitics.max_retry){
@@ -602,7 +602,7 @@ RandomProjectionForest ForestBuilder<SplittingScheme>::operator()(ann::dynamic_a
             SplitQuality splitQual = EvaluateSplit(this->heurisitics, splitRange, numSplit);
             switch(splitQual){
                 case SplitQuality::accept:
-                    AddLeaves(builder, samples, workSpace, numSplit, splitQueue2, heurisitics.splitThreshold);
+                    AddLeaves(builder, samples, workSpace, numSplit, splitQueue2, heurisitics.split_threshold);
                     break;
                 case SplitQuality::reject:
                     std::copy(samples.begin() + builder.refNode->begin(), samples.begin() + builder.refNode->end(), workSpace.begin() + builder.refNode->begin());
@@ -679,7 +679,7 @@ RandomProjectionForest ForestBuilder<SplittingScheme>::operator()(ann::dynamic_a
                         SplitQuality splitQual = EvaluateSplit(heurisitics, splitRange, numSplit);
                         switch(splitQual){
                             case SplitQuality::accept:
-                                AddLeaves(nodeBuilder, samples, workSpace, numSplit, splitQueue2, heurisitics.splitThreshold);
+                                AddLeaves(nodeBuilder, samples, workSpace, numSplit, splitQueue2, heurisitics.split_threshold);
                                 break;
                             case SplitQuality::reject:
                                 if(splitQueue1.back().first < heurisitics.max_retry){
@@ -1173,7 +1173,7 @@ void CrawlLeaves(const RandomProjectionForest& forest, Functor& nodeFunctor){
 
 template<typename SplittingScheme, typename DataEntry>
     requires std::is_same_v<std::true_type, typename SplittingScheme::SerialScheme>
-std::pair<RandomProjectionForest, typename SplittingScheme::SplittingVectors> BuildRPForest(const DataSet<DataEntry>& data, const SplittingHeurisitcs params, std::pmr::memory_resource* upstream = std::pmr::get_default_resource()){
+std::pair<RandomProjectionForest, typename SplittingScheme::SplittingVectors> BuildRPForest(const DataSet<DataEntry>& data, const splitting_heurisitcs params, std::pmr::memory_resource* upstream = std::pmr::get_default_resource()){
     
 
     RngFunctor rngFunctor(data.IndexStart(), data.size() - data.IndexStart());
@@ -1190,7 +1190,7 @@ std::pair<RandomProjectionForest, typename SplittingScheme::SplittingVectors> Bu
 
 template<typename SplittingScheme, typename DataEntry>
     requires std::is_same_v<std::true_type, typename SplittingScheme::SerialScheme>
-std::pair<RandomProjectionForest, typename SplittingScheme::SplittingVectors> BuildRPForest(const DataSet<DataEntry>& data, ann::dynamic_array<size_t>&& indecies, const SplittingHeurisitcs params){
+std::pair<RandomProjectionForest, typename SplittingScheme::SplittingVectors> BuildRPForest(const DataSet<DataEntry>& data, ann::dynamic_array<size_t>&& indecies, const splitting_heurisitcs params){
     
 
     RngFunctor rngFunctor(0, indecies.size());
@@ -1204,7 +1204,7 @@ std::pair<RandomProjectionForest, typename SplittingScheme::SplittingVectors> Bu
 
 template<typename SplittingScheme, typename DataEntry>
     requires std::is_same_v<std::true_type, typename SplittingScheme::ParallelScheme>
-std::pair<RandomProjectionForest, typename SplittingScheme::SplittingVectors> BuildRPForest(const DataSet<DataEntry>& data, const SplittingHeurisitcs params, const size_t numThreads, std::pmr::memory_resource* upstream = std::pmr::get_default_resource()){
+std::pair<RandomProjectionForest, typename SplittingScheme::SplittingVectors> BuildRPForest(const DataSet<DataEntry>& data, const splitting_heurisitcs params, const size_t numThreads, std::pmr::memory_resource* upstream = std::pmr::get_default_resource()){
     
 
     RngFunctor rngFunctor(data.IndexStart(), data.size() - data.IndexStart());
@@ -1275,7 +1275,7 @@ inline RandomProjectionForest RPTransformData(const DataSet<float>& testSet,
 
     RngFunctor testFunctor(size_t(0), testSet.size() - 1);
 
-    ForestBuilder testBuilder{std::move(testFunctor), SplittingHeurisitcs{}, transforming_scheme};
+    ForestBuilder testBuilder{std::move(testFunctor), splitting_heurisitcs{}, transforming_scheme};
 
     ThreadPool<TreeRef> pool(numThreads);
     pool.StartThreads();

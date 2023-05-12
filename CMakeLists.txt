@@ -11,8 +11,20 @@ list(APPEND CMAKE_MODULE_PATH ${CMAKE_CURRENT_LIST_DIR}/CMake)
 
 project(nndescent.cpp)
 
+add_compile_options(
+    "-O3"
+    "-ffast-math"
+    "-fdevirtualize-at-ltrans"
+    "-funroll-loops"
+    "-fno-omit-frame-pointer"
+    "-flto"
+    "-static-libstdc++"
+    "-ggdb"
+    "-ftree-vectorize"
+)
 #add_compile_options("-fsanitize=address" "-Zi")
 #add_link_options("-fsanitize=address")
+add_link_options("-static-libstdc++" "-flto" "-ggdb" "-fdevirtualize-at-ltrans")
 
 add_subdirectory(ext)
 

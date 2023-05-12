@@ -11,9 +11,10 @@ https://github.com/AnabelSMRuggiero/NNDescent.cpp
 #ifndef NND_UNDIRECTEDGRAPH_HPP
 #define NND_UNDIRECTEDGRAPH_HPP
 
-#include <span>
-#include <memory_resource>
+#include <algorithm>
 #include <fstream>
+#include <memory_resource>
+#include <span>
 
 #include "Graph.hpp"
 #include "ann/Type.hpp"

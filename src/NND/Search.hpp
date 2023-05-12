@@ -42,14 +42,21 @@ using SearchQueue = std::vector<std::vector<std::pair<BlockIndecies, std::vector
 using QueueView = std::span<std::vector<std::pair<BlockIndecies, std::vector<DataIndex_t>>>>;
 
 
+query_params to_query_params(const search_parameters& search_params){
+    return {
+        .size = search_params.search_depth,
+        .search_depth = search_params.max_searches_queued
+    };
+}
 
 template<typename DistType>
 GraphVertex<DataIndex_t, DistType> InitialSearch(erased_unary_binder<DistType> distFunctor,
                                                    const QueryContext<DataIndex_t, DistType>& blockToSearch,
-                                                   const size_t searchIndex){
+                                                   const size_t searchIndex,
+                                                   const search_parameters& search_params){
 
     
-    return blockToSearch.Query(std::vector<DataIndex_t>{}, searchIndex, distFunctor(blockToSearch.blockNumber));
+    return blockToSearch.Query(std::vector<DataIndex_t>{}, searchIndex, to_query_params(search_params), distFunctor(blockToSearch.blockNumber));
 
 }
 
@@ -93,7 +100,7 @@ DataBlock<BlockNumber_t, alignof(BlockNumber_t)> BlocksToSearch(MetaGraph<float>
 }
 */
 
-inline std::vector<std::vector<size_t>> QueueSearches(const DataBlock<BlockNumber_t, std::align_val_t{alignof(BlockNumber_t)}>& blocksToSearch, const size_t numberOfBlocks){
+inline std::vector<std::vector<size_t>> QueueSearches(const DataBlock<BlockNumber_t, ann::align_val_of<BlockNumber_t>>& blocksToSearch, const size_t numberOfBlocks){
 
     std::vector<std::vector<size_t>> searchesQueued(numberOfBlocks);
     for (size_t i = 0; i<blocksToSearch.size(); i+=1){
@@ -117,7 +124,7 @@ SearchQueue FirstBlockSearch(std::vector<ContextBlock<DistType>>& searchContexts
                              const erased_unary_binder<DistType>& searchFunctor,
                              std::span<const QueryContext<DataIndex_t, DistType>> queryContexts,
                              std::span<const IndexBlock> indexBlocks,
-                             const size_t maxNewSearches){
+                             const search_parameters& params){
 
     SearchQueue searchHints(indexBlocks.size());
     
@@ -145,7 +152,7 @@ SearchQueue FirstBlockSearch(std::vector<ContextBlock<DistType>>& searchContexts
             */
             //context.ConsumeUpdates(indexBlocks);
             
-            std::optional<SearchSet> searches = context.NextSearches(maxNewSearches);
+            std::optional<SearchSet> searches = context.NextSearches(params.max_searches_queued);
             
             if(searches){
                 for (auto& [targetBlock, dataIndecies]: *searches){
@@ -168,7 +175,7 @@ void SingleSearch(std::span<const QueryContext<DataIndex_t, DistType>> queryCont
                   const GraphFragment_t currentFragment,
                   const BlockNumber_t startBlock,
                   erased_unary_binder<DistType> searchFunctor,
-                  const size_t maxNewSearches){
+                  const search_parameters& params){
 
     context.blocksJoined[startBlock] = true;
     context.AddInitialResult(currentFragment,
@@ -178,7 +185,7 @@ void SingleSearch(std::span<const QueryContext<DataIndex_t, DistType>> queryCont
     context.comparisonResults = InitialComparisons(context, indexBlocks[startBlock]);
     
     
-    std::optional<SearchSet> searches = context.NextSearches(maxNewSearches);
+    std::optional<SearchSet> searches = context.NextSearches(params.max_searches_queued);
 
     while(searches){
         for (const auto& search: *searches){
@@ -186,11 +193,11 @@ void SingleSearch(std::span<const QueryContext<DataIndex_t, DistType>> queryCont
             
             context.AddSearchResult(queryContexts[search.first].graphFragment,
                                     search.first,
-                                    queryContexts[search.first].Query(search.second, context.dataIndex, searchFunctor(search.first)));
+                                    queryContexts[search.first].Query(search.second, context.dataIndex, to_query_params(params), searchFunctor(search.first)));
         }
 
         context.ConsumeUpdates(indexBlocks);
-        searches = context.NextSearches(maxNewSearches);
+        searches = context.NextSearches(params.max_searches_queued);
     }
 }
 
@@ -199,7 +206,7 @@ struct InitialSearchTask{
     std::span<const QueryContext<DataIndex_t, DistType>> queryContexts;
     std::span<const IndexBlock> indexBlocks;
     //const std::vector<std::vector<size_t>> blocksToSearch;
-    const size_t maxNewSearches;
+    const search_parameters params;
 
     AsyncQueue<std::pair<BlockIndecies, SearchSet>> searchesToQueue;
 
@@ -215,7 +222,7 @@ struct InitialSearchTask{
                     context.blocksJoined[contextBlockNum] = true;
                     context.AddInitialResult(graphFragment,
                                              contextBlockNum,
-                                             InitialSearch(searchFunctor, this->queryContexts[contextBlockNum], context.dataIndex));
+                                             InitialSearch(searchFunctor, this->queryContexts[contextBlockNum], context.dataIndex, params));
                     
                     context.comparisonResults = InitialComparisons(context, this->indexBlocks[contextBlockNum]);
                     
@@ -227,7 +234,7 @@ struct InitialSearchTask{
                     */
                     //context.ConsumeUpdates(this->indexBlocks);
                     
-                    std::optional<SearchSet> searches = context.NextSearches(this->maxNewSearches);
+                    std::optional<SearchSet> searches = context.NextSearches(this->params.max_searches_queued);
                     
                     if(searches){
                         this->searchesToQueue.Put({{0u, i,j}, std::move(*searches)});
@@ -284,8 +291,9 @@ void SearchLoop(const erased_unary_binder<DistType>& searchFunctor,
                 std::vector<ContextBlock<DistType>>& searchContexts,
                 std::span<const QueryContext<DataIndex_t, DistType>> queryContexts,
                 std::span<const IndexBlock> indexBlocks,
-                const size_t maxNewSearches,
-                const size_t searchesToDo){
+                const size_t searchesToDo,
+                const search_parameters& params
+                ){
     size_t doneSearches = 0;
     while(doneSearches<searchesToDo){
         doneSearches = 0;
@@ -296,7 +304,7 @@ void SearchLoop(const erased_unary_binder<DistType>& searchFunctor,
                 
                 context.AddSearchResult(queryContexts[i].graphFragment,
                                         i,
-                                        queryContexts[i].Query(hint.second, context.dataIndex, searchFunctor(i)));
+                                        queryContexts[i].Query(hint.second, context.dataIndex, to_query_params(params), searchFunctor(i)));
 
             }
             hintMap.clear();
@@ -306,7 +314,7 @@ void SearchLoop(const erased_unary_binder<DistType>& searchFunctor,
         for (size_t i = 0; auto& [ignore, vector]: searchContexts){
             for (size_t j = 0; auto& context: vector){
                 context.ConsumeUpdates(indexBlocks);
-                std::optional<SearchSet> searches = context.NextSearches(maxNewSearches);
+                std::optional<SearchSet> searches = context.NextSearches(params.max_searches_queued);
                 if(searches){
                     for (auto& [blockNum, dataIndecies]: *searches){
                         searchHints[blockNum].push_back({{0u,i,j}, std::move(dataIndecies)});
@@ -328,23 +336,22 @@ void ParaSearchLoop(ThreadPool<erased_unary_binder<DistType>>& pool,
                 std::span<ParallelContextBlock<DistType>> searchContexts,
                 std::span<const QueryContext<DataIndex_t, DistType>> queryContexts,
                 std::span<const IndexBlock> indexBlocks,
+                const size_t searchesToDo,
+                const search_parameters& params/*
                 const size_t maxNewSearches,
-                const size_t searchesToDo){
+                query_params query_args*/){
 
     AsyncQueue<BlockIndecies> searchesToUpdate;
     AsyncQueue<std::pair<BlockIndecies, SearchSet>> searchesToQueue;
 
 
-
-    
-    
     auto searchGenerator = [&](const size_t i, std::vector<std::pair<BlockIndecies, std::vector<DataIndex_t>>>&& searchSet)->auto{
 
         auto searchTask = [&, i, hintMap = std::move(searchSet)](erased_unary_binder<DistType>& searchFunctor)->void{
             for (size_t j = 0; const auto& hint: hintMap){
                 
                 ParallelSearchContext<DistType>& context = searchContexts[hint.first.blockNumber].second[hint.first.dataIndex];
-                GraphVertex<DataIndex_t, DistType> newNodes = queryContexts[i].Query(hint.second, context.dataIndex, searchFunctor(i));
+                GraphVertex<DataIndex_t, DistType> newNodes = queryContexts[i].Query(hint.second, context.dataIndex, to_query_params(params), searchFunctor(i));
 
                 if(context.AddSearchResult(queryContexts[i].graphFragment, queryContexts[i].blockNumber, std::move(newNodes))){
                     searchesToUpdate.Put(BlockIndecies(hint.first));
@@ -361,7 +368,7 @@ void ParaSearchLoop(ThreadPool<erased_unary_binder<DistType>>& pool,
         auto comparisonTask = [&, &context = searchContexts[searchIndex.blockNumber].second[searchIndex.dataIndex], searchIndex]
             (erased_unary_binder<DistType>&)->void{
                 context.ConsumeUpdates(indexBlocks);
-                std::optional<SearchSet> searches = context.NextSearches(maxNewSearches);
+                std::optional<SearchSet> searches = context.NextSearches(params.max_searches_queued);
                 if(searches){
                     searchesToQueue.Put({searchIndex, std::move(*searches)});
                 }
@@ -410,7 +417,7 @@ struct search_set_mappings {
 };
 template<typename DistanceType>
 search_set_mappings block_search_set(
-    const DataSet<DistanceType>& searchSet, const RandomProjectionForest& searchForest, const SearchParameters& searchParams,
+    const DataSet<DistanceType>& searchSet, const RandomProjectionForest& searchForest, const search_parameters& searchParams,
     std::size_t num_index_blocks, const std::unordered_map<unsigned long, unsigned long>& splitToBlockNum) {
 
     DataMapper<DistanceType, void, void> testMapper(searchSet);
@@ -424,7 +431,7 @@ search_set_mappings block_search_set(
 
             ParallelSearchContext<DistanceType>* contextPtr = &retBlock.second[i];
             contextPtr->~ParallelSearchContext<DistanceType>();
-            new (contextPtr) ParallelSearchContext<DistanceType>(searchParams.searchNeighbors, num_index_blocks, index);
+            new (contextPtr) ParallelSearchContext<DistanceType>(searchParams.search_neighbors, num_index_blocks, index);
 
             i++;
         }
@@ -444,12 +451,12 @@ search_set_mappings block_search_set(
 }
 template< typename DistanceType >
 void ParallelSearch(
-    ThreadPool<erased_unary_binder<DistanceType>>& threadPool, std::size_t max_searches_queued,
+    ThreadPool<erased_unary_binder<DistanceType>>& threadPool, const search_parameters& params,
     std::span<ParallelContextBlock<DistanceType>> searchContexts, std::span<const QueryContext<DataIndex_t, DistanceType>> queryContexts,
     std::span<const IndexBlock> indexView) {
 
     InitialSearchTask<DistanceType> searchGenerator = {
-        queryContexts, indexView, max_searches_queued, AsyncQueue<std::pair<BlockIndecies, SearchSet>>()
+        queryContexts, indexView, params, AsyncQueue<std::pair<BlockIndecies, SearchSet>>()
     };
 
     threadPool.StartThreads();
@@ -457,7 +464,7 @@ void ParallelSearch(
 
     QueueView hintView = { searchHints.data(), searchHints.size() };
 
-    ParaSearchLoop(threadPool, hintView, searchContexts, queryContexts, indexView, max_searches_queued, searchContexts.size());
+    ParaSearchLoop(threadPool, hintView, searchContexts, queryContexts, indexView, searchContexts.size(), params);
     threadPool.StopThreads();
 }
 
@@ -481,19 +488,11 @@ constexpr auto select_parallel_transform = []<typename VectorMap>(const DataSet<
 };
 
 template<typename DistanceType>
-std::vector<std::vector<std::size_t>> search(const DataSet<DistanceType>& search_data, const index<DistanceType>& index, std::size_t num_threads){
-    
-
-    
+std::vector<std::vector<std::size_t>> search_imp(const DataSet<DistanceType>& search_data, const index<DistanceType>& index, erased_unary_binder<DistanceType> search_functor, std::size_t num_threads){
     
     auto bound_transform = std::bind_front(select_parallel_transform<DistanceType>, std::ref(search_data), std::ref(index.splits_to_do), num_threads);
     RandomProjectionForest rp_trees = std::visit(bound_transform, index.splits);
-    /*
-    RandomProjectionForest rpTreesTest = RPTransformData(search_data.size(),
-                                                         index.splits_to_do,
-                                                         borrowed_euclidean(search_data, index.splitting_vectors),
-                                                         num_threads);
-    */
+
     size_t numberSearchBlocks = index.data_points.size();
 
     
@@ -501,14 +500,14 @@ std::vector<std::vector<std::size_t>> search(const DataSet<DistanceType>& search
 
      
 
-    ThreadPool<erased_unary_binder<DistanceType>> searchPool(num_threads, index.distance_metric);
+    ThreadPool<erased_unary_binder<DistanceType>> searchPool(num_threads, search_functor);
 
     std::span<const ann::dynamic_array<size_t>> indexMappingView(index.block_idx_to_source_idx);
 
     auto [searchContexts, mappings] =
-        block_search_set(search_data, rp_trees, index.search_parameters, index.graph_neighbors.size(), index.split_idx_to_block_idx);
+        block_search_set(search_data, rp_trees, index.search_params, index.graph_neighbors.size(), index.split_idx_to_block_idx);
 
-    ParallelSearch(searchPool, index.search_parameters.maxSearchesQueued, std::span{searchContexts}, as_const_span(index.query_contexts), as_const_span(index.graph_neighbors));
+    ParallelSearch(searchPool, index.search_params, std::span{searchContexts}, as_const_span(index.query_contexts), as_const_span(index.graph_neighbors));
 
     std::vector<std::vector<size_t>> results(search_data.size());
 
@@ -547,15 +546,10 @@ constexpr auto select_transform = []<typename VectorMap>(const DataSet<DistanceT
 };
 
 
-template< typename DistanceType>
-std::vector<std::vector<std::size_t>> search(const DataSet<DistanceType>& search_data, const nnd::index<DistanceType>& index){
+template<typename DistanceType>
+std::vector<std::vector<std::size_t>> search_imp(const DataSet<DistanceType>& search_data, const nnd::index<DistanceType>& index, erased_unary_binder<DistanceType> search_functor){
 
     
-    //using splitting_scheme = borrowed_splitting_scheme<choose_scheme<Metric>, DistanceType, ann::aligned_array<DistanceType>>;
-    
-
-    //fixed_block_binder searchDist(Metric{}, search_data, as_const_span(index.data_points));
-    //erased_unary_binder<float> searchFunctor(searchDist);
 
     std::vector<std::vector<size_t>> results(search_data.size());
     IndexMaps<size_t> testMappings;
@@ -589,13 +583,13 @@ std::vector<std::vector<std::size_t>> search(const DataSet<DistanceType>& search
     std::span<const IndexBlock> indexView{ std::as_const(index.graph_neighbors) };
 
     SearchQueue searchHints =
-        FirstBlockSearch(searchContexts, index.distance_metric, as_const_span(index.query_contexts), indexView, index.search_parameters.maxSearchesQueued);
+        FirstBlockSearch(searchContexts, search_functor, as_const_span(index.query_contexts), indexView, index.search_parameters.maxSearchesQueued);
 
 
     QueueView hintView = { searchHints.data(), searchHints.size() };
 
     SearchLoop(
-        index.distance_metric, hintView, searchContexts, as_const_span(index.query_contexts), indexView, index.search_parameters.maxSearchesQueued, search_data.size());
+        search_functor, hintView, searchContexts, as_const_span(index.query_contexts), indexView, index.search_parameters.maxSearchesQueued, search_data.size());
 
 
 
@@ -617,6 +611,21 @@ std::vector<std::vector<std::size_t>> search(const DataSet<DistanceType>& search
     return results;
 }
 
+template<typename Metric, typename DistanceType>
+std::vector<std::vector<std::size_t>> search(const DataSet<DistanceType>& search_data, const index<DistanceType>& index, std::size_t num_threads){
+    fixed_block_binder search_dist(Metric{}, search_data, std::span<const DataBlock<float>>{ std::as_const(index.data_points) });
+    erased_unary_binder<float> search_functor(search_dist);
+    
+    return search_imp(search_data, index, std::move(search_functor), num_threads);
+}
+
+template<typename Metric, typename DistanceType>
+std::vector<std::vector<std::size_t>> search(const DataSet<DistanceType>& search_data, const nnd::index<DistanceType>& index){
+    fixed_block_binder search_dist(Metric{}, search_data, std::span<const DataBlock<float>>{ std::as_const(index.data_points) });
+    erased_unary_binder<float> search_functor(search_dist);
+    
+    return search_imp(search_data, index, std::move(search_functor));
+}
 
 }
 

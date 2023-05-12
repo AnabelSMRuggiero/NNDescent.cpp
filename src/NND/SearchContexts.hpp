@@ -61,7 +61,7 @@ std::pair<std::vector<IndexType>, std::vector<IndexType>> AddNeighbors(GraphVert
     std::unordered_set<IndexType> removedNeighbors;
     for (auto& update: updates){
         EraseRemove(update.searchResult, vertexToUpdate.PushThreshold());
-        for (auto& neighbor: update.searchResult){
+        for (auto&& neighbor: update.searchResult){
             
             BlockIndecies result{update.fragmentNumber, update.blockNumber, neighbor.first};
             addedNeighbors.insert(result);

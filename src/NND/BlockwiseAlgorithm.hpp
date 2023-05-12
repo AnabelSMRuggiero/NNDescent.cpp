@@ -94,6 +94,7 @@ JoinResults<DistType> BlockwiseJoin(const JoinHints& startJoins,
                    const Graph<BlockIndecies, DistType>& currentGraphState,
                    const DirectedGraph<DataIndex_t>& searchSubgraph,
                    const QueryContext<DataIndex_t, DistType>& targetBlock,
+                   query_params query_args,
                    QueryFunctor&& queryFunctor){
     
     pmr::vector<std::pair<DataIndex_t, pmr::vector<DataIndex_t>>> joinHints = FlattenHints<DistType>(startJoins);
@@ -109,7 +110,7 @@ JoinResults<DistType> BlockwiseJoin(const JoinHints& startJoins,
         
         for (auto& joinHint: joinHints){
             
-            joinResults.push_back({joinHint.first, targetBlock.Query(joinHint.second, joinHint.first, queryFunctor)});
+            joinResults.push_back({joinHint.first, targetBlock.Query(joinHint.second, joinHint.first, query_args, queryFunctor)});
             nodesJoined[joinHint.first] = true;
             joinHint.second.clear();
             vecCache.push_back(std::move(joinHint.second));
@@ -155,6 +156,7 @@ void ReverseBlockJoin(const JoinHints& startJoins,
                    const Graph<BlockIndecies, DistType>& currentGraphState,
                    const DirectedGraph<DataIndex_t>& searchSubgraph,
                    const QueryContext<DataIndex_t, DistType>& targetBlock,
+                   query_params query_args,
                    cache_state<DistType>& result_cache,
                    DistanceFunctor&& queryFunctor){
     
@@ -164,6 +166,7 @@ void ReverseBlockJoin(const JoinHints& startJoins,
 
     NodeTracker nodesJoined(searchSubgraph.size());
     pmr::vector<size_t> successfulJoins;
+    
     for (const auto& hint: startJoins){
 
         GraphVertex<DataIndex_t, DistType>& vertex = cache.reverseGraph[hint.first];
@@ -182,7 +185,7 @@ void ReverseBlockJoin(const JoinHints& startJoins,
         
         
         nodesJoined[hint.first] = true;
-        targetBlock.Query(vertex, hint.first, queryFunctor, cache.nodesJoined[hint.first]);
+        targetBlock.Query(vertex, hint.first, query_args, queryFunctor, cache.nodesJoined[hint.first]);
         EraseRemove(vertex, currentGraphState[hint.first].PushThreshold());
         /*
         NeighborOverDist<size_t, DistType> comparison(currentGraphState[hint.first][0].second);
@@ -236,7 +239,7 @@ void ReverseBlockJoin(const JoinHints& startJoins,
     while(joinQueue.size()){
         for (auto& joinee: joinQueue){
 
-            targetBlock.Query(cache.reverseGraph[joinee], joinee, queryFunctor, cache.nodesJoined[joinee]);
+            targetBlock.Query(cache.reverseGraph[joinee], joinee, query_args, queryFunctor, cache.nodesJoined[joinee]);
             nodesJoined[joinee] = true;
             EraseRemove(cache.reverseGraph[joinee], currentGraphState[joinee].PushThreshold());
             //NeighborOverDist<DistType> comparison(currentGraphState[joinee][0].second);
@@ -373,18 +376,25 @@ JoinMap InitializeJoinMap(const BlockContainer& blockUpdateContexts,
 
 
 template<bool checkGraphFragment = false, typename DistType>
-int UpdateBlocks(BlockUpdateContext<DistType>& blockLHS,
+int UpdateBlocks(const index_parameters& index_params,
+                 BlockUpdateContext<DistType>& blockLHS,
                  BlockUpdateContext<DistType>& blockRHS,
                  const erased_binary_binder<DistType>& bound_blocks,
                  cache_state<DistType>& result_cache){
 
     blockLHS.blockJoinTracker[blockRHS.queryContext.blockNumber] = true;
+
+    query_params query_args{
+        .size = index_params.block_graph_neighbors,
+        .search_depth = index_params.query_depth
+    };
     
 
     JoinResults<DistType> blockLHSUpdates = BlockwiseJoin(blockLHS.joinsToDo[blockRHS.queryContext.blockNumber],
                                                                         blockLHS.currentGraph,
                                                                         blockLHS.joinPropagation,
                                                                         blockRHS.queryContext,
+                                                                        query_args,
                                                                         caching_functor<DistType>{result_cache, bound_blocks(blockLHS.queryContext.blockNumber, blockRHS.queryContext.blockNumber)});
 
     NewJoinQueues<DistType, checkGraphFragment>(blockLHSUpdates, 
@@ -402,6 +412,7 @@ int UpdateBlocks(BlockUpdateContext<DistType>& blockLHS,
                         blockRHS.currentGraph,
                         blockRHS.joinPropagation,
                         blockLHS.queryContext,
+                        query_args,
                         result_cache,
                         bound_blocks(blockRHS.queryContext.blockNumber, blockLHS.queryContext.blockNumber));
     

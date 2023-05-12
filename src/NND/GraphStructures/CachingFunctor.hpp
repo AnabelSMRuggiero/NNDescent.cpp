@@ -16,8 +16,8 @@ https://github.com/AnabelSMRuggiero/NNDescent.cpp
 #include <span>
 #include <vector>
 
-#include "../FunctorErasure.hpp"
-#include "../Type.hpp"
+#include "NND/FunctorErasure.hpp"
+#include "NND/Type.hpp"
 #include "NND/UtilityFunctions.hpp"
 #include "ann/Type.hpp"
 

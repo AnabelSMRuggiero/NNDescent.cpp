@@ -81,23 +81,26 @@ struct GraphVertex{
 
     //GraphVertex(GraphVertex&& rval): neighbors(std::forward<std::vector<std::pair<IndexType, FloatType>>>(rval.neighbors)){};
     //Incorporate size checking in here?
-    bool PushNeighbor(std::pair<IndexType, FloatType> newNeighbor){
-        if (newNeighbor.second > neighbors.back().second) return false;
-        
-        size_t index = neighbors.size();
-        for ( ; index>0; index -= 1){
-            if (edge_ops::lessThan(neighbors[index-1], newNeighbor)) break;
-        }
-        
-        neighbors.push_back(newNeighbor);
-        std::move_backward(neighbors.begin() + index, neighbors.end()-2, --neighbors.end());
-        //std::memmove(&neighbors[index+1], &neighbors[index], sizeof(std::pair<IndexType, FloatType>)*(neighbors.size()-1 - index));
-        neighbors[index] = newNeighbor;
-        
-        neighbors.pop_back();
+    bool PushNeighbor(std::pair<IndexType, FloatType> new_neighbor){
+        if (new_neighbor.second > neighbors.back().second) return false;
+        do_push_neighbor(new_neighbor);
         return true;
     };
+    private:
+    void do_push_neighbor(std::pair<IndexType, FloatType> new_neighbor){
+        auto distance_view = neighbors.view_second();
+        auto loc_iter = std::ranges::find_if(
+            distance_view | std::views::reverse, 
+            [new_distance = new_neighbor.second](const auto& distance){ return distance < new_distance;}
+        ).base();
+        
+        std::size_t index = loc_iter - distance_view.begin();
+        neighbors.insert(neighbors.begin()+index, new_neighbor.first, new_neighbor.second);
 
+        neighbors.pop_back();
+    }
+
+    public:
     std::pair<IndexType, FloatType> PushNeighbor(std::pair<IndexType, FloatType> newNeighbor, ReturnRemoved){
         if (newNeighbor.second > neighbors.back().second) return newNeighbor;
         

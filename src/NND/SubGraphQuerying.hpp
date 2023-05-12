@@ -303,13 +303,16 @@ some_promise generate_queries( NodeTrackerImpl<TrackerAlloc>& nodesVisited) {
     
 */
 
+struct query_params{
+    size_t size;
+    size_t search_depth;
+};
+
 template<std::unsigned_integral IndexType, std::totally_ordered DistType>
 struct QueryContext {
 
     UndirectedGraph<IndexType> subGraph;
     GraphVertex<IndexType, DistType> queryHint;
-    size_t querySize;
-    size_t querySearchDepth;
     GraphFragment_t graphFragment{ GraphFragment_t(-1) };
     BlockNumber_t blockNumber{ BlockNumber_t(-1) };
     size_t blockSize{ size_t(-1) };
@@ -317,21 +320,20 @@ struct QueryContext {
     QueryContext() = default;
 
     QueryContext(
-        const Graph<IndexType, DistType>& subGraph, GraphVertex<IndexType, DistType>&& queryHint, const int querySearchDepth,
+        const Graph<IndexType, DistType>& subGraph, GraphVertex<IndexType, DistType>&& queryHint,
         const size_t graphFragment, const size_t blockNumber, const size_t blockSize)
         :
 
-          subGraph(BuildUndirectedGraph(subGraph)), queryHint(std::move(queryHint)), querySearchDepth(querySearchDepth),
+          subGraph(BuildUndirectedGraph(subGraph)), queryHint(std::move(queryHint)),
           graphFragment(graphFragment), blockNumber(blockNumber), blockSize(blockSize) {
-        querySize = this->queryHint.size();
         // defaultQueryFunctor = DefaultQueryFunctor<IndexType, DataEntry, DistType>(distanceFunctor, dataBlock);
     };
 
     QueryContext(std::ifstream& inFile)
         : subGraph(Extract<UndirectedGraph<IndexType>>(inFile)),
           // subGraph(inFile),
-          queryHint(Extract<GraphVertex<IndexType, DistType>>(inFile)), querySize(Extract<size_t>(inFile)),
-          querySearchDepth(Extract<size_t>(inFile)), graphFragment(Extract<GraphFragment_t>(inFile)),
+          queryHint(Extract<GraphVertex<IndexType, DistType>>(inFile)), 
+          graphFragment(Extract<GraphFragment_t>(inFile)),
           blockNumber(Extract<BlockNumber_t>(inFile)), blockSize(Extract<size_t>(inFile)) {}
 
     //QueryContext(QueryContext&&) = default;
@@ -340,31 +342,34 @@ struct QueryContext {
     GraphVertex<IndexType, DistType, PolymorphicAllocator> Query(
         std::span<const IndexType> initHints,
         const size_t queryIndex, // Can realistically be any parameter passed through to the Functor
+        query_params params,
         QueryFunctor&& queryFunctor) const {
 
-        auto [vertex, nodeTracker] = ForwardQueryInit(initHints, queryIndex, queryFunctor);
+        auto [vertex, nodeTracker] = ForwardQueryInit(initHints, queryIndex, params, queryFunctor);
 
-        return std::move(QueryLoop(vertex, queryIndex, queryFunctor, nodeTracker));
+        return std::move(QueryLoop(vertex, queryIndex, params, queryFunctor, nodeTracker));
     }
 
-    // Figure this out later
+
     template<typename QueryFunctor>
     GraphVertex<IndexType, DistType>& Query(
         GraphVertex<IndexType, DistType>& initVertex,
-        const size_t queryIndex, // Can realistically be any parameter passed through to the Functor
+        size_t queryIndex, // Can realistically be any parameter passed through to the Functor
+        query_params params,
         QueryFunctor& queryFunctor, NodeTracker& nodesVisited) const {
 
-        if (initVertex.size() < querySize) {
-            ReverseQueryInit(initVertex, queryIndex, queryFunctor, nodesVisited);
+        if (initVertex.size() < params.size) {
+            ReverseQueryInit(initVertex, queryIndex, params, queryFunctor, nodesVisited);
         }
 
-        return QueryLoop(initVertex, queryIndex, queryFunctor, nodesVisited);
+        return QueryLoop(initVertex, queryIndex, params, queryFunctor, nodesVisited);
     }
 
     template<VertexLike<IndexType, DistType> Vertex, typename QueryFunctor, typename TrackerAlloc>
     Vertex& QueryLoop(
         Vertex& initVertex,
         const size_t queryIndex, // Can realistically be any parameter passed through to the Functor
+        query_params params,
         QueryFunctor& queryFunctor, NodeTrackerImpl<TrackerAlloc>& nodesVisited) const {
 
         constexpr size_t bufferSize = sizeof(size_t) * (internal::maxBatch + 5);
@@ -407,7 +412,7 @@ struct QueryContext {
 
         auto toNeighbor = [&](const auto edge) { return edge.first; };
         */
-        std::span<const IndexType> nodesToCompare = initVertex.view_first().subspan(0, querySearchDepth);
+        std::span<const IndexType> nodesToCompare = initVertex.view_first().subspan(0, params.search_depth);
         
         //constexpr size_t bufferSize = sizeof(size_t) * (internal::maxBatch + 5);
         std::byte mapBuffer[5'000];
@@ -475,8 +480,8 @@ struct QueryContext {
             }();
             */
             /*
-            std::span<const typename Vertex::EdgeType> nodesToPickFrom{ initVertex.begin(), querySearchDepth };
-            std::vector<IndexType> nodesToCompare(querySearchDepth);
+            std::span<const typename Vertex::EdgeType> nodesToPickFrom{ initVertex.begin(), params.search_depth };
+            std::vector<IndexType> nodesToCompare(params.search_depth);
             // clang-format off
             auto [ignore, outItr] = std::ranges::copy(nodesToPickFrom | std::views::transform(toNeighbor)
                                                                       | std::views::filter(notCompared),
@@ -521,14 +526,10 @@ struct QueryContext {
     auto ForwardQueryInit(
         std::span<const IndexType> startHint,
         const size_t queryIndex, // Can realistically be any parameter passed through to the Functor
+        query_params params,
         QueryFunctor& queryFunctor) const
         -> std::pair<GraphVertex<IndexType, DistType, PolymorphicAllocator>, NodeTrackerImpl<std::pmr::polymorphic_allocator<bool>>> {
-        //std::cout << "Block Number: " << this->blockNumber << "/n" << "Block Size: " << this->blockSize << std::endl;
-        /*
-        if (this->blockNumber == 192){
-            std::cout << "Block Number: " << this->blockNumber << "\n" << "Block Size: " << this->blockSize << std::endl;
-        }
-        */
+
         NodeTrackerImpl<std::pmr::polymorphic_allocator<bool>> nodesJoined(blockSize, internal::GetThreadResource());
         for (const auto& hint : startHint){
             nodesJoined[hint] = true;
@@ -539,7 +540,7 @@ struct QueryContext {
         std::pmr::monotonic_buffer_resource stackResource(stackBuffer, bufferSize);
 
         std::pmr::vector<size_t> initDestinations(&stackResource);
-        initDestinations.reserve(querySize);
+        initDestinations.reserve(params.size);
         initDestinations.resize(startHint.size());
 
         if constexpr (std::is_same_v<IndexType, size_t>) {
@@ -551,15 +552,15 @@ struct QueryContext {
         auto notJoined = [&](const auto& index) { return !nodesJoined[index]; };
 
         auto padIndecies = [&](const auto& range) {
-            for (const auto& index : range | std::views::filter(notJoined) | std::views::take(querySize - initDestinations.size())) {
+            for (const auto& index : range | std::views::filter(notJoined) | std::views::take(params.size - initDestinations.size())) {
                 initDestinations.push_back(index);
                 nodesJoined[index] = true;
             }
         };
 
-        if (initDestinations.size() < querySize) {
+        if (initDestinations.size() < params.size) {
             padIndecies(queryHint | std::views::transform([&](const auto& pair) { return pair.first; }));
-            [[unlikely]] if (initDestinations.size() < querySize) padIndecies(std::views::iota(size_t{ 0 }, blockSize));
+            [[unlikely]] if (initDestinations.size() < params.size) padIndecies(std::views::iota(size_t{ 0 }, blockSize));
         }
 
         std::ranges::contiguous_range auto initDistances = queryFunctor(queryIndex, initDestinations);
@@ -579,9 +580,10 @@ struct QueryContext {
     void ReverseQueryInit(
         GraphVertex<IndexType, DistType>& initVertex,
         const size_t queryIndex, // Can realistically be any parameter passed through to the Functor
+        query_params params,
         QueryFunctor& queryFunctor, NodeTracker& previousVisits) const {
 
-        int sizeDif = querySize - initVertex.size();
+        int sizeDif = params.size - initVertex.size();
 
         int indexOffset(0);
         std::vector<size_t> initComputations;
@@ -680,9 +682,7 @@ struct QueryContext {
         outputter(this->subGraph.graphBlock);
 
         outputter(this->queryHint);
-
-        outputter(this->querySize);
-        outputter(this->querySearchDepth);
+        
 
         outputter(this->graphFragment);
         outputter(this->blockNumber);
